@@ -1,0 +1,114 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/* Die Nocturne-Token als Tailwind-Farben (inline, damit die Utilities den
+   Variablenwert direkt übernehmen und der Hell/Dunkel-Wechsel greift). */
+@theme inline {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --color-bg: var(--k-bg);
+  --color-surface: var(--k-surface);
+  --color-surface-2: var(--k-surface-2);
+  --color-sunk: var(--k-sunk);
+  --color-text: var(--k-text);
+  --color-text-2: var(--k-text-2);
+  --color-text-3: var(--k-text-3);
+  --color-line: var(--k-line);
+  --color-line-strong: var(--k-line-strong);
+  --color-tint: var(--k-tint);
+  --color-tint-strong: var(--k-tint-strong);
+  --color-brand: var(--k-brand);
+  --color-brand-ink: var(--k-brand-ink);
+  --color-brand-on: var(--k-brand-on);
+  --color-brand-tint: var(--k-brand-tint);
+  --color-ok: var(--k-ok-ink);
+  --color-ok-tint: var(--k-ok-tint);
+  --color-warn: var(--k-warn-ink);
+  --color-warn-tint: var(--k-warn-tint);
+  --color-err: var(--k-err-ink);
+  --color-err-tint: var(--k-err-tint);
+  --color-ai: var(--k-ai-ink);
+  --radius-card: var(--k-radius-card);
+  --radius-control: var(--k-radius-control);
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--k-bg);
+  color: var(--k-text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+input,
+select,
+textarea {
+  user-select: text;
+}
+
+/* Rahmenlose Fenster (HUD): Hintergrund transparent, Vibrancy des Fensters sichtbar. */
+body.transparent {
+  background: transparent;
+}
+
+.k-card {
+  background: var(--k-card-bg);
+  border-radius: var(--k-radius-card);
+  box-shadow: var(--k-card-shadow);
+  padding: var(--k-card-pad);
+}
+
+.k-input {
+  width: 100%;
+  background: var(--k-sunk);
+  color: var(--k-text);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-control);
+  padding: 7px 10px;
+  font: inherit;
+  outline: none;
+}
+.k-input:focus {
+  border-color: var(--k-brand);
+  box-shadow: 0 0 0 3px var(--k-brand-ring);
+}
+
+.k-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--k-radius-control);
+  padding: 7px 12px;
+  font: inherit;
+  font-weight: 500;
+  border: 1px solid var(--k-line-strong);
+  background: var(--k-tint);
+  color: var(--k-text);
+  cursor: default;
+}
+.k-btn:hover {
+  background: var(--k-tint-strong);
+}
+.k-btn:disabled {
+  opacity: 0.5;
+}
+.k-btn-primary {
+  background: var(--k-brand);
+  border-color: transparent;
+  color: var(--k-brand-on);
+}
+.k-btn-primary:hover {
+  filter: brightness(1.08);
+  background: var(--k-brand);
+}
+
+.k-drag {
+  -webkit-app-region: drag;
+}
+.k-nodrag {
+  -webkit-app-region: no-drag;
+}

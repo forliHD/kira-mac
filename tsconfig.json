@@ -1,0 +1,5 @@
+{
+  "// Hinweis": "Zwei Teilprojekte: tsconfig.node.json (Hauptprozess, Preload, Tests) und tsconfig.web.json (lokale Seiten). `npm run typecheck` prüft beide.",
+  "files": [],
+  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.web.json" }]
+}

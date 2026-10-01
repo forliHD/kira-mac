@@ -1,0 +1,70 @@
+# Paketierung „KIRA für Mac“ – electron-builder.
+# Baut lokal auf dem Mac des Owners (kein CI). Signatur: Developer ID aus dem
+# Schlüsselbund (CSC_NAME oder automatische Erkennung), Notarisierung über
+# APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD und APPLE_TEAM_ID in der Umgebung.
+appId: de.kira.mac
+productName: KIRA
+copyright: Copyright © 2026 Lucas Reiser
+artifactName: ${productName}-${version}-${arch}.${ext}
+
+directories:
+  buildResources: build
+  output: dist
+
+files:
+  - out/**/*
+  - package.json
+
+# Der Swift-Helfer und das Menüleisten-Symbol liegen außerhalb des asar.
+extraResources:
+  - from: helper/.build/release/kira-helper
+    to: helper/kira-helper
+  - from: resources/tray
+    to: tray
+
+asar: true
+
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  # arch: [arm64, x64]  # x64 ergänzen, sobald Intel-Macs versorgt werden sollen
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true
+  # macOS 14 ist das Mindestziel des Helfers (SFSpeechRecognizer-Rückfall);
+  # Spracherkennung auf dem Apple-Chip und das Apple-Sprachmodell brauchen
+  # macOS 26 auf Apple Silicon und melden sich darunter als nicht verfügbar.
+  minimumSystemVersion: "14.0"
+  # Nachgelagerte Binärdateien, die mit signiert werden müssen (Hardened Runtime).
+  # Relativ zu Contents/ der gebauten App (electron-builder löst nicht
+  # vorhandene relative Pfade dort auf).
+  binaries:
+    - Resources/helper/kira-helper
+  extendInfo:
+    NSMicrophoneUsageDescription: KIRA braucht das Mikrofon für das Diktat und für Besprechungsaufnahmen.
+    NSSpeechRecognitionUsageDescription: KIRA erkennt Sprache auf diesem Mac, damit Diktate den Rechner nicht verlassen.
+    NSAppleEventsUsageDescription: KIRA fügt diktierten Text in das vorderste Programm ein.
+    LSApplicationCategoryType: public.app-category.productivity
+
+dmg:
+  sign: false
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+publish:
+  provider: github
+  owner: forliHD
+  repo: kira-mac
+  releaseType: release

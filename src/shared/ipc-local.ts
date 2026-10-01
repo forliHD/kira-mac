@@ -1,0 +1,22 @@
+// Kanalnamen der IPC zwischen Hauptprozess und den lokalen Seiten
+// (`window.KiraLocal`, Präfix `local:`). Getrennt von ipc.ts – siehe dort.
+
+export const LOCAL_IPC = {
+  // Lokale Seiten → Hauptprozess (local-ipc.ts)
+  getState: "local:getState",
+  probe: "local:probe",
+  saveInstance: "local:saveInstance",
+  finishOnboarding: "local:finishOnboarding",
+  setHotkeys: "local:setHotkeys",
+  setDictation: "local:setDictation",
+  setGeneral: "local:setGeneral",
+  requestPermission: "local:requestPermission",
+  checkUpdates: "local:checkUpdates",
+  openLogs: "local:openLogs",
+  hudStop: "local:hudStop",
+  retry: "local:retry",
+  openSettings: "local:openSettings",
+  openMain: "local:openMain",
+  // Hauptprozess → lokale Seiten
+  event: "local:event",
+} as const;

@@ -1,0 +1,169 @@
+/* Nocturne-Design-Token der KIRA-Oberfläche – Produkt-Layer (--k-*).
+   Quelle: kira/dashboard/src/index.css (Stand 3.296.1), Blöcke `:root` (dunkel)
+   und `html[data-theme="light"]` (hell). Hier NICHT von Hand pflegen, sondern
+   aus dem Dashboard nachziehen; das endgültige Design der lokalen Seiten
+   liefert der Owner später. Die Marken-Rampe (--kira-brand-*, --color-kira-400)
+   steht im Dashboard im Tailwind-@theme bzw. in lib/branding.js und wird
+   hier mit den Standardwerten mitgeführt, weil die Token darauf verweisen. */
+
+:root {
+  color-scheme: dark;
+  --kira-brand-300: #7dd3fc;
+  --kira-brand-400: #38bdf8;
+  --kira-brand-500: #0ea5e9;
+  --kira-brand-900: #0c4a6e;
+  --color-kira-400: #38bdf8;
+
+  --k-bg: #0b0c0f;
+  --k-surface: #14161a;
+  --k-surface-2: #1b1e24;
+  --k-sunk: #090a0c;
+  --k-text: #e9eaee;
+  --k-text-2: #a4a9b4;
+  --k-text-3: #6d7280;
+  --k-line: rgba(233, 234, 238, 0.07);
+  --k-line-strong: rgba(233, 234, 238, 0.14);
+  --k-tint: rgba(233, 234, 238, 0.05);
+  --k-tint-strong: rgba(233, 234, 238, 0.09);
+
+  --k-brand: var(--kira-brand-500);
+  --k-brand-ink: var(--color-kira-400);
+  --k-brand-on: #04121b; /* Tinte AUF der Markenfläche (Primäraktion) */
+  --k-brand-tint: color-mix(in srgb, var(--kira-brand-500) 12%, transparent);
+  --k-brand-ring: color-mix(in srgb, var(--kira-brand-500) 50%, transparent);
+  --k-glow: 0 0 26px -8px color-mix(in srgb, var(--kira-brand-500) 55%, transparent);
+
+  --k-ok: #34d399;
+  --k-warn: #f5b53f;
+  --k-err: #f87171;
+  --k-ai: #b5abfc;
+  --k-idle: #6d7280;
+  --k-ok-ink: #34d399;
+  --k-warn-ink: #fbbf24;
+  --k-err-ink: #f87171;
+  --k-ai-ink: #c4bcfd;
+  --k-ok-tint: rgba(52, 211, 153, 0.14);
+  --k-warn-tint: rgba(245, 181, 63, 0.14);
+  --k-err-tint: rgba(248, 113, 113, 0.14);
+  --k-ai-tint: rgba(181, 171, 252, 0.14);
+
+  /* Range-Finder (Formel-Assistent A3): Bezüge im Formeltext und ihre
+     Rahmen im Raster — Excel-Reihenfolge blau, rot, violett, grün … */
+  --k-ref-1: #60a5fa;
+  --k-ref-2: #f87171;
+  --k-ref-3: #c084fc;
+  --k-ref-4: #4ade80;
+  --k-ref-5: #fbbf24;
+  --k-ref-6: #22d3ee;
+  --k-ref-7: #f472b6;
+  --k-ref-8: #a3e635;
+
+  --k-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --k-shadow-md: 0 8px 24px -12px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --k-shadow-lg: 0 28px 64px -28px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --k-glass: rgba(11, 12, 15, 0.72);
+  --k-depth: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--kira-brand-400) 5%, transparent), transparent 62%);
+  --k-scrim: rgba(3, 4, 6, 0.66);
+
+  /* Regel, die an beiden Enden ausblendet — die Nocturne-Signatur. */
+  --k-rule: linear-gradient(to right, transparent, var(--k-line-strong) 40px, var(--k-line-strong) calc(100% - 40px), transparent);
+  --k-rule-flush: linear-gradient(to right, var(--k-line-strong), var(--k-line-strong) calc(100% - 40px), transparent);
+
+  /* Richtung B „Fläche" (Standard): weiche Panels, Schatten statt Rand. */
+  --k-radius-card: 12px;
+  --k-radius-control: 8px;
+  --k-card-bg: var(--k-surface);
+  --k-card-shadow: var(--k-shadow-md);
+  --k-card-pad: 16px;
+  --k-card-gap: 14px;
+  --k-nav-panel: var(--k-sunk);
+  --k-nav-active-bg: var(--k-tint);
+  --k-figure: 32px;
+  --k-section-gap: 18px;
+  --k-row-h: 38px;
+}
+
+/* Hell: folgt dem System (prefers-color-scheme) und zusätzlich einem
+   expliziten html[data-theme="light"], wie im Dashboard. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --color-kira-400: #0284c7;
+    --k-bg: #f6f7f9;
+    --k-surface: #ffffff;
+    --k-surface-2: #f1f3f6;
+    --k-sunk: #eceef2;
+    --k-text: #15171c;
+    --k-text-2: #575e6c;
+    --k-text-3: #878e9c;
+    --k-line: rgba(21, 23, 28, 0.09);
+    --k-line-strong: rgba(21, 23, 28, 0.16);
+    --k-tint: rgba(21, 23, 28, 0.04);
+    --k-tint-strong: rgba(21, 23, 28, 0.07);
+    --k-brand-tint: color-mix(in srgb, var(--kira-brand-500) 10%, transparent);
+    --k-brand-ring: color-mix(in srgb, var(--kira-brand-500) 45%, transparent);
+    --k-glow: 0 0 24px -10px color-mix(in srgb, var(--kira-brand-500) 40%, transparent);
+    --k-ok-ink: #047857;
+    --k-warn-ink: #a55a00;
+    --k-err-ink: #b91c1c;
+    --k-ai-ink: #5d5294;
+    --k-ok-tint: rgba(4, 120, 87, 0.12);
+    --k-warn-tint: rgba(165, 90, 0, 0.12);
+    --k-err-tint: rgba(185, 28, 28, 0.1);
+    --k-ai-tint: rgba(93, 82, 148, 0.12);
+    --k-ref-1: #2563eb;
+    --k-ref-2: #dc2626;
+    --k-ref-3: #9333ea;
+    --k-ref-4: #16a34a;
+    --k-ref-5: #c2410c;
+    --k-ref-6: #0e7490;
+    --k-ref-7: #be185d;
+    --k-ref-8: #4d7c0f;
+    --k-shadow-sm: 0 1px 2px rgba(21, 23, 28, 0.06);
+    --k-shadow-md: 0 8px 24px -14px rgba(21, 23, 28, 0.28), 0 0 0 1px rgba(21, 23, 28, 0.05);
+    --k-shadow-lg: 0 28px 64px -30px rgba(21, 23, 28, 0.35), 0 0 0 1px rgba(21, 23, 28, 0.07);
+    --k-glass: rgba(246, 247, 249, 0.75);
+    --k-depth: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--kira-brand-500) 6%, transparent), transparent 62%);
+    --k-scrim: rgba(21, 23, 28, 0.32);
+  }
+}
+html[data-theme="light"] {
+  color-scheme: light;
+  --color-kira-400: #0284c7;
+  --k-bg: #f6f7f9;
+  --k-surface: #ffffff;
+  --k-surface-2: #f1f3f6;
+  --k-sunk: #eceef2;
+  --k-text: #15171c;
+  --k-text-2: #575e6c;
+  --k-text-3: #878e9c;
+  --k-line: rgba(21, 23, 28, 0.09);
+  --k-line-strong: rgba(21, 23, 28, 0.16);
+  --k-tint: rgba(21, 23, 28, 0.04);
+  --k-tint-strong: rgba(21, 23, 28, 0.07);
+  --k-brand-tint: color-mix(in srgb, var(--kira-brand-500) 10%, transparent);
+  --k-brand-ring: color-mix(in srgb, var(--kira-brand-500) 45%, transparent);
+  --k-glow: 0 0 24px -10px color-mix(in srgb, var(--kira-brand-500) 40%, transparent);
+  --k-ok-ink: #047857;
+  --k-warn-ink: #a55a00;
+  --k-err-ink: #b91c1c;
+  --k-ai-ink: #5d5294;
+  --k-ok-tint: rgba(4, 120, 87, 0.12);
+  --k-warn-tint: rgba(165, 90, 0, 0.12);
+  --k-err-tint: rgba(185, 28, 28, 0.1);
+  --k-ai-tint: rgba(93, 82, 148, 0.12);
+  --k-ref-1: #2563eb;
+  --k-ref-2: #dc2626;
+  --k-ref-3: #9333ea;
+  --k-ref-4: #16a34a;
+  --k-ref-5: #c2410c;
+  --k-ref-6: #0e7490;
+  --k-ref-7: #be185d;
+  --k-ref-8: #4d7c0f;
+  --k-shadow-sm: 0 1px 2px rgba(21, 23, 28, 0.06);
+  --k-shadow-md: 0 8px 24px -14px rgba(21, 23, 28, 0.28), 0 0 0 1px rgba(21, 23, 28, 0.05);
+  --k-shadow-lg: 0 28px 64px -30px rgba(21, 23, 28, 0.35), 0 0 0 1px rgba(21, 23, 28, 0.07);
+  --k-glass: rgba(246, 247, 249, 0.75);
+  --k-depth: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--kira-brand-500) 6%, transparent), transparent 62%);
+  --k-scrim: rgba(21, 23, 28, 0.32);
+}
