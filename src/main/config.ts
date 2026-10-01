@@ -30,6 +30,8 @@ export interface AppConfig {
   general: GeneralConfig;
   onboarded: boolean;
   mainWindow: WindowBounds | null;
+  /** Zuletzt gesehene Server-Version – entscheidet beim Start über die eingelassene Titelleiste. */
+  lastServerVersion: string | null;
 }
 
 export const DEFAULT_HOTKEYS: HotkeyConfig = {
@@ -47,6 +49,7 @@ export function defaultConfig(): AppConfig {
     general: { launchAtLogin: false, notifications: true },
     onboarded: false,
     mainWindow: null,
+    lastServerVersion: null,
   };
 }
 
@@ -94,6 +97,7 @@ export function normalizeConfig(raw: unknown): AppConfig {
     },
     onboarded: bool(r.onboarded, false),
     mainWindow: bounds,
+    lastServerVersion: strOrNull(r.lastServerVersion),
   };
 }
 

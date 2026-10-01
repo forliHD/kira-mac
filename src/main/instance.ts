@@ -143,6 +143,16 @@ export function serverHasBridge(version: string | null | undefined): boolean {
   return compareVersions(m[1] ?? "0", MIN_SERVER_VERSION_WITH_BRIDGE) >= 0;
 }
 
+/** Ab KIRA 3.298.0 kennt das Dashboard die eingelassene Titelleiste (`inset-titlebar`). */
+export const MIN_SERVER_VERSION_WITH_INSET_TITLEBAR = "3.298.0";
+
+export function serverSupportsInsetTitlebar(version: string | null | undefined): boolean {
+  if (!version) return false;
+  const m = /^(\d+\.\d+\.\d+)/.exec(version.trim());
+  if (!m) return false;
+  return compareVersions(m[1] ?? "0", MIN_SERVER_VERSION_WITH_INSET_TITLEBAR) >= 0;
+}
+
 /**
  * Ruft `GET /api/health` einer Origin ab. Fehler werden nie geworfen, sondern
  * als deutsche Ursache im Ergebnis geliefert („Instanz nicht erreichbar: …“).

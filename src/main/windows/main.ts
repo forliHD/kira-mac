@@ -2,7 +2,7 @@
 // Hülle hält das Fenster am Leben, damit `session-request` beantwortet werden
 // kann). Scheitert das Laden, zeigt es die lokale Offline-Seite mit Grund.
 
-import { BrowserWindow, screen } from "electron";
+import { BrowserWindow, type WebContents, screen } from "electron";
 
 import { type NativeEvent } from "../../shared/bridge";
 import { IPC } from "../../shared/ipc";
@@ -23,12 +23,15 @@ export interface MainWindowDeps {
   onChildWindow: (win: BrowserWindow) => void;
   onLoadFailed: (reason: string) => void;
   onDashboardLoaded: () => void;
+  /** Eingelassene Titelleiste (Ampel im Dashboard-Kopf)? Nur, wenn der Server sie kennt. */
+  insetTitleBar: () => boolean;
 }
 
 export class MainWindowController {
   private win: BrowserWindow | null = null;
   private dashboardLoaded = false;
   private saveTimer: NodeJS.Timeout | null = null;
+  private inset = false;
   private readonly deps: MainWindowDeps;
 
   constructor(deps: MainWindowDeps) {
@@ -43,13 +46,18 @@ export class MainWindowController {
     const existing = this.window;
     if (existing) return existing;
     const bounds = this.fittedBounds(this.deps.getBounds());
+    this.inset = this.deps.insetTitleBar();
     const win = new BrowserWindow({
       ...bounds,
-      minWidth: 720,
-      minHeight: 480,
+      // Ab 800 px zeigt das Dashboard immer sein Desktop-Layout (md = 768 px);
+      // darunter läge der Burger der Mobilansicht unter der Ampel.
+      minWidth: 800,
+      minHeight: 520,
       show: false,
       title: "KIRA",
-      titleBarStyle: "default",
+      titleBarStyle: this.inset ? "hiddenInset" : "default",
+      // Mittig in der 56 px hohen Kopfzeile des Dashboards.
+      ...(this.inset ? { trafficLightPosition: { x: 18, y: 21 } } : {}),
       backgroundColor: "#0b0c0f",
       webPreferences: instanceWebPreferences(),
     });
@@ -107,6 +115,12 @@ export class MainWindowController {
   isFocused(): boolean {
     const win = this.window;
     return Boolean(win && win.isFocused() && win.isVisible());
+  }
+
+  /** Gehört `sender` zum Hauptfenster mit eingelassener Titelleiste? */
+  usesInsetTitleBar(sender: WebContents): boolean {
+    const win = this.window;
+    return Boolean(this.inset && win && win.webContents === sender);
   }
 
   isDashboardLoaded(): boolean {

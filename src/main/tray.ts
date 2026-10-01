@@ -1,7 +1,9 @@
 // Menüleisten-Symbol: Status (verbunden/offline), Öffnen, Schnellfenster,
 // Diktat starten/stoppen, Einstellungen, Nach Updates suchen, Beenden.
+// Drei Template-Bilder (resources/tray/): verbunden, getrennt (gestrichelt),
+// Diktat läuft (Mikrofon). Fehlt eines, nimmt es das verbundene.
 
-import { Menu, type MenuItemConstructorOptions, Tray, nativeImage } from "electron";
+import { Menu, type MenuItemConstructorOptions, type NativeImage, Tray, nativeImage } from "electron";
 
 import { describeAccelerator } from "./hotkeys";
 import { scoped } from "./log";
@@ -20,8 +22,25 @@ export interface TrayDeps {
   hotkeys: () => { quickWindow: string; dictation: string };
 }
 
+type TrayLook = "online" | "offline" | "dictating";
+
+const TRAY_FILES: Record<TrayLook, string> = {
+  online: "kiraTemplate.png",
+  offline: "kiraOfflineTemplate.png",
+  dictating: "kiraDictatingTemplate.png",
+};
+
+function loadTemplate(file: string): NativeImage | null {
+  const image = nativeImage.createFromPath(resourcePath("tray", file));
+  if (image.isEmpty()) return null;
+  image.setTemplateImage(true);
+  return image;
+}
+
 export class TrayController {
   private tray: Tray | null = null;
+  private images: Partial<Record<TrayLook, NativeImage>> = {};
+  private look: TrayLook | null = null;
   private online = false;
   private label = "KIRA";
   private detail: string | null = null;
@@ -33,13 +52,12 @@ export class TrayController {
 
   create(): void {
     if (this.tray) return;
-    let image = nativeImage.createFromPath(resourcePath("tray", "kiraTemplate.png"));
-    if (image.isEmpty()) {
-      log.warn("tray_icon_missing");
-      image = nativeImage.createEmpty();
-    } else {
-      image.setTemplateImage(true);
+    for (const look of Object.keys(TRAY_FILES) as TrayLook[]) {
+      const image = loadTemplate(TRAY_FILES[look]);
+      if (image) this.images[look] = image;
     }
+    const image = this.images.online ?? nativeImage.createEmpty();
+    if (image.isEmpty()) log.warn("tray_icon_missing");
     this.tray = new Tray(image);
     if (image.isEmpty()) this.tray.setTitle("KIRA");
     this.tray.setToolTip("KIRA");
@@ -58,6 +76,12 @@ export class TrayController {
     if (!this.tray) return;
     const hk = this.deps.hotkeys();
     const dictating = this.deps.isDictating();
+    const look: TrayLook = dictating ? "dictating" : this.online ? "online" : "offline";
+    if (look !== this.look) {
+      const image = this.images[look] ?? this.images.online;
+      if (image) this.tray.setImage(image);
+      this.look = look;
+    }
     const template: MenuItemConstructorOptions[] = [
       {
         label: this.online ? `Verbunden mit ${this.label}` : `Offline – ${this.detail ?? "Instanz nicht erreichbar"}`,

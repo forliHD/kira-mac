@@ -1,108 +1,158 @@
-// Schnellfenster: rahmenlos, Vibrancy, lädt `/chat` der Instanz in einem
-// zweiten BrowserWindow mit dem Instanz-Preload (kein lokaler Rahmen nötig).
-// Hotkey schaltet um; Fokusverlust blendet es aus.
+// Schnellfenster: schwebendes, rahmenloses Panel mit echtem Liquid Glass
+// (bzw. Vibrancy) wie Spotlight – lädt die lokale Seite `quick`, die über
+// `window.KiraLocal` mit src/main/quick-chat.ts spricht. Das Panel aktiviert
+// die App nicht (NSWindowStyleMaskNonactivatingPanel), das vorderste Programm
+// bleibt vorne. Fokusverlust und Esc blenden es aus. Die Höhe wächst mit dem
+// Inhalt (`quickResize`), die Oberkante bleibt stehen.
 
-import { BrowserWindow, screen } from "electron";
+import { BrowserWindow, nativeTheme, screen } from "electron";
 
-import { isInstanceUrl } from "../instance";
-import { applyLinkPolicy } from "../links";
+import { LOCAL_IPC } from "../../shared/ipc-local";
+import { type LocalEvent } from "../../shared/local-api";
+import { applyGlass } from "../glass";
 import { scoped } from "../log";
-import { instanceWebPreferences } from "./common";
+import { localPageUrl } from "../paths";
+import { localWebPreferences } from "./common";
 
 const log = scoped("quick-window");
 
-export interface QuickWindowDeps {
-  origin: () => string | null;
-  origins: () => string[];
-  onChildWindow: (win: BrowserWindow) => void;
-  onNeedsInstance: () => void;
-}
+export const QUICK_WIDTH = 680;
+const MIN_HEIGHT = 132;
+const INITIAL_HEIGHT = 168;
+const MAX_SCREEN_SHARE = 0.75;
+export const QUICK_RADIUS = 26;
 
-const WIDTH = 560;
-const HEIGHT = 680;
+export interface QuickWindowDeps {
+  /** Darf das Fenster aufgehen? (sonst z. B. Einrichtung zeigen) */
+  canShow: () => boolean;
+  onShown?: () => void;
+}
 
 export class QuickWindowController {
   private win: BrowserWindow | null = null;
-  private loadedOrigin: string | null = null;
+  private ready = false;
+  private queued: LocalEvent[] = [];
   private readonly deps: QuickWindowDeps;
+  private anchorTop: number | null = null;
 
   constructor(deps: QuickWindowDeps) {
     this.deps = deps;
+    // Glas-Tönung hängt am Erscheinungsbild; bei einem Wechsel neu aufbauen.
+    nativeTheme.on("updated", () => this.destroy());
   }
 
   get window(): BrowserWindow | null {
     return this.win && !this.win.isDestroyed() ? this.win : null;
   }
 
-  toggle(): void {
+  isVisible(): boolean {
+    return Boolean(this.window?.isVisible());
+  }
+
+  isFocused(): boolean {
     const win = this.window;
-    if (win && win.isVisible() && win.isFocused()) {
-      win.hide();
+    return Boolean(win && win.isVisible() && win.isFocused());
+  }
+
+  toggle(): void {
+    if (this.isFocused()) {
+      this.hide();
       return;
     }
     this.show();
   }
 
   show(): void {
-    const origin = this.deps.origin();
-    if (!origin) {
-      this.deps.onNeedsInstance();
-      return;
-    }
+    if (!this.deps.canShow()) return;
     const win = this.create();
-    if (this.loadedOrigin !== origin) {
-      this.loadedOrigin = origin;
-      void win.loadURL(`${origin}/chat`).catch((err: unknown) => log.warn("quick_load_failed", { error: err instanceof Error ? err.message : String(err) }));
-    }
     this.position(win);
     win.show();
     win.focus();
+    this.send({ type: "quick-shown" });
+    this.deps.onShown?.();
   }
 
   hide(): void {
     this.window?.hide();
   }
 
-  /** Nach einem Instanzwechsel wird beim nächsten Öffnen neu geladen. */
-  invalidate(): void {
-    this.loadedOrigin = null;
+  /** Gewünschte Inhaltshöhe der Seite; begrenzt auf den Bildschirm, Oberkante fest. */
+  resize(contentHeight: number): void {
+    const win = this.window;
+    if (!win) return;
+    const area = screen.getDisplayMatching(win.getBounds()).workArea;
+    const max = Math.round(area.height * MAX_SCREEN_SHARE);
+    const height = Math.max(MIN_HEIGHT, Math.min(max, Math.ceil(contentHeight)));
+    const bounds = win.getBounds();
+    if (Math.abs(bounds.height - height) < 2) return;
+    const top = this.anchorTop ?? bounds.y;
+    win.setBounds({ x: bounds.x, y: top, width: QUICK_WIDTH, height }, process.platform === "darwin");
+  }
+
+  send(event: LocalEvent): void {
+    const win = this.window;
+    if (!win || !this.ready) {
+      // Nur das Neueste je Art behalten (Zustand ersetzt Zustand); Einfügungen alle.
+      this.queued = [...this.queued.filter((e) => e.type !== event.type || event.type === "quick-insert"), event];
+      return;
+    }
+    win.webContents.send(LOCAL_IPC.event, event);
+  }
+
+  destroy(): void {
+    const win = this.window;
+    this.win = null;
+    this.ready = false;
+    if (win) win.destroy();
   }
 
   private create(): BrowserWindow {
     const existing = this.window;
     if (existing) return existing;
     const win = new BrowserWindow({
-      width: WIDTH,
-      height: HEIGHT,
+      width: QUICK_WIDTH,
+      height: INITIAL_HEIGHT,
       show: false,
       frame: false,
       transparent: true,
-      vibrancy: "under-window",
-      visualEffectState: "active",
-      roundedCorners: true,
+      backgroundColor: "#00000000",
       hasShadow: true,
-      resizable: true,
+      resizable: false,
+      movable: true,
       minimizable: false,
       maximizable: false,
       fullscreenable: false,
       alwaysOnTop: true,
       skipTaskbar: true,
+      // Panel: schwebt auch über Vollbild-Apps, erscheint auf allen Spaces und
+      // nimmt Tastatureingaben an, ohne die App nach vorne zu holen.
+      type: "panel",
       title: "KIRA – Schnellfenster",
-      backgroundColor: "#00000000",
-      webPreferences: instanceWebPreferences(),
+      webPreferences: localWebPreferences(),
     });
+    win.setAlwaysOnTop(true, "floating");
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    applyLinkPolicy(win.webContents, {
-      isInstanceUrl: (url) => isInstanceUrl(url, this.deps.origins()),
-      onChildWindow: (child) => this.deps.onChildWindow(child),
-    });
+    applyGlass(win, { cornerRadius: QUICK_RADIUS, fallback: "hud" });
     win.on("blur", () => {
       if (!win.isDestroyed() && !win.webContents.isDevToolsOpened()) win.hide();
     });
     win.on("closed", () => {
-      if (this.win === win) this.win = null;
-      this.loadedOrigin = null;
+      if (this.win === win) {
+        this.win = null;
+        this.ready = false;
+      }
     });
+    win.webContents.on("did-finish-load", () => {
+      this.ready = true;
+      const queued = this.queued;
+      this.queued = [];
+      for (const e of queued) win.webContents.send(LOCAL_IPC.event, e);
+    });
+    win.webContents.on("render-process-gone", (_event, details) => {
+      log.error("quick_renderer_gone", { reason: details.reason });
+      this.destroy();
+    });
+    void win.loadURL(localPageUrl("quick")).catch((err: unknown) => log.warn("quick_load_failed", { error: err instanceof Error ? err.message : String(err) }));
     this.win = win;
     return win;
   }
@@ -110,9 +160,11 @@ export class QuickWindowController {
   private position(win: BrowserWindow): void {
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
     const area = display.workArea;
-    const [w, h] = win.getSize();
-    const x = Math.round(area.x + (area.width - (w ?? WIDTH)) / 2);
-    const y = Math.round(area.y + Math.max(40, (area.height - (h ?? HEIGHT)) / 3));
-    win.setPosition(x, y, false);
+    const [, h] = win.getSize();
+    const x = Math.round(area.x + (area.width - QUICK_WIDTH) / 2);
+    // Wie Spotlight: oberes Fünftel, damit Platz zum Wachsen nach unten bleibt.
+    const y = Math.round(area.y + Math.max(48, area.height * 0.18));
+    this.anchorTop = y;
+    win.setBounds({ x, y, width: QUICK_WIDTH, height: h ?? INITIAL_HEIGHT }, false);
   }
 }

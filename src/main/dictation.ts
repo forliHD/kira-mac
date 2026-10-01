@@ -48,10 +48,22 @@ export interface DictationHud {
   update(state: HudState): void;
 }
 
+/** Wohin erkannter Text geht: ins vorderste Programm oder ins Schnellfenster. */
+export type DictationTarget = "insert" | "quick";
+
+/** Diktat ins Schnellfenster: kein HUD, keine Bedienungshilfen-Freigabe nötig. */
+export interface DictationQuickSink {
+  update(state: { active: boolean; level: number; partial: string; reason: string | null }): void;
+  insert(text: string): void;
+}
+
 export interface DictationOptions {
   helper: DictationHelper;
   server: DictationServer;
   hud: DictationHud;
+  /** Ziel beim Start, wenn `toggle()` ohne Ziel gerufen wird (Standard: insert). */
+  getTarget?: () => DictationTarget;
+  quick?: DictationQuickSink;
   getLocale: () => string;
   getCommandsEnabled: () => boolean;
   log?: Logger;
@@ -113,6 +125,9 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
   private readonly log: Logger;
   private readonly now: () => number;
   private readonly errorLingerMs: number;
+  private readonly getTarget: (() => DictationTarget) | undefined;
+  private readonly quick: DictationQuickSink | undefined;
+  private target: DictationTarget = "insert";
 
   private state: DictationState = "idle";
   private vocabulary: { terms: string[]; fetchedAt: number } | null = null;
@@ -131,6 +146,8 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     this.log = options.log ?? silentLogger;
     this.now = options.now ?? (() => Date.now());
     this.errorLingerMs = options.errorLingerMs ?? 4_000;
+    this.getTarget = options.getTarget;
+    this.quick = options.quick;
     this.helper.on("event", this.onHelperEvent);
   }
 
@@ -138,14 +155,18 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     return this.state;
   }
 
+  get currentTarget(): DictationTarget {
+    return this.target;
+  }
+
   dispose(): void {
     this.helper.off("event", this.onHelperEvent);
   }
 
-  /** Hotkey: läuft es, wird gestoppt, sonst gestartet. */
-  async toggle(): Promise<void> {
+  /** Hotkey/Knopf: läuft es, wird gestoppt, sonst gestartet (optional mit festem Ziel). */
+  async toggle(target?: DictationTarget): Promise<void> {
     if (this.state === "listening" || this.state === "starting") await this.stop();
-    else if (this.state === "idle") await this.start();
+    else if (this.state === "idle") await this.start(target);
   }
 
   /** Prüft Helfer und Berechtigungen; Grund als deutscher Satz oder null. */
@@ -170,13 +191,15 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     return { ok: true };
   }
 
-  async start(): Promise<void> {
+  async start(target?: DictationTarget): Promise<void> {
     if (this.state !== "idle") return;
+    const wanted = target ?? this.getTarget?.() ?? "insert";
+    this.target = wanted === "quick" && this.quick ? "quick" : "insert";
     this.setState("starting");
     this.clearHideTimer();
     this.previousTail = "";
     this.setHud({ phase: "starting", level: 0, partial: "", app: null, message: null });
-    this.hud.show();
+    if (this.target === "insert") this.hud.show();
 
     const avail = await this.availability();
     if (!avail.ok) {
@@ -189,8 +212,11 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       return;
     }
 
-    const [front, contextualStrings] = await Promise.all([this.frontmost(), this.contextualStrings()]);
-    this.setHud({ app: front?.name ?? null });
+    const [front, contextualStrings] = await Promise.all([
+      this.target === "insert" ? this.frontmost() : Promise.resolve(null),
+      this.contextualStrings(),
+    ]);
+    this.setHud({ app: this.target === "quick" ? "KIRA" : (front?.name ?? null) });
 
     try {
       await this.helper.request("stt.start", {
@@ -265,6 +291,8 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     if (status.speech !== "granted" && status.speech !== "notRequired") {
       return "Spracherkennungs-Freigabe fehlt (Systemeinstellungen → Datenschutz & Sicherheit → Spracherkennung).";
     }
+    // Ins Schnellfenster setzt KIRA selbst ein – dafür braucht es keine Bedienungshilfen.
+    if (this.target === "quick") return null;
     if (!status.accessibility) {
       // Einsetzen per Accessibility UND per ⌘V-CGEvent braucht die Bedienungshilfen-Freigabe.
       void this.helper.request("permissions.request", { kind: "accessibility" }).catch(() => null);
@@ -320,6 +348,13 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       return;
     }
     if (!text) return;
+    if (this.target === "quick" && this.quick) {
+      // Die Seite fügt an der Cursorposition ein und kümmert sich um Leerzeichen.
+      this.quick.insert(text);
+      this.setHud({ partial: "", message: null });
+      this.emit("inserted", { text, method: "quick" });
+      return;
+    }
     const piece = pieceToInsert(this.previousTail, text);
     if (!piece) return;
     try {
@@ -344,6 +379,10 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
 
   private finish(linger = false): void {
     this.setState("idle");
+    if (this.target === "quick") {
+      this.quick?.update({ active: false, level: 0, partial: "", reason: linger ? this.hudState.message : null });
+      return;
+    }
     if (linger) this.scheduleHide(this.errorLingerMs);
     else {
       this.clearHideTimer();
@@ -375,6 +414,13 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
 
   private setHud(patch: Partial<HudState>): void {
     this.hudState = { ...this.hudState, ...patch };
+    if (this.target === "quick" && this.quick) {
+      const s = this.hudState;
+      const active = s.phase === "starting" || s.phase === "listening";
+      const problem = s.phase === "unavailable" || s.phase === "error";
+      this.quick.update({ active, level: s.level, partial: s.partial, reason: problem ? s.message : null });
+      return;
+    }
     this.hud.update(this.hudState);
   }
 }

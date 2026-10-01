@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { type IpcMainEvent, type IpcMainInvokeEvent, Notification, app, ipcMain } from "electron";
+import { type IpcMainEvent, type IpcMainInvokeEvent, Notification, type WebContents, app, ipcMain } from "electron";
 
 import {
   type AppInfo,
@@ -22,7 +22,7 @@ import {
 } from "../shared/bridge";
 import { type HelperSttStatus, type SttFileResult } from "../shared/helper-types";
 import { IPC } from "../shared/ipc";
-import { type GlobalDictation, splitVocabulary } from "./dictation";
+import { type GlobalDictation } from "./dictation";
 import { type HelperClient, HelperError } from "./helper";
 import { isInstanceUrl } from "./instance";
 import { openExternalSafely } from "./links";
@@ -34,7 +34,8 @@ const log = scoped("bridge");
 export interface BridgeContext {
   origins: () => string[];
   appInfo: AppInfo;
-  capabilities: () => Capability[];
+  /** Fähigkeiten je Absender (das Hauptfenster bekommt zusätzlich `inset-titlebar`). */
+  capabilities: (sender: WebContents) => Capability[];
   instance: () => InstanceInfo;
   session: Session;
   helper: HelperClient;
@@ -107,7 +108,7 @@ export function registerBridgeIpc(ctx: BridgeContext): void {
     const reply: BridgeBootstrap = {
       allowed,
       app: ctx.appInfo,
-      capabilities: allowed ? ctx.capabilities() : [],
+      capabilities: allowed ? ctx.capabilities(event.sender) : [],
       instance: ctx.instance(),
     };
     event.returnValue = reply;
@@ -115,7 +116,7 @@ export function registerBridgeIpc(ctx: BridgeContext): void {
 
   ipcMain.handle(IPC.getInfo, (event): BridgeInfo => {
     if (!isTrusted(event, ctx.origins())) throw new Error("Nicht erlaubt.");
-    return { bridge: BRIDGE_VERSION, app: ctx.appInfo, capabilities: ctx.capabilities(), instance: ctx.instance() };
+    return { bridge: BRIDGE_VERSION, app: ctx.appInfo, capabilities: ctx.capabilities(event.sender), instance: ctx.instance() };
   });
 
   ipcMain.handle(IPC.setSession, (event, value: unknown): void => {
@@ -163,12 +164,11 @@ export function registerBridgeIpc(ctx: BridgeContext): void {
     if (!(wav instanceof Uint8Array) || wav.byteLength < 44) throw new Error("transcribe: keine WAV-Daten.");
     if (wav.byteLength > 64 * 1024 * 1024) throw new Error("transcribe: Aufnahme zu groß (max. 64 MB).");
     const locale = typeof v.locale === "string" && v.locale ? v.locale : ctx.locale();
-    const context = typeof v.context === "string" ? v.context : "";
     if (!ctx.helper.running) throw new HelperError("stt_unavailable", "Der Helfer läuft nicht.");
 
-    const base = await ctx.dictation.contextualStrings();
-    const extra = splitVocabulary(context).filter((t) => !base.some((b) => b.toLowerCase() === t.toLowerCase()));
-    const contextualStrings = [...base, ...extra].slice(0, 300);
+    // `context` ist laut Vertrag die Art der Aufnahme („dictation“, „chat“), KEIN
+    // Wortschatz – die eigenen Begriffe kommen vom Server (Mein Konto → Diktat).
+    const contextualStrings = (await ctx.dictation.contextualStrings()).slice(0, 300);
 
     const path = join(app.getPath("temp"), `kira-stt-${randomUUID()}.wav`);
     try {

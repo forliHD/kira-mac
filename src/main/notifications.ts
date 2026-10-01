@@ -25,6 +25,8 @@ export interface NotificationClientDeps {
   session: Session;
   deviceId: string;
   isMainFocused: () => boolean;
+  /** Sieht die Person die Antwort gerade (Schnellfenster mit diesem Chat)? Dann kein Banner. */
+  isWatching?: (frame: ServerNotification) => boolean;
   /** Hauptfenster zeigen (Klick auf ein Banner). */
   showMain: () => void;
   /** Ereignis ins Dashboard; false, wenn gerade kein Dashboard geladen ist. */
@@ -231,6 +233,7 @@ export class NotificationClient extends EventEmitter<NotificationClientEvents> {
 
   private deliver(frame: ServerNotification): void {
     this.emit("notification", frame);
+    if (this.deps.isWatching?.(frame)) return;
     if (this.deps.isMainFocused()) {
       // Fenster im Vordergrund: In-App-Toast statt Banner (Regel aus sw.js).
       const delivered = this.deps.sendToDashboard({

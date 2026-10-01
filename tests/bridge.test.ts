@@ -44,7 +44,17 @@ describe("Vertrag: Konstanten", () => {
   it("Methoden- und Ereignislisten entsprechen den Tabellen", () => {
     expect([...NATIVE_METHODS]).toEqual(["getInfo", "setSession", "notify", "openExternal", "sttStatus", "transcribe"]);
     expect([...NATIVE_EVENT_TYPES]).toEqual(["navigate", "notification", "connectivity", "session-request", "share"]);
-    expect([...CAPABILITIES]).toEqual(["session", "notifications", "open-external", "stt", "quick-window", "system-audio", "apple-intelligence", "insert-text"]);
+    expect([...CAPABILITIES]).toEqual([
+      "session",
+      "notifications",
+      "open-external",
+      "stt",
+      "quick-window",
+      "system-audio",
+      "apple-intelligence",
+      "insert-text",
+      "inset-titlebar",
+    ]);
   });
 });
 

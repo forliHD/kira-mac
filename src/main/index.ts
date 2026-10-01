@@ -5,25 +5,36 @@
 
 import { existsSync } from "node:fs";
 
-import { BrowserWindow, Notification, app, session as electronSession, shell } from "electron";
+import { BrowserWindow, Notification, type WebContents, app, session as electronSession, shell } from "electron";
 
 import { type AppInfo, BRIDGE_VERSION, type Capability, type InstanceInfo, type NativeEvent } from "../shared/bridge";
 import { capabilitiesFrom } from "../shared/capabilities";
-import { type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
-import { type ConnectionState, type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalEvent, type LocalState, type ProbeResult, type QuickState } from "../shared/local-api";
+import { type HelperEvent, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
+import { type ConnectionState, type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalEvent, type LocalState, type ProbeResult } from "../shared/local-api";
 import { registerBridgeIpc } from "./bridge";
 import { type AppConfig, configStore } from "./config";
 import { GlobalDictation } from "./dictation";
 import { installDownloadHandler } from "./downloads";
 import { HelperClient } from "./helper";
 import { registerHotkeys, unregisterHotkeys } from "./hotkeys";
-import { describeResolveFailure, instanceCandidates, instanceOrigins, isInstanceUrl, normalizeInstanceUrl, probeHealth, resolveInstance, serverHasBridge } from "./instance";
+import {
+  describeResolveFailure,
+  instanceCandidates,
+  instanceOrigins,
+  isInstanceUrl,
+  normalizeInstanceUrl,
+  probeHealth,
+  resolveInstance,
+  serverHasBridge,
+  serverSupportsInsetTitlebar,
+} from "./instance";
 import { uiInfo } from "./glass";
 import { applyLinkPolicy, openExternalSafely } from "./links";
 import { registerLocalIpc } from "./local-ipc";
 import { initLog, logFilePath, scoped } from "./log";
 import { buildAppMenu } from "./menu";
 import { NotificationClient } from "./notifications";
+import { QuickChat, localReason } from "./quick-chat";
 import { helperBinaryPath } from "./paths";
 import { session } from "./session";
 import { TrayController } from "./tray";
@@ -44,6 +55,7 @@ class KiraApp {
   private quitting = false;
   private helper!: HelperClient;
   private dictation!: GlobalDictation;
+  private quickChat!: QuickChat;
   private notifications: NotificationClient | null = null;
   private mainWin!: MainWindowController;
   private quickWin!: QuickWindowController;
@@ -87,6 +99,7 @@ class KiraApp {
     this.log.info("app_ready", { version: app.getVersion(), packaged: app.isPackaged });
 
     this.setupHelper();
+    this.setupQuickChat();
     this.setupDictation();
     this.setupWindows();
     this.setupPermissions();
@@ -141,10 +154,13 @@ class KiraApp {
       this.log.info("helper_info", { version: info.version, macos: info.macos, features: info.features });
       this.statusCache = null;
       this.broadcastState();
+      this.quickChat?.setDictation({ available: Boolean(info.features.sttStream), reason: info.features.sttStream ? null : "Dieser Mac bietet keine laufende Spracherkennung." });
+      this.quickChat?.refresh();
     });
     this.helper.on("exited", () => {
       this.statusCache = null;
       this.broadcastState();
+      this.quickChat?.setDictation({ available: false, active: false, reason: "Der Helfer läuft nicht." });
     });
     if (existsSync(binary)) {
       this.helper.start();
@@ -159,9 +175,78 @@ class KiraApp {
     return this.helper.lastError ?? "Der Helfer läuft nicht.";
   }
 
+  private setupQuickChat(): void {
+    this.quickChat = new QuickChat({
+      server: {
+        streamChat: (body, signal) =>
+          session.fetchWithSessionRetry("/api/chat/stream", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "text/event-stream", "Cache-Control": "no-cache" },
+            body: JSON.stringify(body),
+            signal,
+          }),
+      },
+      local: {
+        status: async () => {
+          if (!this.helper.running) return { available: false, reason: "der Helfer läuft nicht" };
+          if (this.helper.info && !this.helper.info.features.llm) return { available: false, reason: "dieser Mac hat kein Apple-Sprachmodell" };
+          const r = await this.helper.request<{ available: boolean; reason: string | null }>("llm.status", undefined, 5_000);
+          return { available: Boolean(r.available), reason: localReason(r.reason) };
+        },
+        stream: (prompt, instructions, onText, signal) => this.localLlmStream(prompt, instructions, onText, signal),
+      },
+      connection: () => ({ online: this.connection.online, label: this.labelFor(session.getOrigin() ?? this.origins()[0]) }),
+      hotkeys: () => this.config.hotkeys,
+      onNetworkError: () => void this.connect(),
+      log: scoped("quick-chat"),
+    });
+    this.quickChat.on("state", (quick) => this.quickWin?.send({ type: "quick", quick }));
+  }
+
+  /** Apple-Sprachmodell über den Helfer (`llm.stream`), mit Abbruch über `llm.cancel`. */
+  private localLlmStream(prompt: string, instructions: string, onText: (text: string) => void, signal: AbortSignal): Promise<string> {
+    const stream = `quick-${Date.now().toString(36)}`;
+    return new Promise<string>((resolve, reject) => {
+      let text = "";
+      const cleanup = (): void => {
+        this.helper.off("event", onEvent);
+        signal.removeEventListener("abort", onAbort);
+      };
+      const onEvent = (ev: HelperEvent): void => {
+        if (ev.stream !== stream) return;
+        const data = (ev.data && typeof ev.data === "object" ? ev.data : {}) as Record<string, unknown>;
+        if (ev.event === "llm.delta" && typeof data.text === "string") {
+          text = data.mode === "delta" ? text + data.text : data.text;
+          onText(text);
+        } else if (ev.event === "llm.done") {
+          cleanup();
+          resolve(typeof data.text === "string" ? data.text : text);
+        } else if (ev.event === "llm.error") {
+          cleanup();
+          if (data.code === "cancelled") resolve(text);
+          else reject(new Error(typeof data.message === "string" ? data.message : "Das Apple-Sprachmodell hat abgebrochen."));
+        }
+      };
+      const onAbort = (): void => {
+        void this.helper.request("llm.cancel", { stream }, 5_000).catch(() => undefined);
+      };
+      this.helper.on("event", onEvent);
+      signal.addEventListener("abort", onAbort, { once: true });
+      this.helper.request("llm.stream", { stream, prompt, instructions, maxTokens: 700, temperature: 0.4 }, 10_000).catch((err: unknown) => {
+        cleanup();
+        reject(err instanceof Error ? err : new Error(String(err)));
+      });
+    });
+  }
+
   private setupDictation(): void {
     this.dictation = new GlobalDictation({
       helper: this.helper,
+      getTarget: () => (this.quickWin?.isFocused() ? "quick" : "insert"),
+      quick: {
+        update: (d) => this.quickChat.setDictation(d),
+        insert: (text) => this.quickWin?.send({ type: "quick-insert", text }),
+      },
       server: {
         fetchVocabulary: async () => {
           if (!session.getOrigin()) return null;
@@ -205,12 +290,15 @@ class KiraApp {
       onDashboardLoaded: () => {
         this.mainWin.sendNative({ type: "connectivity", online: this.connection.online });
       },
+      insetTitleBar: () => serverSupportsInsetTitlebar(this.config.lastServerVersion),
     });
     this.quickWin = new QuickWindowController({
-      origin: () => session.getOrigin(),
-      origins: () => this.origins(),
-      onChildWindow: () => undefined,
-      onNeedsInstance: () => (this.config.onboarded ? this.mainWin.show() : onboardingWindow.show()),
+      canShow: () => {
+        if (this.config.onboarded) return true;
+        onboardingWindow.show();
+        return false;
+      },
+      onShown: () => this.quickChat.refresh(),
     });
   }
 
@@ -239,7 +327,7 @@ class KiraApp {
     registerBridgeIpc({
       origins: () => this.origins(),
       appInfo,
-      capabilities: () => this.capabilities(),
+      capabilities: (sender) => this.capabilities(sender),
       instance: () => this.instanceInfo(),
       session,
       helper: this.helper,
@@ -256,7 +344,7 @@ class KiraApp {
       probe: (url) => this.probe(url),
       saveInstance: async (instance) => {
         this.config = configStore.update({ instance: { ...this.config.instance, ...instance, label: this.labelFor(instance.internalUrl ?? instance.externalUrl) } });
-        this.quickWin.invalidate();
+        this.quickChat.reset();
         if (this.config.onboarded) await this.connect(true);
       },
       finishOnboarding: async () => {
@@ -270,6 +358,7 @@ class KiraApp {
         this.applyHotkeys();
         this.tray.refresh();
         this.rebuildMenu();
+        this.quickChat.refresh();
         return this.hotkeyConflicts;
       },
       setDictation: async (dictation: DictationConfig) => {
@@ -294,16 +383,18 @@ class KiraApp {
       openMain: () => this.mainWin.show(),
       openLink: (url) => this.openLink(url),
       quick: {
-        getState: () => this.quickStateStub(),
-        send: async () => {
-          throw new Error("Das Schnellfenster wird gerade umgebaut.");
+        getState: () => this.quickChat.getState(),
+        send: (text) => this.quickChat.send(text),
+        stop: () => this.quickChat.stop(),
+        reset: () => this.quickChat.reset(),
+        openInMain: () => {
+          const id = this.quickChat.sessionId;
+          this.quickWin.hide();
+          this.mainWin.navigate(session.getOrigin(), id !== null ? `/chat?session=${id}` : "/chat");
         },
-        stop: async () => undefined,
-        reset: () => undefined,
-        openInMain: () => this.mainWin.show(),
         hide: () => this.quickWin.hide(),
-        resize: () => undefined,
-        toggleDictation: async () => undefined,
+        resize: (height) => this.quickWin.resize(height),
+        toggleDictation: () => this.dictation.toggle("quick"),
       },
     });
   }
@@ -322,17 +413,7 @@ class KiraApp {
     openExternalSafely(url);
   }
 
-  private quickStateStub(): QuickState {
-    return {
-      sessionId: null,
-      messages: [],
-      busy: false,
-      mode: this.connection.online ? "server" : "offline",
-      connection: { online: this.connection.online, label: this.labelFor(session.getOrigin()) },
-      dictation: { available: false, active: false, level: 0, partial: "", reason: null },
-      hotkeys: this.config.hotkeys,
-    };
-  }
+
 
   private rebuildMenu(): void {
     buildAppMenu({
@@ -393,14 +474,17 @@ class KiraApp {
     return { origin, label: this.labelFor(origin) || this.config.instance.label };
   }
 
-  private capabilities(): Capability[] {
-    return capabilitiesFrom(this.helper.running ? this.helper.info?.features : null);
+  private capabilities(sender?: WebContents): Capability[] {
+    const caps = capabilitiesFrom(this.helper.running ? this.helper.info?.features : null);
+    if (sender && this.mainWin?.usesInsetTitleBar(sender)) caps.push("inset-titlebar");
+    return caps;
   }
 
   private async probe(url: string): Promise<ProbeResult> {
     const origin = normalizeInstanceUrl(url);
     if (!origin) return { url, ok: false, version: null, bridge: false, error: "Keine gültige http(s)-Adresse.", latencyMs: null };
     const p = await probeHealth(origin, session.rawFetch);
+    if (p.ok) this.rememberServerVersion(p.version);
     return { url: origin, ok: p.ok, version: p.version, bridge: serverHasBridge(p.version), error: p.error, latencyMs: p.latencyMs };
   }
 
@@ -430,8 +514,9 @@ class KiraApp {
       const originChanged = previousOrigin !== origin;
       if (originChanged || force || !this.mainWin.isDashboardLoaded()) {
         this.mainWin.loadInstance(origin);
-        this.quickWin.invalidate();
       }
+      if (originChanged && previousOrigin) this.quickChat.reset();
+      this.rememberServerVersion(version);
       this.mainWin.show();
       this.tray.setStatus(true, this.labelFor(origin));
       if (!wasOnline) this.mainWin.sendNative({ type: "connectivity", online: true });
@@ -454,6 +539,13 @@ class KiraApp {
       this.schedulePoll(OFFLINE_POLL_MS);
     }
     this.broadcast({ type: "connection", connection: this.connection });
+    this.quickChat.refresh();
+  }
+
+  /** Server-Version merken (entscheidet beim nächsten Start über die Titelleiste). */
+  private rememberServerVersion(version: string | null): void {
+    if (!version || version === this.config.lastServerVersion) return;
+    this.config = configStore.update({ lastServerVersion: version });
   }
 
   private schedulePoll(ms: number): void {
@@ -482,6 +574,8 @@ class KiraApp {
       session,
       deviceId: this.config.deviceId,
       isMainFocused: () => this.mainWin.isFocused(),
+      isWatching: (frame) =>
+        this.quickWin.isVisible() && this.quickChat.sessionId !== null && frame.tag === `kira-chat-${this.quickChat.sessionId}`,
       showMain: () => this.mainWin.show(),
       sendToDashboard: (event: NativeEvent) => this.mainWin.sendNative(event),
       navigateFallback: (path) => this.mainWin.navigate(session.getOrigin(), path),

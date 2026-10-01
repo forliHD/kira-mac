@@ -15,6 +15,10 @@ export const CAPABILITIES = [
   "system-audio",
   "apple-intelligence",
   "insert-text",
+  // Seit KIRA 3.298.0: Das Fenster hat eine eingelassene Titelleiste (Ampel
+  // über dem Inhalt) – das Dashboard macht seine obere Leiste zum Zieh-Bereich
+  // und rückt die Seitenleiste ein. Nur für das Hauptfenster gesetzt.
+  "inset-titlebar",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
