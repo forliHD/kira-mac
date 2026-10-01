@@ -76,6 +76,24 @@ Die Nocturne-Token (`src/renderer/styles/tokens.css`) stammen aus
 
 ## Release (lokal, kein CI)
 
+Einmalig einrichten:
+
+1. **Developer-ID-Zertifikat**: Xcode → Einstellungen → Apple Accounts → Team →
+   „Manage Certificates…“ → „+“ → „Developer ID Application“ (liegt danach im
+   Schlüsselbund; `security find-identity -v -p codesigning` zeigt es).
+2. **Notarisierung**: App-spezifisches Passwort unter account.apple.com →
+   „Anmeldung und Sicherheit“ → „App-spezifische Passwörter“ anlegen, dann im
+   Terminal einmal speichern (fragt das Passwort ab, nichts landet in Dateien):
+
+   ```bash
+   xcrun notarytool store-credentials kira-notary --apple-id <deine Apple-ID> --team-id GRPK3Y82ST
+   ```
+
+   `scripts/release.sh` nutzt dieses Profil (`APPLE_KEYCHAIN_PROFILE`, Standard
+   `kira-notary`); alternativ `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` und
+   `APPLE_TEAM_ID` in der Umgebung.
+
+
 Verteilung als DMG + ZIP über GitHub Releases (`forliHD/kira-mac`);
 `electron-updater` liest `latest-mac.yml` von dort. Signatur mit Developer ID,
 Hardened Runtime und Notarisierung.

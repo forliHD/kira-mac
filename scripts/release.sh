@@ -3,12 +3,19 @@
 # → Helfer bauen → npm run build → electron-builder (signiert + notarisiert)
 # → GitHub-Release mit DMG, ZIP und latest-mac.yml (für electron-updater).
 #
-# Umgebung für Signatur/Notarisierung:
-#   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID   (Notarisierung)
-#   CSC_NAME="Developer ID Application: … (TEAMID)"          (optional, sonst
-#   nimmt electron-builder das passende Zertifikat aus dem Schlüsselbund)
-# Release-Notizen: RELEASE_NOTES.md im Repo (vorher füllen).
+# Notarisierung, zwei Wege (electron-builder liest beide):
+#   1. Schlüsselbund-Profil (empfohlen, kein Passwort in der Umgebung):
+#        xcrun notarytool store-credentials kira-notary \
+#          --apple-id <Apple-ID> --team-id GRPK3Y82ST      (fragt das
+#        App-spezifische Passwort ab; einmalig). Dann reicht
+#        APPLE_KEYCHAIN_PROFILE=kira-notary (Standard dieses Skripts).
+#   2. Umgebung: APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID.
+# Signatur: CSC_NAME="Developer ID Application: … (TEAMID)" ist optional,
+# sonst nimmt electron-builder das Developer-ID-Zertifikat aus dem
+# Schlüsselbund. Release-Notizen: RELEASE_NOTES.md im Repo (vorher füllen).
 set -euo pipefail
+
+export APPLE_KEYCHAIN_PROFILE="${APPLE_KEYCHAIN_PROFILE:-kira-notary}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -21,9 +28,15 @@ command -v gh >/dev/null 2>&1 || fail "gh (GitHub CLI) fehlt: brew install gh"
 gh auth status >/dev/null 2>&1 || fail "gh ist nicht angemeldet: gh auth login"
 command -v node >/dev/null 2>&1 || fail "node fehlt"
 [[ -f RELEASE_NOTES.md ]] || fail "RELEASE_NOTES.md fehlt"
-for var in APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-  [[ -n "${!var:-}" ]] || fail "$var ist nicht gesetzt (Notarisierung)."
-done
+if [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
+  unset APPLE_KEYCHAIN_PROFILE
+  echo "Notarisierung über APPLE_ID/APPLE_TEAM_ID aus der Umgebung."
+elif xcrun notarytool history --keychain-profile "$APPLE_KEYCHAIN_PROFILE" >/dev/null 2>&1; then
+  echo "Notarisierung über Schlüsselbund-Profil '$APPLE_KEYCHAIN_PROFILE'."
+else
+  fail "Keine Notarisierungs-Zugangsdaten: Schlüsselbund-Profil '$APPLE_KEYCHAIN_PROFILE' fehlt (xcrun notarytool store-credentials …) und APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID sind nicht gesetzt."
+fi
+security find-identity -v -p codesigning | grep -q "Developer ID Application" || fail "Kein Developer-ID-Zertifikat im Schlüsselbund (Xcode → Einstellungen → Apple Accounts → Manage Certificates → + → Developer ID Application)."
 
 step "Arbeitsbaum muss sauber sein"
 if [[ -n "$(git status --porcelain)" ]]; then
