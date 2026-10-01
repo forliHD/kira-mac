@@ -23,7 +23,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "lint": "eslint .",
-    "dist": "npm run build && electron-builder --mac --publish never",
+    "dist": "npm run build && electron-builder --mac --publish never -c.directories.output=\"${KIRA_MAC_DIST:-$HOME/Library/Caches/kira-mac/dist}\"",
     "helper:build": "bash scripts/build-helper.sh",
     "release": "bash scripts/release.sh"
   },

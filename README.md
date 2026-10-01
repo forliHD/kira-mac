@@ -76,6 +76,11 @@ Die Nocturne-Token (`src/renderer/styles/tokens.css`) stammen aus
 
 ## Release (lokal, kein CI)
 
+Die Build-Ausgabe liegt in `~/Library/Caches/kira-mac/dist` (änderbar über
+`KIRA_MAC_DIST`), nicht im Repo: Liegt das Repo in iCloud Drive, hängt das
+System Finder-Metadaten an die Dateien, und `codesign` lehnt sie ab. Zusätzlich
+bereinigt `scripts/after-pack.cjs` die gepackte App vor dem Signieren.
+
 Einmalig einrichten:
 
 1. **Developer-ID-Zertifikat**: Xcode → Einstellungen → Apple Accounts → Team →

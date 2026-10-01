@@ -9,7 +9,12 @@ artifactName: ${productName}-${version}-${arch}.${ext}
 
 directories:
   buildResources: build
+  # Ausgabe außerhalb von iCloud: npm-Skript und release.sh überschreiben das
+  # per -c.directories.output (Standard ~/Library/Caches/kira-mac/dist).
   output: dist
+
+# Entfernt iCloud-/Finder-Metadaten vor dem Signieren (scripts/after-pack.cjs).
+afterPack: scripts/after-pack.cjs
 
 files:
   - out/**/*

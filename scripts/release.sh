@@ -16,6 +16,8 @@
 set -euo pipefail
 
 export APPLE_KEYCHAIN_PROFILE="${APPLE_KEYCHAIN_PROFILE:-kira-notary}"
+# Build-Ausgabe außerhalb von iCloud Drive (sonst Finder-Metadaten → codesign-Fehler).
+DIST="${KIRA_MAC_DIST:-$HOME/Library/Caches/kira-mac/dist}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -69,18 +71,18 @@ step "npm run build"
 npm run build
 
 step "electron-builder --mac (Signatur + Notarisierung)"
-rm -rf dist
-npx electron-builder --mac --publish never
+rm -rf "$DIST"
+npx electron-builder --mac --publish never -c.directories.output="$DIST"
 
 step "Artefakte"
-ls -la dist/*.dmg dist/*.zip dist/latest-mac.yml || fail "Artefakte fehlen in dist/."
+ls -la "$DIST"/*.dmg "$DIST"/*.zip "$DIST"/latest-mac.yml || fail "Artefakte fehlen in $DIST."
 
 step "Tag $TAG setzen"
 git tag -a "$TAG" -m "KIRA für Mac $VERSION"
 git push origin "$TAG"
 
 step "GitHub-Release $TAG anlegen"
-gh release create "$TAG" dist/*.dmg dist/*.zip dist/latest-mac.yml \
+gh release create "$TAG" "$DIST"/*.dmg "$DIST"/*.zip "$DIST"/latest-mac.yml \
   --title "KIRA für Mac $VERSION" \
   --notes-file RELEASE_NOTES.md
 
