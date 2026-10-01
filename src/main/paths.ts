@@ -29,7 +29,7 @@ export function preloadPath(name: "index" | "local"): string {
 }
 
 /** Lokale Seite: dev über den Vite-Server, gepackt aus out/renderer. */
-export function localPageUrl(page: "onboarding" | "settings" | "hud" | "offline", query: Record<string, string> = {}): string {
+export function localPageUrl(page: "onboarding" | "settings" | "hud" | "offline" | "quick", query: Record<string, string> = {}): string {
   const qs = new URLSearchParams(query).toString();
   const suffix = qs ? `?${qs}` : "";
   const devServer = process.env.ELECTRON_RENDERER_URL;

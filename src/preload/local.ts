@@ -4,7 +4,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 import { LOCAL_IPC } from "../shared/ipc-local";
-import { type KiraLocalApi, type LocalEvent, type LocalState, type ProbeResult, type UpdateState } from "../shared/local-api";
+import { type KiraLocalApi, type LocalEvent, type LocalState, type ProbeResult, type QuickState, type UpdateState } from "../shared/local-api";
 import { type PermissionsStatus } from "../shared/helper-types";
 
 const api: KiraLocalApi = {
@@ -22,6 +22,15 @@ const api: KiraLocalApi = {
   retry: () => ipcRenderer.invoke(LOCAL_IPC.retry) as Promise<void>,
   openSettings: () => ipcRenderer.invoke(LOCAL_IPC.openSettings) as Promise<void>,
   openMain: () => ipcRenderer.invoke(LOCAL_IPC.openMain) as Promise<void>,
+  openLink: (url) => ipcRenderer.invoke(LOCAL_IPC.openLink, url) as Promise<void>,
+  quickGetState: () => ipcRenderer.invoke(LOCAL_IPC.quickGetState) as Promise<QuickState>,
+  quickSend: (text) => ipcRenderer.invoke(LOCAL_IPC.quickSend, text) as Promise<void>,
+  quickStop: () => ipcRenderer.invoke(LOCAL_IPC.quickStop) as Promise<void>,
+  quickReset: () => ipcRenderer.invoke(LOCAL_IPC.quickReset) as Promise<void>,
+  quickOpenInMain: () => ipcRenderer.invoke(LOCAL_IPC.quickOpenInMain) as Promise<void>,
+  quickHide: () => ipcRenderer.invoke(LOCAL_IPC.quickHide) as Promise<void>,
+  quickResize: (height) => ipcRenderer.invoke(LOCAL_IPC.quickResize, height) as Promise<void>,
+  quickToggleDictation: () => ipcRenderer.invoke(LOCAL_IPC.quickToggleDictation) as Promise<void>,
   on: (listener) => {
     const handler = (_event: unknown, payload: unknown): void => {
       if (payload && typeof payload === "object" && typeof (payload as LocalEvent).type === "string") listener(payload as LocalEvent);

@@ -17,6 +17,15 @@ export const LOCAL_IPC = {
   retry: "local:retry",
   openSettings: "local:openSettings",
   openMain: "local:openMain",
+  openLink: "local:openLink",
+  quickGetState: "local:quickGetState",
+  quickSend: "local:quickSend",
+  quickStop: "local:quickStop",
+  quickReset: "local:quickReset",
+  quickOpenInMain: "local:quickOpenInMain",
+  quickHide: "local:quickHide",
+  quickResize: "local:quickResize",
+  quickToggleDictation: "local:quickToggleDictation",
   // Hauptprozess → lokale Seiten
   event: "local:event",
 } as const;

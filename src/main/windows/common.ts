@@ -31,7 +31,7 @@ export function localWebPreferences(): WebPreferences {
   };
 }
 
-export type LocalPage = "onboarding" | "settings" | "hud" | "offline";
+export type LocalPage = "onboarding" | "settings" | "hud" | "offline" | "quick";
 
 /** Ein Einzelfenster für eine lokale Seite (Einstellungen, Onboarding). */
 export class LocalWindowController {

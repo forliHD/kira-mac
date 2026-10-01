@@ -40,6 +40,7 @@ export default defineConfig({
           settings: resolve(__dirname, "src/renderer/settings/index.html"),
           hud: resolve(__dirname, "src/renderer/hud/index.html"),
           offline: resolve(__dirname, "src/renderer/offline/index.html"),
+          quick: resolve(__dirname, "src/renderer/quick/index.html"),
         },
       },
     },

@@ -6,7 +6,7 @@ import { type IpcMainInvokeEvent, app, ipcMain, shell } from "electron";
 
 import { type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
 import { LOCAL_IPC } from "../shared/ipc-local";
-import { type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalState, type ProbeResult, type UpdateState } from "../shared/local-api";
+import { type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalState, type ProbeResult, type QuickState, type UpdateState } from "../shared/local-api";
 import { scoped } from "./log";
 
 const log = scoped("local-ipc");
@@ -26,6 +26,17 @@ export interface LocalIpcContext {
   retry: () => Promise<void>;
   openSettings: () => void;
   openMain: () => void;
+  openLink: (url: string) => void;
+  quick: {
+    getState: () => QuickState;
+    send: (text: string) => Promise<void>;
+    stop: () => Promise<void>;
+    reset: () => void;
+    openInMain: () => void;
+    hide: () => void;
+    resize: (height: number) => void;
+    toggleDictation: () => Promise<void>;
+  };
 }
 
 function isLocalSender(event: IpcMainInvokeEvent): boolean {
@@ -104,5 +115,31 @@ export function registerLocalIpc(ctx: LocalIpcContext): void {
   ipcMain.handle(LOCAL_IPC.retry, guard(() => ctx.retry()));
   ipcMain.handle(LOCAL_IPC.openSettings, guard(() => ctx.openSettings()));
   ipcMain.handle(LOCAL_IPC.openMain, guard(() => ctx.openMain()));
+  ipcMain.handle(
+    LOCAL_IPC.openLink,
+    guard((url: unknown) => ctx.openLink(str(url))),
+  );
+  ipcMain.handle(LOCAL_IPC.quickGetState, guard(() => ctx.quick.getState()));
+  ipcMain.handle(
+    LOCAL_IPC.quickSend,
+    guard((text: unknown) => {
+      const t = str(text).trim();
+      if (!t) return;
+      if (t.length > 20_000) throw new Error("Die Nachricht ist zu lang (höchstens 20.000 Zeichen).");
+      return ctx.quick.send(t);
+    }),
+  );
+  ipcMain.handle(LOCAL_IPC.quickStop, guard(() => ctx.quick.stop()));
+  ipcMain.handle(LOCAL_IPC.quickReset, guard(() => ctx.quick.reset()));
+  ipcMain.handle(LOCAL_IPC.quickOpenInMain, guard(() => ctx.quick.openInMain()));
+  ipcMain.handle(LOCAL_IPC.quickHide, guard(() => ctx.quick.hide()));
+  ipcMain.handle(
+    LOCAL_IPC.quickResize,
+    guard((height: unknown) => {
+      const h = typeof height === "number" && Number.isFinite(height) ? height : 0;
+      if (h > 0) ctx.quick.resize(h);
+    }),
+  );
+  ipcMain.handle(LOCAL_IPC.quickToggleDictation, guard(() => ctx.quick.toggleDictation()));
   log.info("local_ipc_registered");
 }

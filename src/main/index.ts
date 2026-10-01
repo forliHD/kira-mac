@@ -10,7 +10,7 @@ import { BrowserWindow, Notification, app, session as electronSession, shell } f
 import { type AppInfo, BRIDGE_VERSION, type Capability, type InstanceInfo, type NativeEvent } from "../shared/bridge";
 import { capabilitiesFrom } from "../shared/capabilities";
 import { type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
-import { type ConnectionState, type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalEvent, type LocalState, type ProbeResult } from "../shared/local-api";
+import { type ConnectionState, type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalEvent, type LocalState, type ProbeResult, type QuickState } from "../shared/local-api";
 import { registerBridgeIpc } from "./bridge";
 import { type AppConfig, configStore } from "./config";
 import { GlobalDictation } from "./dictation";
@@ -18,7 +18,8 @@ import { installDownloadHandler } from "./downloads";
 import { HelperClient } from "./helper";
 import { registerHotkeys, unregisterHotkeys } from "./hotkeys";
 import { describeResolveFailure, instanceCandidates, instanceOrigins, isInstanceUrl, normalizeInstanceUrl, probeHealth, resolveInstance, serverHasBridge } from "./instance";
-import { applyLinkPolicy } from "./links";
+import { uiInfo } from "./glass";
+import { applyLinkPolicy, openExternalSafely } from "./links";
 import { registerLocalIpc } from "./local-ipc";
 import { initLog, logFilePath, scoped } from "./log";
 import { buildAppMenu } from "./menu";
@@ -291,7 +292,46 @@ class KiraApp {
       retry: () => this.connect(true),
       openSettings: () => settingsWindow.show(),
       openMain: () => this.mainWin.show(),
+      openLink: (url) => this.openLink(url),
+      quick: {
+        getState: () => this.quickStateStub(),
+        send: async () => {
+          throw new Error("Das Schnellfenster wird gerade umgebaut.");
+        },
+        stop: async () => undefined,
+        reset: () => undefined,
+        openInMain: () => this.mainWin.show(),
+        hide: () => this.quickWin.hide(),
+        resize: () => undefined,
+        toggleDictation: async () => undefined,
+      },
     });
+  }
+
+  /** Link aus einer lokalen Seite: Instanz → Hauptfenster (Pfad), sonst System-Browser. */
+  private openLink(url: string): void {
+    if (isInstanceUrl(url, this.origins())) {
+      try {
+        const u = new URL(url);
+        this.mainWin.navigate(session.getOrigin(), `${u.pathname}${u.search}${u.hash}`);
+      } catch {
+        this.mainWin.show();
+      }
+      return;
+    }
+    openExternalSafely(url);
+  }
+
+  private quickStateStub(): QuickState {
+    return {
+      sessionId: null,
+      messages: [],
+      busy: false,
+      mode: this.connection.online ? "server" : "offline",
+      connection: { online: this.connection.online, label: this.labelFor(session.getOrigin()) },
+      dictation: { available: false, active: false, level: 0, partial: "", reason: null },
+      hotkeys: this.config.hotkeys,
+    };
   }
 
   private rebuildMenu(): void {
@@ -496,6 +536,7 @@ class KiraApp {
     const missing = this.helperMissingReason();
     return {
       appVersion: app.getVersion(),
+      ui: uiInfo(),
       instance: this.config.instance,
       hotkeys: this.config.hotkeys,
       dictation: this.config.dictation,

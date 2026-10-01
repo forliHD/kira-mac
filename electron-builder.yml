@@ -29,6 +29,21 @@ extraResources:
 
 asar: true
 
+# Nur Deutsch und Englisch: Electron bringt über 200 Sprachordner mit, jede
+# Datei darin wird einzeln signiert (mit Apple-Zeitstempel). So bleibt die App
+# kleiner, und das Signieren dauert Sekunden statt einer Viertelstunde.
+# electron-builder vergleicht exakt bzw. per Präfix des Wunschs, deshalb stehen
+# die Geschlechtsvarianten der Chromium-Ressourcen einzeln da.
+electronLanguages:
+  - de
+  - de_FEMININE
+  - de_MASCULINE
+  - de_NEUTER
+  - en
+  - en_FEMININE
+  - en_MASCULINE
+  - en_NEUTER
+
 mac:
   category: public.app-category.productivity
   icon: build/icon.icns
@@ -47,11 +62,11 @@ mac:
   # Spracherkennung auf dem Apple-Chip und das Apple-Sprachmodell brauchen
   # macOS 26 auf Apple Silicon und melden sich darunter als nicht verfügbar.
   minimumSystemVersion: "14.0"
-  # Nachgelagerte Binärdateien, die mit signiert werden müssen (Hardened Runtime).
-  # Relativ zu Contents/ der gebauten App (electron-builder löst nicht
-  # vorhandene relative Pfade dort auf).
+  # Nachgelagerte Binärdateien, die mit signiert werden müssen (Hardened Runtime,
+  # Entitlements der App inkl. Mikrofon). Pfad relativ zum App-Bündel
+  # (KIRA.app/…); ohne „Contents/“ fand codesign die Datei nicht (Build 02.10.).
   binaries:
-    - Resources/helper/kira-helper
+    - Contents/Resources/helper/kira-helper
   extendInfo:
     NSMicrophoneUsageDescription: KIRA braucht das Mikrofon für das Diktat und für Besprechungsaufnahmen.
     NSSpeechRecognitionUsageDescription: KIRA erkennt Sprache auf diesem Mac, damit Diktate den Rechner nicht verlassen.

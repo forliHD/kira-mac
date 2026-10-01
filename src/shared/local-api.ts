@@ -62,8 +62,18 @@ export interface DictationStatus {
   hotkeyConflicts: string[];
 }
 
+/** Wie die Fenster gezeichnet werden: echtes Liquid Glass (macOS 26+,
+ *  NSGlassEffectView) oder der Rückfall auf Vibrancy. Lokale Seiten passen ihre
+ *  Flächen daran an (auf echtem Glas keine eigene Unschärfe, nur Lichtkanten). */
+export interface UiInfo {
+  glass: "liquid" | "vibrancy";
+  macos: string;
+  reducedTransparency: boolean;
+}
+
 export interface LocalState {
   appVersion: string;
+  ui: UiInfo;
   instance: InstanceConfig;
   hotkeys: HotkeyConfig;
   dictation: DictationConfig;
@@ -86,11 +96,66 @@ export interface HudState {
   message: string | null;
 }
 
+// ── Schnellfenster (nativer Mini-Chat) ─────────────────────────────────
+// Der Hauptprozess (src/main/quick-chat.ts) führt das Gespräch über
+// `POST /api/chat/stream` der Instanz; die Seite zeigt nur `QuickState`.
+// Ohne Verbindung antwortet das Apple-Sprachmodell lokal (Notlicht), dann ist
+// `QuickMessage.local` gesetzt und nichts landet auf dem Server.
+
+export type QuickRole = "user" | "assistant";
+
+export interface QuickTool {
+  name: string;
+  /** Deutsche Beschreibung („Durchsucht das Postfach“). */
+  label: string;
+  status: "running" | "done" | "error";
+}
+
+export interface QuickMessage {
+  id: string;
+  role: QuickRole;
+  /** Nutzer: Klartext. Assistent: Markdown (wird in der Seite sicher gerendert). */
+  text: string;
+  status: "streaming" | "done" | "error" | "stopped";
+  /** Nur Assistent: laufende/fertige Werkzeuge dieses Zugs. */
+  tools: QuickTool[];
+  /** Nur Assistent, solange er arbeitet: „Denkt nach…“, „Durchsucht das Postfach…“. */
+  activity: string | null;
+  /** Antwort kam vom Apple-Sprachmodell auf diesem Mac (ohne KIRA-Server). */
+  local: boolean;
+  error: string | null;
+}
+
+export interface QuickDictation {
+  available: boolean;
+  active: boolean;
+  level: number;
+  partial: string;
+  reason: string | null;
+}
+
+export interface QuickState {
+  /** Chat-Sitzung auf dem Server (null bis zum ersten `start`-Frame). */
+  sessionId: number | null;
+  messages: QuickMessage[];
+  busy: boolean;
+  /** server = KIRA antwortet; local = offline, Apple-Modell antwortet; offline = gar nichts. */
+  mode: "server" | "local" | "offline";
+  connection: { online: boolean; label: string };
+  dictation: QuickDictation;
+  hotkeys: HotkeyConfig;
+}
+
 export type LocalEvent =
   | { type: "state"; state: LocalState }
   | { type: "hud"; hud: HudState }
   | { type: "connection"; connection: ConnectionState }
-  | { type: "update"; update: UpdateState };
+  | { type: "update"; update: UpdateState }
+  | { type: "quick"; quick: QuickState }
+  /** Diktat im Schnellfenster: fertiger Text (Diktierbefehle schon angewandt) an der Cursorposition einfügen. */
+  | { type: "quick-insert"; text: string }
+  /** Schnellfenster wurde gezeigt: Eingabefeld fokussieren. */
+  | { type: "quick-shown" };
 
 export interface KiraLocalApi {
   getState(): Promise<LocalState>;
@@ -107,6 +172,18 @@ export interface KiraLocalApi {
   retry(): Promise<void>;
   openSettings(): Promise<void>;
   openMain(): Promise<void>;
+  /** Link aus einer lokalen Seite: Instanz-Adresse → Hauptfenster, sonst System-Browser. */
+  openLink(url: string): Promise<void>;
+  // Schnellfenster
+  quickGetState(): Promise<QuickState>;
+  quickSend(text: string): Promise<void>;
+  quickStop(): Promise<void>;
+  quickReset(): Promise<void>;
+  quickOpenInMain(): Promise<void>;
+  quickHide(): Promise<void>;
+  /** Gewünschte Höhe des Inhalts in CSS-Pixeln; der Hauptprozess begrenzt sie auf den Bildschirm. */
+  quickResize(height: number): Promise<void>;
+  quickToggleDictation(): Promise<void>;
   on(listener: (event: LocalEvent) => void): () => void;
 }
 
