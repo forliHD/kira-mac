@@ -15,4 +15,10 @@ export default tseslint.config(
     files: ["src/shared/dictationText.js"],
     rules: {},
   },
+  {
+    // electron-builder lädt Hooks als CommonJS (afterPack).
+    files: ["scripts/**/*.cjs"],
+    languageOptions: { sourceType: "commonjs", globals: { require: "readonly", module: "writable", console: "readonly" } },
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 );
