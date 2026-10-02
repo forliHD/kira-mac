@@ -26,11 +26,12 @@ function Svg({ size = 16, strokeWidth = 2, children, ...rest }: IconProps & { ch
 }
 
 /** Sprechblase – das KIRA-Zeichen der Kachel (wie Menüleiste und Design). */
+/** Sprechblase mit dem „K“ des App-Symbols (Kopf des Schnellfensters). */
 export function BubbleIcon(props: IconProps): ReactNode {
   return (
     <Svg strokeWidth={2.4} {...props}>
       <path d="M4 12c0-4.4 3.6-8 8-8s8 3.6 8 8-3.6 8-8 8H6l-2 2v-10z" />
-      <path d="M9 11h6M9 14h4" />
+      <path d="M10 8.5v7M14.5 8.5l-4.1 3.8M11.9 11.2l2.7 4.3" strokeWidth="2" />
     </Svg>
   );
 }

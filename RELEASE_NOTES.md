@@ -9,7 +9,8 @@
 
 **Geändert**
 
-- **Menüleisten-Symbol mit „K“** wie das App-Symbol.
+- **Menüleisten-Symbol mit „K“** wie das App-Symbol, ebenso die kleine
+  Kachel im Schnellfenster.
 
 Die App aktualisiert sich selbst und installiert das Update beim nächsten
 Beenden (oder sofort über die Menüleiste → „Nach Updates suchen“).

@@ -30,12 +30,12 @@ function Svg({ size = 16, strokeWidth = 2, className, children }: IconProps & { 
   );
 }
 
-/** Die Sprechblase der Marke (App-Symbol, Menüleiste). */
+/** Die Sprechblase der Marke mit dem „K“ des App-Symbols (wie Menüleiste und Dock). */
 export function IconChat(p: IconProps): ReactNode {
   return (
     <Svg {...p}>
       <path d="M4 12c0-4.4 3.6-8 8-8s8 3.6 8 8-3.6 8-8 8H6l-2 2v-10z" />
-      <path d="M9 11h6M9 14h4" />
+      <path d="M10 8.5v7M14.5 8.5l-4.1 3.8M11.9 11.2l2.7 4.3" strokeWidth="2" />
     </Svg>
   );
 }

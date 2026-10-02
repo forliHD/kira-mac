@@ -19,7 +19,8 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 ### Geändert
 - **Menüleisten-Symbol mit „K“:** Die Sprechblase oben in der Menüleiste
   zeigt jetzt das K des App-Symbols (verbunden und getrennt), statt zweier
-  Zeilen.
+  Zeilen – ebenso die kleinen App-Kacheln im Schnellfenster, in der
+  Einrichtung und unter Einstellungen → Über.
 
 ## [0.3.0] - 2026-10-02
 
