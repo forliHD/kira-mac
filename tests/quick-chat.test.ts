@@ -22,7 +22,7 @@ function deps(over: Partial<QuickChatDeps> = {}): QuickChatDeps {
     server: { streamChat: vi.fn(async () => sseResponse(["[DONE]"])) },
     local: { status: vi.fn(async () => ({ available: true, reason: null })), stream: vi.fn(async () => "lokal") },
     connection: () => ({ online: true, label: "kira.example.de" }),
-    hotkeys: () => ({ quickWindow: "Alt+Space", dictation: "Alt+Command+D" }),
+    hotkeys: () => ({ quickWindow: "Alt+Space", dictation: "Control+Alt+D" }),
     schedule: (fn) => fn(),
     ...over,
   };

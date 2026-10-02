@@ -457,6 +457,9 @@ class KiraApp {
   private applyLoginItem(): void {
     if (!app.isPackaged) return;
     try {
+      // Nur bei einer Änderung: sonst meldet macOS bei jedem Start „Operation
+      // not permitted“, wenn die App nicht unter /Applications liegt.
+      if (app.getLoginItemSettings().openAtLogin === this.config.general.launchAtLogin) return;
       app.setLoginItemSettings({ openAtLogin: this.config.general.launchAtLogin });
     } catch (err) {
       this.log.warn("login_item_failed", { error: err instanceof Error ? err.message : String(err) });

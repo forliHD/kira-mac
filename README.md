@@ -16,7 +16,7 @@ lokale Diktat.
   `src/renderer/quick` zeigt nur Zustand. ⌘↩ öffnet den Chat im Hauptfenster,
   ⌘N beginnt neu. Ohne Verbindung antwortet das Apple-Sprachmodell lokal
   (gekennzeichnet, nicht gespeichert).
-- **Globales Diktat** (⌥⌘D) in jedes Programm über die Glas-Pille unten
+- **Globales Diktat** (⌃⌥D) in jedes Programm über die Glas-Pille unten
   (HUD); im Schnellfenster landet es im Eingabefeld.
 - **Diktat im Dashboard** über den Apple-Chip (Brücke `transcribe`).
 - **Mitteilungen** über den Geräte-Stream des Servers; kein Banner, wenn das

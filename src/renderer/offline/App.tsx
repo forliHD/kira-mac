@@ -52,7 +52,7 @@ function ReasonList({ reason }: { reason: OfflineReason }): ReactNode {
 }
 
 function StillWorking({ state }: { state: LocalState | null }): ReactNode {
-  const dictationKey = state?.hotkeys.dictation ?? "Alt+Command+D";
+  const dictationKey = state?.hotkeys.dictation ?? "Control+Alt+D";
   const quickKey = state?.hotkeys.quickWindow ?? "Alt+Space";
   // Ohne Zustand (oder bevor er da ist) beides nennen – das ist der Normalfall.
   const dictation = !state || (state.helper.running && state.dictationStatus.stt?.available !== false && Boolean(dictationKey));

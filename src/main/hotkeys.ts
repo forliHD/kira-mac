@@ -1,5 +1,5 @@
 // Globale Tastenkürzel (konfigurierbar). Standard: Schnellfenster Alt+Space,
-// globales Diktat Alt+Command+D. Konflikte (anderes Programm hält das Kürzel)
+// globales Diktat Control+Alt+D (⌃⌥D). Konflikte (anderes Programm hält das Kürzel)
 // werden gemeldet statt still zu scheitern.
 
 import { globalShortcut } from "electron";

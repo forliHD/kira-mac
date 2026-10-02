@@ -1,4 +1,4 @@
-// Diktat-HUD (⌥⌘D): rahmenloses, nicht fokussierbares Panel unten mittig.
+// Diktat-HUD (⌃⌥D): rahmenloses, nicht fokussierbares Panel unten mittig.
 // Das Glas zeichnet der Hauptprozess (Liquid Glass bzw. Vibrancy, Radius 24);
 // die Seite ist transparent und malt nur Lichtkante, Glanz und Inhalt.
 // Zustand kommt ausschließlich per `local:event` (type "hud"); Kürzel und
@@ -93,7 +93,7 @@ function TailText({ text, className }: { text: string; className?: string }): Re
 
 export function App(): ReactNode {
   const [state, setState] = useState<HudState>(INITIAL);
-  const [hotkey, setHotkey] = useState("Alt+Command+D");
+  const [hotkey, setHotkey] = useState("Control+Alt+D");
   const [stopping, setStopping] = useState(false);
 
   useEffect(() => {

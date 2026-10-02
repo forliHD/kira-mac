@@ -28,7 +28,17 @@ function key(code: string, mods: Partial<Pick<KeyLike, "metaKey" | "ctrlKey" | "
 describe("Tastendruck → Accelerator", () => {
   it("wandelt die Standardkürzel in die Schreibweise von config.ts um", () => {
     expect(acceleratorFromEvent(key("Space", { altKey: true }, " "))).toEqual({ type: "done", accelerator: "Alt+Space" });
-    expect(acceleratorFromEvent(key("KeyD", { altKey: true, metaKey: true }, "∂"))).toEqual({ type: "done", accelerator: "Alt+Command+D" });
+    expect(acceleratorFromEvent(key("KeyD", { altKey: true, ctrlKey: true }, "∂"))).toEqual({ type: "done", accelerator: "Control+Alt+D" });
+  });
+
+  it("lehnt Systemkürzel von macOS ab (⌥⌘D Dock, ⌃⌘D Nachschlagen, ⌃⌘F Vollbild)", () => {
+    for (const [code, mods] of [
+      ["KeyD", { altKey: true, metaKey: true }],
+      ["KeyD", { ctrlKey: true, metaKey: true }],
+      ["KeyF", { ctrlKey: true, metaKey: true }],
+    ] as const) {
+      expect(acceleratorFromEvent(key(code, mods)).type).toBe("invalid");
+    }
   });
 
   it("ordnet Zusatztasten wie macOS (⌃⌥⇧⌘), unabhängig von der Druckreihenfolge", () => {

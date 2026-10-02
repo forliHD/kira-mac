@@ -126,7 +126,7 @@ function initialState(page: MockPage, p: URLSearchParams): LocalState {
             externalUrl: p.get("ext") ?? "https://kira.example.de",
             label: "kira.example.de",
           },
-    hotkeys: { quickWindow: "Alt+Space", dictation: "Alt+Command+D" },
+    hotkeys: { quickWindow: "Alt+Space", dictation: "Control+Alt+D" },
     dictation: { locale: "de-DE", commands: true, dashboardStt: true },
     general: { launchAtLogin: true, notifications: true },
     connection: offline
@@ -147,7 +147,7 @@ function initialState(page: MockPage, p: URLSearchParams): LocalState {
     dictationStatus: {
       stt: helperRunning ? stt : null,
       permissions: helperRunning ? permissions(p.get("perms")) : null,
-      hotkeyConflicts: p.get("conflicts") === "1" ? ["Globales Diktat: „⌥⌘D“ wird bereits von einem anderen Programm oder macOS belegt."] : [],
+      hotkeyConflicts: p.get("conflicts") === "1" ? ["Globales Diktat: „⌃⌥D“ wird bereits von einem anderen Programm oder macOS belegt."] : [],
     },
     onboarded: !onboarding,
     logPath: "/Users/kira/Library/Logs/KIRA/main.log",

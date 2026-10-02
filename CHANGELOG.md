@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 [SemVer](https://semver.org/lang/de/).
 
+## [0.1.1] - 2026-10-02
+
+### Geändert
+- **Globales Diktat jetzt auf ⌃⌥D** (vorher ⌥⌘D): ⌥⌘D ist unter macOS das
+  Kürzel „Dock ein-/ausblenden“. Gespeichertes ⌥⌘D wird automatisch
+  umgezogen; die Aufnahme in den Einstellungen lehnt ⌥⌘D, ⌃⌘D (Nachschlagen)
+  und ⌃⌘F (Vollbild) mit Begründung ab.
+
+### Behoben
+- Beim Start meldete macOS „Operation not permitted“ für das Anmeldeobjekt,
+  obwohl „Beim Anmelden starten“ aus war – die App setzt es nur noch bei einer
+  Änderung.
+
 ## [0.1.0] - 2026-10-02
 
 Erste Fassung. Signiert mit Developer ID, von Apple beglaubigt, Gatekeeper

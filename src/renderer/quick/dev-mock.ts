@@ -67,7 +67,7 @@ function base(): QuickState {
     mode: "server",
     connection: { online: true, label: "kira.reiser.de" },
     dictation: { available: true, active: false, level: 0, partial: "", reason: null },
-    hotkeys: { quickWindow: "Alt+Space", dictation: "Alt+Command+D" },
+    hotkeys: { quickWindow: "Alt+Space", dictation: "Control+Alt+D" },
   };
 }
 

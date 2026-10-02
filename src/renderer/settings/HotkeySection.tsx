@@ -10,7 +10,7 @@ import { errorText, localApi } from "../lib/useLocalState";
 import { Button, GlassCard, InfoNote, Kbd, KbdCombo, SettingRow, Spinner, cx } from "../lib/ui";
 import { type HotkeyName, type SectionProps } from "./shared";
 
-const DEFAULTS: HotkeyConfig = { quickWindow: "Alt+Space", dictation: "Alt+Command+D" };
+const DEFAULTS: HotkeyConfig = { quickWindow: "Alt+Space", dictation: "Control+Alt+D" };
 const LABEL: Record<HotkeyName, string> = { quickWindow: "Schnellfenster", dictation: "Diktat" };
 
 function HotkeyRecorder({
@@ -40,7 +40,7 @@ function HotkeyRecorder({
     setRecording(true);
   }, [startRecording]);
 
-  // Während der Aufnahme die globalen Kürzel aussetzen – sonst löst z. B. ⌥⌘D
+  // Während der Aufnahme die globalen Kürzel aussetzen – sonst löst z. B. ⌃⌥D
   // beim Drücken das Diktat aus, statt aufgenommen zu werden.
   useEffect(() => {
     if (!recording) return undefined;

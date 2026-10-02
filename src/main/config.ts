@@ -36,7 +36,9 @@ export interface AppConfig {
 
 export const DEFAULT_HOTKEYS: HotkeyConfig = {
   quickWindow: "Alt+Space",
-  dictation: "Alt+Command+D",
+  // ⌃⌥D: ⌥⌘D blendet unter macOS das Dock ein/aus (Systemkürzel) – 0.1.0
+  // hatte es als Standard, normalizeConfig zieht es um.
+  dictation: "Control+Alt+D",
 };
 
 export function defaultConfig(): AppConfig {
@@ -51,6 +53,11 @@ export function defaultConfig(): AppConfig {
     mainWindow: null,
     lastServerVersion: null,
   };
+}
+
+/** ⌥⌘D (Standard in 0.1.0) kollidiert mit „Dock ein-/ausblenden“ – auf ⌃⌥D umziehen. */
+export function migrateDictationHotkey(value: string): string {
+  return value === "Alt+Command+D" ? DEFAULT_HOTKEYS.dictation : value;
 }
 
 /** Macht aus beliebigem JSON eine gültige Konfiguration; Unbekanntes fällt weg. */
@@ -85,7 +92,7 @@ export function normalizeConfig(raw: unknown): AppConfig {
     },
     hotkeys: {
       quickWindow: str(hk.quickWindow, base.hotkeys.quickWindow),
-      dictation: str(hk.dictation, base.hotkeys.dictation),
+      dictation: migrateDictationHotkey(str(hk.dictation, base.hotkeys.dictation)),
     },
     dictation: {
       locale: str(dict.locale, base.dictation.locale) || base.dictation.locale,

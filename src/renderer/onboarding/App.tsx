@@ -16,7 +16,7 @@ import { AppTile, Button, GlassCard, IconTile, InfoNote, KbdCombo } from "../lib
 
 type Step = 1 | 2;
 
-const DEFAULT_HOTKEYS = { quickWindow: "Alt+Space", dictation: "Alt+Command+D" };
+const DEFAULT_HOTKEYS = { quickWindow: "Alt+Space", dictation: "Control+Alt+D" };
 
 function key(internalUrl: string, externalUrl: string): string {
   return `${internalUrl.trim()}\n${externalUrl.trim()}`;

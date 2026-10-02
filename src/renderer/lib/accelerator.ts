@@ -126,6 +126,12 @@ function reservedReason(modifiers: Modifier[], key: string): string | null {
       return "⇧⌘Q meldet dich von macOS ab.";
     case "Control+Command+Q":
       return "⌃⌘Q sperrt den Bildschirm.";
+    case "Alt+Command+D":
+      return "⌥⌘D blendet das Dock ein und aus.";
+    case "Control+Command+D":
+      return "⌃⌘D schlägt das Wort unter dem Zeiger nach.";
+    case "Control+Command+F":
+      return "⌃⌘F schaltet den Vollbildmodus.";
     default:
       break;
   }
