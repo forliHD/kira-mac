@@ -6,6 +6,14 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-10-02
+
+### Geändert
+- Die Aktivitätszeile kennt das neue Server-Werkzeug `mail_send_to_me` (KIRA
+  3.302.0, „Schick mir das per Mail“): „Schickt dir eine Mail“ statt des
+  allgemeinen „Arbeitet im Postfach“. Entwurfs-Links (`/mail?draft=…`) aus
+  KIRAs Antworten öffnen sich wie alle Instanz-Pfade im Hauptfenster.
+
 ## [0.3.7] - 2026-10-02
 
 ### Geändert

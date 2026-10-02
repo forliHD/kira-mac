@@ -1,12 +1,11 @@
-## KIRA für Mac 0.3.7
+## KIRA für Mac 0.3.8
 
 **Geändert**
 
-- Das Schnellfenster (⌥ Leertaste) sitzt höher und darf bei langen Chats
-  fast die ganze Bildschirmhöhe nutzen – bis kurz über das Dock.
-- Sobald der KIRA-Server Mails markieren und verschieben kann, zeigt das
-  Schnellfenster dafür eine eigene Statuszeile („Markiert E-Mails“,
-  „Verschiebt E-Mails“).
+- Schickt dir KIRA eine Mail („Schick mir das per Mail“, ab KIRA 3.302.0),
+  zeigt das Schnellfenster dafür „Schickt dir eine Mail“.
+- Legt KIRA einen Mail-Entwurf an, öffnet der Link „Im Postfach öffnen“ den
+  Entwurf im Hauptfenster.
 
 Die App aktualisiert sich selbst; mit „Jetzt neu starten“ wird das Update
 sofort installiert.
