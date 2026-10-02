@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">
+  <!--
+    Menüleiste, Zustand „verbunden“ → resources/tray/kiraTemplate(@2x).png.
+    Template-Bild: nur Schwarz + Alpha, macOS färbt es hell/dunkel. 18 x 18 pt,
+    Strich 1.5 pt wie SF Symbols (regular). Gerade Kanten liegen auf halben Punkten,
+    dadurch bei @2x pixelgenau (3 px). Sprechblase wie im Design-Pfad
+    (Kreis, linkes unteres Viertel eckig, Spitze unten links), darin zwei Zeilen.
+  -->
+  <g fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.25 8.5A5.75 5.75 0 1 1 9 14.25H4.6875L3.25 15.6875Z"/>
+    <path d="M6.75 7.25H11.25M6.75 10.25H9.25"/>
+  </g>
+</svg>

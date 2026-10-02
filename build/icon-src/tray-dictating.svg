@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">
+  <!--
+    Menüleiste, Zustand „Diktat läuft“ → resources/tray/kiraDictatingTemplate(@2x).png.
+    Mikrofon wie im Design (Kapsel, Bügel, Stiel), Strich 1.5 pt, 12 x 15 pt mittig.
+  -->
+  <g fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="6.75" y="2.25" width="4.5" height="8.25" rx="2.25"/>
+    <path d="M3.75 8.25A5.25 5.25 0 0 0 14.25 8.25M9 13.5V15.75"/>
+  </g>
+</svg>

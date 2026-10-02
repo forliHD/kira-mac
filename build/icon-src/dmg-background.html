@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>KIRA DMG-Hintergrund</title>
+<!--
+  Hintergrund des DMG-Fensters (540 x 380 pt). scripts/make-icon.sh rendert die
+  Seite bei 1x und 2x und fügt beide mit tiffutil zu build/background.tiff zusammen.
+  Symbolpositionen (Mitte, in pt) müssen zu electron-builder.yml › dmg.contents
+  passen: KIRA bei (130, 200), Verknüpfung „Programme“ bei (410, 200).
+  Finder zeichnet Symbol und Beschriftung selbst; die Seite lässt dafür Platz und
+  hält die unteren ~40 pt frei (Titelleiste kann das Fenster unten beschneiden).
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  .bg {
+    position: absolute; left: 100px; top: 100px;   /* Renderversatz, siehe make-icon.sh */
+    width: 540px; height: 380px; overflow: hidden;
+    background: linear-gradient(160deg, #0b1020 0%, #10172d 55%, #121a33 100%);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .aurora { position: absolute; border-radius: 50%; }
+  .a1 { left: -170px; top: -190px; width: 520px; height: 520px;
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.30), rgba(56, 189, 248, 0) 64%); }
+  .a2 { right: -190px; bottom: -230px; width: 560px; height: 560px;
+        background: radial-gradient(circle, rgba(167, 139, 250, 0.26), rgba(167, 139, 250, 0) 64%); }
+  .a3 { left: 170px; top: 40px; width: 300px; height: 300px;
+        background: radial-gradient(circle, rgba(14, 165, 233, 0.07), rgba(14, 165, 233, 0) 66%); }
+  /* Weicher Lichthof hinter den beiden Symbolen. */
+  .spot { position: absolute; width: 176px; height: 176px; margin: -88px 0 0 -88px; border-radius: 50%;
+          background: radial-gradient(circle, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 68%); }
+  .brand { position: absolute; left: 22px; top: 18px; display: flex; align-items: center; gap: 7px;
+           font-size: 12px; font-weight: 600; letter-spacing: 0.01em; color: rgba(233, 234, 238, 0.82); }
+  .brand i { width: 7px; height: 7px; border-radius: 50%;
+             background: linear-gradient(150deg, #9ae6ff, #0ea5e9); box-shadow: 0 0 8px rgba(56, 189, 248, 0.7); }
+  .arrow { position: absolute; left: 0; top: 0; }
+  .hint { position: absolute; left: 0; right: 0; top: 314px; text-align: center;
+          font-size: 13px; font-weight: 500; color: #a4a9b4; letter-spacing: 0.005em; }
+</style>
+</head>
+<body>
+  <div class="bg">
+    <div class="aurora a1"></div>
+    <div class="aurora a2"></div>
+    <div class="aurora a3"></div>
+    <div class="spot" style="left: 130px; top: 200px"></div>
+    <div class="spot" style="left: 410px; top: 200px"></div>
+    <div class="brand"><i></i>KIRA für Mac</div>
+    <!-- Feiner Pfeil zwischen den Symbolen (Symbolgröße 96 pt → Ränder bei 178 und 362). -->
+    <svg class="arrow" width="540" height="380" viewBox="0 0 540 380" aria-hidden="true">
+      <defs>
+        <linearGradient id="arrowStroke" gradientUnits="userSpaceOnUse" x1="218" y1="0" x2="322" y2="0">
+          <stop offset="0" stop-color="#7dd3fc" stop-opacity="0.15"/>
+          <stop offset="1" stop-color="#e0f2fe" stop-opacity="0.75"/>
+        </linearGradient>
+      </defs>
+      <g fill="none" stroke="url(#arrowStroke)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M218 200H321"/>
+        <path d="M313 192.5L321 200L313 207.5"/>
+      </g>
+    </svg>
+    <div class="hint">KIRA in den Ordner „Programme“ ziehen</div>
+  </div>
+</body>
+</html>

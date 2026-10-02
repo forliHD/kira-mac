@@ -51,7 +51,7 @@ Dashboards.
 - Node 22, npm 10
 - Für Releases: Developer-ID-Zertifikat im Schlüsselbund, Apple-ID mit
   App-spezifischem Passwort, GitHub CLI (`gh`)
-- Optional: `librsvg` (`brew install librsvg`) für `scripts/make-icon.sh`
+- Für `scripts/make-icon.sh` (nur bei Änderungen an `build/icon-src/`): Google Chrome (rendert die SVG-Quellen), `sips`, `iconutil`, `tiffutil` sind an Bord
 
 ## Entwicklung
 

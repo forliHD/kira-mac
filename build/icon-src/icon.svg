@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!--
+    KIRA für Mac – App-Symbol (volle Fassung, ab 64 px).
+    Raster nach Apple (macOS 11+): Leinwand 1024, Körper 824 x 824 bei (100,100),
+    kontinuierliche Ecke mit Radius 185.4 (iOS-/macOS-Squircle, nicht border-radius).
+    Kanten der Sprechblase und der Zeilen liegen auf dem 16er-Raster, damit sie bei
+    64/128/256/512 px scharf bleiben. 16/32 px: icon-small.svg.
+    Gerendert von scripts/make-icon.sh (Headless Chrome).
+  -->
+  <defs>
+    <path id="body" d="M640.59 100C722.19 100 763 100 799.79 112.14L806.92 113.89C854.88 131.34 892.66 169.12 910.11 217.08L911.86 224.21C924 261 924 301.81 924 383.41L924 640.59C924 722.19 924 763 911.86 799.79L910.11 806.92C892.66 854.88 854.88 892.66 806.92 910.11L799.79 911.86C763 924 722.19 924 640.59 924L383.41 924C301.81 924 261 924 224.21 911.86L217.08 910.11C169.12 892.66 131.34 854.88 113.89 806.92L112.14 799.79C100 763 100 722.19 100 640.59L100 383.41C100 301.81 100 261 112.14 224.21L113.89 217.08C131.34 169.12 169.12 131.34 217.08 113.89L224.21 112.14C261 100 301.81 100 383.41 100Z"/>
+    <!-- Sprechblase wie im Design-Pfad: Kreis, linkes unteres Viertel eckig, Spitze unten links. -->
+    <path id="bubble" d="M256 480A256 256 0 1 1 512 736L358.4 736Q332.8 736 314.7 754.1L277.85 790.95Q256 812.8 256 781.9Z"/>
+    <clipPath id="bodyClip"><use href="#body"/></clipPath>
+    <clipPath id="bubbleClip"><use href="#bubble"/></clipPath>
+    <mask id="outsideBubble" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <use href="#bubble" fill="#000"/>
+    </mask>
+    <!-- Himmelblau-Verlauf wie linear-gradient(150deg, …) im Design. -->
+    <linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="230.6" y1="24.6" x2="793.4" y2="999.4">
+      <stop offset="0" stop-color="#9ae6ff"/>
+      <stop offset="0.38" stop-color="#38bdf8"/>
+      <stop offset="0.62" stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#0b4a7a"/>
+    </linearGradient>
+    <!-- Glanzlicht oben links: radial-gradient(90% 60% at 30% 0%, …). -->
+    <radialGradient id="gloss" gradientUnits="userSpaceOnUse" cx="347.2" cy="100" r="741.6"
+      gradientTransform="translate(347.2 100) scale(1 0.6667) translate(-347.2 -100)">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.45"/>
+      <stop offset="0.6" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Kante des Körpers: hell oben, leicht dunkel unten (innen liegend, da geclippt). -->
+    <linearGradient id="rim" gradientUnits="userSpaceOnUse" x1="0" y1="100" x2="0" y2="924">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.8"/>
+      <stop offset="0.22" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.75" stop-color="#001a33" stop-opacity="0"/>
+      <stop offset="1" stop-color="#001a33" stop-opacity="0.28"/>
+    </linearGradient>
+    <!-- Glas der Sprechblase: halbtransparentes Weiß, oben links dichter. -->
+    <linearGradient id="glass" gradientUnits="userSpaceOnUse" x1="307.2" y1="224" x2="640" y2="812.8">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.66"/>
+    </linearGradient>
+    <radialGradient id="innerLight" gradientUnits="userSpaceOnUse" cx="435.2" cy="288" r="268.8">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="tint" gradientUnits="userSpaceOnUse" x1="0" y1="480" x2="0" y2="812.8">
+      <stop offset="0" stop-color="#38bdf8" stop-opacity="0"/>
+      <stop offset="1" stop-color="#0ea5e9" stop-opacity="0.22"/>
+    </linearGradient>
+    <linearGradient id="edge" gradientUnits="userSpaceOnUse" x1="358.4" y1="224" x2="665.6" y2="812.8">
+      <stop offset="0" stop-color="#fff" stop-opacity="1"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.7"/>
+    </linearGradient>
+    <filter id="bodyShadow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="14"/></filter>
+    <filter id="bubbleShadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="20"/></filter>
+    <filter id="refraction" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="6"/></filter>
+  </defs>
+
+  <!-- Schatten des Körpers, bleibt innerhalb der Leinwand (unten ca. 12 px versetzt). -->
+  <use href="#body" fill="#021526" opacity="0.30" transform="translate(0 12)" filter="url(#bodyShadow)"/>
+  <use href="#body" fill="url(#sky)"/>
+
+  <g clip-path="url(#bodyClip)">
+    <use href="#body" fill="url(#gloss)"/>
+
+    <!-- Schatten der Sprechblase nur außerhalb des Glases (sonst wird das Glas trüb). -->
+    <g mask="url(#outsideBubble)">
+      <use href="#bubble" fill="#04304f" opacity="0.32" transform="translate(0 18)" filter="url(#bubbleShadow)"/>
+    </g>
+
+    <!-- Glas-Sprechblase: Füllung, Innenlicht, Tönung, Lichtbrechung am Rand, Kante. -->
+    <use href="#bubble" fill="url(#glass)"/>
+    <g clip-path="url(#bubbleClip)">
+      <use href="#bubble" fill="url(#innerLight)"/>
+      <use href="#bubble" fill="url(#tint)"/>
+      <use href="#bubble" fill="none" stroke="#0ea5e9" stroke-opacity="0.35" stroke-width="34" filter="url(#refraction)"/>
+      <use href="#bubble" fill="none" stroke="url(#edge)" stroke-width="9"/>
+    </g>
+
+    <!-- Zwei kurze Zeilen (wie M9 11h6 / M9 14h4 im Design). -->
+    <g fill="#0b5d96">
+      <rect x="384" y="432" width="256" height="48" rx="24"/>
+      <rect x="384" y="512" width="176" height="48" rx="24"/>
+    </g>
+
+    <use href="#body" fill="none" stroke="url(#rim)" stroke-width="7"/>
+  </g>
+</svg>

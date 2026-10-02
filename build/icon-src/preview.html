@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>KIRA für Mac – Grafik-Übersicht</title>
+<!--
+  Vorlage für build/icon-src/preview.png. scripts/make-icon.sh kopiert die Seite
+  zusammen mit den frisch erzeugten PNGs in ein temporäres Verzeichnis und rendert
+  sie dort (1x, damit jedes Bild 1:1 in echten Pixeln erscheint). Direkt geöffnet
+  fehlen die Bilder – das ist gewollt.
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  .page { position: absolute; left: 100px; top: 100px; width: 1720px; height: 1240px;
+          box-sizing: border-box; padding: 28px 32px; background: #e9eaee; color: #1c1c1e;
+          font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+          -webkit-font-smoothing: antialiased; }
+  h1 { margin: 0 0 4px; font-size: 20px; font-weight: 700; }
+  .sub { margin: 0 0 20px; font-size: 13px; color: #5b5f69; }
+  h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: #3a3d45; }
+  .row { display: flex; gap: 24px; }
+  .panel { flex: 1; border-radius: 14px; padding: 20px 24px 14px; }
+  .light { background: #f7f7f9; color: #1c1c1e; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06); }
+  .dark { background: #1d1e22; color: #e9eaee; }
+  .icons { display: flex; align-items: flex-end; gap: 26px; }
+  figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  figcaption { font-size: 11px; color: #8e95a3; }
+  img { display: block; }
+  .px { image-rendering: pixelated; }
+  .lower { display: flex; gap: 24px; margin-top: 24px; }
+  .bars { flex: 1; display: flex; flex-direction: column; gap: 22px; }
+  .barbox { display: flex; flex-direction: column; gap: 10px; }
+  .menubar { height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: flex-end;
+             gap: 16px; padding: 0 14px; font-size: 13px; font-weight: 500; }
+  .menubar.light { background: rgba(246, 246, 246, 1); color: #1c1c1e; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08); }
+  .menubar.dark { background: #26272b; color: #f2f3f5; }
+  .menubar.x2 { height: 48px; border-radius: 12px; gap: 32px; padding: 0 28px; font-size: 26px; }
+  .menubar.light img { opacity: 0.85; }
+  .dark img.tpl, .menubar.dark img { filter: invert(1); }
+  .states { display: flex; gap: 22px; align-items: flex-end; padding: 12px 14px; border-radius: 10px; }
+  .state { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; color: #8e95a3; }
+  .state .imgs { display: flex; align-items: flex-end; gap: 10px; }
+  .dmgcol { width: 820px; display: flex; gap: 20px; align-items: flex-start; }
+  .dmg { position: relative; width: 540px; height: 380px; border-radius: 10px; overflow: hidden;
+         box-shadow: 0 0 0 1px rgba(0,0,0,0.15); }
+  .dmg img.bg { position: absolute; left: 0; top: 0; width: 540px; height: 380px; }
+  .dmg .item { position: absolute; width: 96px; margin-left: -48px; display: flex; flex-direction: column;
+               align-items: center; gap: 2px; color: #fff; font-size: 12px; }
+  .dmg .item img { width: 96px; height: 96px; }
+  .notes { font-size: 12px; line-height: 1.55; color: #3a3d45; width: 260px; padding-top: 23px; }
+  .notes p { margin: 0 0 8px; }
+  .notes code { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>KIRA für Mac – Grafiken</h1>
+  <p class="sub">App-Symbol aus build/icon.icns (1:1 in Pixeln), Menüleisten-Symbole aus resources/tray, DMG-Hintergrund aus build/background.tiff.</p>
+
+  <div class="row">
+    <div class="panel light">
+      <h2>App-Symbol · hell</h2>
+      <div class="icons">
+        <figure><img src="icon_512x512.png" width="512" height="512" alt=""><figcaption>512</figcaption></figure>
+        <figure><img src="icon_128x128.png" width="128" height="128" alt=""><figcaption>128</figcaption></figure>
+        <figure><img src="icon_32x32.png" width="32" height="32" alt=""><figcaption>32</figcaption></figure>
+        <figure><img src="icon_16x16.png" width="16" height="16" alt=""><figcaption>16</figcaption></figure>
+      </div>
+    </div>
+    <div class="panel dark">
+      <h2 style="color:#d5d9e2">App-Symbol · dunkel</h2>
+      <div class="icons">
+        <figure><img src="icon_512x512.png" width="512" height="512" alt=""><figcaption>512</figcaption></figure>
+        <figure><img src="icon_128x128.png" width="128" height="128" alt=""><figcaption>128</figcaption></figure>
+        <figure><img src="icon_32x32.png" width="32" height="32" alt=""><figcaption>32</figcaption></figure>
+        <figure><img src="icon_16x16.png" width="16" height="16" alt=""><figcaption>16</figcaption></figure>
+      </div>
+    </div>
+  </div>
+
+  <div class="lower">
+  <div class="bars">
+    <div class="barbox">
+      <h2>Menüleiste · hell – 1x (18 px) und Retina @2x (36 px, doppelt groß dargestellt)</h2>
+      <div class="menubar light">
+        <img src="kiraTemplate.png" width="18" height="18" alt="">
+        <img src="kiraOfflineTemplate.png" width="18" height="18" alt="">
+        <img src="kiraDictatingTemplate.png" width="18" height="18" alt="">
+        <span>Fr. 2. Okt.  09:41</span>
+      </div>
+      <div class="menubar light x2">
+        <img src="kiraTemplate@2x.png" width="36" height="36" alt="">
+        <img src="kiraOfflineTemplate@2x.png" width="36" height="36" alt="">
+        <img src="kiraDictatingTemplate@2x.png" width="36" height="36" alt="">
+        <span>Fr. 2. Okt.  09:41</span>
+      </div>
+      <div class="states light">
+        <div class="state"><div class="imgs"><img class="tpl" src="kiraTemplate@2x.png" width="36" height="36" alt=""><img class="tpl px" src="kiraTemplate.png" width="72" height="72" alt=""></div>verbunden</div>
+        <div class="state"><div class="imgs"><img class="tpl" src="kiraOfflineTemplate@2x.png" width="36" height="36" alt=""><img class="tpl px" src="kiraOfflineTemplate.png" width="72" height="72" alt=""></div>getrennt</div>
+        <div class="state"><div class="imgs"><img class="tpl" src="kiraDictatingTemplate@2x.png" width="36" height="36" alt=""><img class="tpl px" src="kiraDictatingTemplate.png" width="72" height="72" alt=""></div>Diktat läuft</div>
+        <div class="state" style="margin-left:auto;text-align:right">@2x in echten Pixeln · 1x vierfach vergrößert</div>
+      </div>
+    </div>
+    <div class="barbox">
+      <h2>Menüleiste · dunkel – 1x und Retina @2x</h2>
+      <div class="menubar dark">
+        <img src="kiraTemplate.png" width="18" height="18" alt="">
+        <img src="kiraOfflineTemplate.png" width="18" height="18" alt="">
+        <img src="kiraDictatingTemplate.png" width="18" height="18" alt="">
+        <span>Fr. 2. Okt.  09:41</span>
+      </div>
+      <div class="menubar dark x2">
+        <img src="kiraTemplate@2x.png" width="36" height="36" alt="">
+        <img src="kiraOfflineTemplate@2x.png" width="36" height="36" alt="">
+        <img src="kiraDictatingTemplate@2x.png" width="36" height="36" alt="">
+        <span>Fr. 2. Okt.  09:41</span>
+      </div>
+      <div class="states dark">
+        <div class="state"><div class="imgs"><img class="tpl" src="kiraTemplate@2x.png" width="36" height="36" alt=""><img class="tpl px" src="kiraTemplate.png" width="72" height="72" alt=""></div>verbunden</div>
+        <div class="state"><div class="imgs"><img class="tpl" src="kiraOfflineTemplate@2x.png" width="36" height="36" alt=""><img class="tpl px" src="kiraOfflineTemplate.png" width="72" height="72" alt=""></div>getrennt</div>
+        <div class="state"><div class="imgs"><img class="tpl" src="kiraDictatingTemplate@2x.png" width="36" height="36" alt=""><img class="tpl px" src="kiraDictatingTemplate.png" width="72" height="72" alt=""></div>Diktat läuft</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dmgcol">
+    <div>
+      <h2>DMG-Fenster 540 × 380 pt (Symbolgröße 96)</h2>
+      <div class="dmg">
+        <img class="bg" src="background.png" alt="">
+        <div class="item" style="left:130px;top:152px"><img src="icon_128x128@2x.png" alt="">KIRA</div>
+        <div class="item" style="left:410px;top:152px"><img src="folder.png" alt="" onerror="this.style.visibility='hidden'">Programme</div>
+      </div>
+    </div>
+    <div class="notes">
+      <h2>Dateien</h2>
+      <p><code>build/icon.icns</code><br>16–1024 px; 16 und 32 px aus <code>icon-small.svg</code></p>
+      <p><code>resources/tray/</code><br><code>kiraTemplate</code> verbunden<br><code>kiraOfflineTemplate</code> getrennt<br><code>kiraDictatingTemplate</code> Diktat läuft<br>je <code>.png</code> (18 px) und <code>@2x.png</code> (36 px)</p>
+      <p><code>build/background.tiff</code><br>540 × 380 und 1080 × 760</p>
+      <p>Quellen in <code>build/icon-src/</code>,<br>neu erzeugen: <code>scripts/make-icon.sh</code></p>
+    </div>
+  </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">
+  <!--
+    Menüleiste, Zustand „getrennt“ → resources/tray/kiraOfflineTemplate(@2x).png.
+    Gleiche Sprechblase gestrichelt, ohne Zeilen. Umfang des Pfads 40.629 pt, genau
+    8 Striche: sichtbarer Strich 3.58 pt, Lücke 1.5 pt (runde Kappen verlängern jeden
+    Strich um die Strichstärke). Der Versatz legt einen Strich mittig auf die Spitze.
+  -->
+  <path d="M3.25 8.5A5.75 5.75 0 1 1 9 14.25H4.6875L3.25 15.6875Z" fill="none" stroke="#000"
+    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+    stroke-dasharray="2.0786 3" stroke-dashoffset="3.1482"/>
+</svg>

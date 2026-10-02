@@ -87,14 +87,26 @@ mac:
     LSApplicationCategoryType: public.app-category.productivity
 
 dmg:
+  # Hintergrund aus build/icon-src/dmg-background.html (scripts/make-icon.sh), 540 × 380 pt
+  # mit @2x-Fassung. dmg-builder nimmt die Fenstergröße aus dem Bild; window steht nur zur
+  # Dokumentation. x/y = Mitte des Symbols in pt, muss zur Vorlage passen.
+  title: "KIRA ${version}"
+  background: build/background.tiff
+  window:
+    width: 540
+    height: 380
+  iconSize: 96
   sign: false
   contents:
     - x: 130
-      y: 220
+      y: 200
+    # Verknüpfung heißt „Programme“ wie im Hinweis auf dem Hintergrund (macOS übersetzt
+    # nur den echten Ordner /Applications, nicht eine Verknüpfung im DMG).
     - x: 410
-      y: 220
+      y: 200
       type: link
       path: /Applications
+      name: Programme
 
 publish:
   provider: github
