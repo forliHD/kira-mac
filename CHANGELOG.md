@@ -6,6 +6,20 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-10-02
+
+### Geändert
+- **Schnellfenster sitzt höher und wird größer** (Owner-Wunsch: „mehr vom
+  Bildschirm nutzen“). Oberkante bei 10 % statt 18 % der Arbeitsfläche, das
+  Fenster wächst bis kurz vor den unteren Rand (4 %, mindestens 28 pt) statt
+  höchstens 75 % der Höhe – auf dem Owner-Mac 859 statt 749 pt. Eine Höhe aus
+  einem anderen Bildschirm wird beim Öffnen auf den Platz des aktuellen
+  begrenzt. Lage und Höhe rechnet jetzt `src/main/windows/quick-geometry.ts`
+  (ohne Electron, `tests/quick-geometry.test.ts`).
+- Die Aktivitätszeile kennt die neuen Mail-Werkzeuge des Servers (KIRA
+  3.301.0): „Markiert E-Mails“, „Verschiebt E-Mails“, „Schaut in die
+  Mail-Ordner“, „Liest einen Mail-Anhang“.
+
 ## [0.3.6] - 2026-10-02
 
 ### Behoben

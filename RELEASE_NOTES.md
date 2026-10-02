@@ -1,12 +1,12 @@
-## KIRA für Mac 0.3.6
+## KIRA für Mac 0.3.7
 
-**Behoben**
+**Geändert**
 
-- Das Hauptfenster verschwand, wenn nach dem Start von KIRA zum ersten Mal
-  das Schnellfenster (⌥ Leertaste) oder das Diktat aufging. KIRA wurde dabei
-  versehentlich zu einem Hintergrundprogramm – ohne Dock-Symbol und ohne
-  ⌘-Tab. Jetzt bleibt KIRA ein normales Programm; Schnellfenster und Diktat
-  erscheinen weiterhin auch über Apps im Vollbild.
+- Das Schnellfenster (⌥ Leertaste) sitzt höher und darf bei langen Chats
+  fast die ganze Bildschirmhöhe nutzen – bis kurz über das Dock.
+- Sobald der KIRA-Server Mails markieren und verschieben kann, zeigt das
+  Schnellfenster dafür eine eigene Statuszeile („Markiert E-Mails“,
+  „Verschiebt E-Mails“).
 
 Die App aktualisiert sich selbst; mit „Jetzt neu starten“ wird das Update
 sofort installiert.

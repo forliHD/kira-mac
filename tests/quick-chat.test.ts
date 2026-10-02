@@ -37,6 +37,9 @@ function last(state: QuickState): QuickMessage {
 describe("toolLabel / localReason", () => {
   it("beschreibt Werkzeuge auf Deutsch, mit Präfix-Regeln und Rückfall", () => {
     expect(toolLabel("mail_search")).toBe("Durchsucht das Postfach");
+    // Mail-Schreibwerkzeuge des Agenten (KIRA 3.301.0): eigene Zeile statt „Arbeitet im Postfach“.
+    expect(toolLabel("mail_mark")).toBe("Markiert E-Mails");
+    expect(toolLabel("mail_move")).toBe("Verschiebt E-Mails");
     expect(toolLabel("tool_web_search")).toBe("Sucht im Web");
     expect(toolLabel("browser_navigate")).toBe("Arbeitet im KI-Browser");
     expect(toolLabel("sandbox_run")).toBe("Arbeitet in der Sandbox");

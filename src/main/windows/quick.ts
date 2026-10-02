@@ -3,7 +3,8 @@
 // `window.KiraLocal` mit src/main/quick-chat.ts spricht. Das Panel aktiviert
 // die App nicht (NSWindowStyleMaskNonactivatingPanel), das vorderste Programm
 // bleibt vorne. Fokusverlust und Esc blenden es aus. Die Höhe wächst mit dem
-// Inhalt (`quickResize`), die Oberkante bleibt stehen.
+// Inhalt (`quickResize`), die Oberkante bleibt stehen. Lage und größte Höhe:
+// src/main/windows/quick-geometry.ts.
 
 import { BrowserWindow, nativeTheme, screen } from "electron";
 
@@ -14,13 +15,11 @@ import { scoped } from "../log";
 import { localPageUrl } from "../paths";
 import { localWebPreferences, openLocalLink } from "./common";
 import { guardLocalPage } from "./local-guard";
+import { QUICK_WIDTH, quickHeight, quickLeft, quickTop } from "./quick-geometry";
 
 const log = scoped("quick-window");
 
-export const QUICK_WIDTH = 680;
-const MIN_HEIGHT = 132;
 const INITIAL_HEIGHT = 168;
-const MAX_SCREEN_SHARE = 0.75;
 export const QUICK_RADIUS = 26;
 
 export interface QuickWindowDeps {
@@ -79,16 +78,15 @@ export class QuickWindowController {
     this.window?.hide();
   }
 
-  /** Gewünschte Inhaltshöhe der Seite; begrenzt auf den Bildschirm, Oberkante fest. */
+  /** Gewünschte Inhaltshöhe der Seite; begrenzt auf den Platz bis unten, Oberkante fest. */
   resize(contentHeight: number): void {
     const win = this.window;
     if (!win) return;
-    const area = screen.getDisplayMatching(win.getBounds()).workArea;
-    const max = Math.round(area.height * MAX_SCREEN_SHARE);
-    const height = Math.max(MIN_HEIGHT, Math.min(max, Math.ceil(contentHeight)));
     const bounds = win.getBounds();
-    if (Math.abs(bounds.height - height) < 2) return;
+    const area = screen.getDisplayMatching(bounds).workArea;
     const top = this.anchorTop ?? bounds.y;
+    const height = quickHeight(area, top, contentHeight);
+    if (Math.abs(bounds.height - height) < 2) return;
     win.setBounds({ x: bounds.x, y: top, width: QUICK_WIDTH, height }, process.platform === "darwin");
   }
 
@@ -173,10 +171,10 @@ export class QuickWindowController {
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
     const area = display.workArea;
     const [, h] = win.getSize();
-    const x = Math.round(area.x + (area.width - QUICK_WIDTH) / 2);
-    // Wie Spotlight: oberes Fünftel, damit Platz zum Wachsen nach unten bleibt.
-    const y = Math.round(area.y + Math.max(48, area.height * 0.18));
+    // Oberkante bei 10 % (Owner-Wunsch 02.10.2026, vorher 18 % wie Spotlight);
+    // die bisherige Höhe nur, soweit sie auf DIESEN Bildschirm passt.
+    const y = quickTop(area);
     this.anchorTop = y;
-    win.setBounds({ x, y, width: QUICK_WIDTH, height: h ?? INITIAL_HEIGHT }, false);
+    win.setBounds({ x: quickLeft(area), y, width: QUICK_WIDTH, height: quickHeight(area, y, h ?? INITIAL_HEIGHT) }, false);
   }
 }
