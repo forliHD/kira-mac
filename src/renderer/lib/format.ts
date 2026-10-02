@@ -65,7 +65,7 @@ export function probeView(result: ProbeResult): ProbeView {
   }
   if (!result.version) {
     // 302/401/403 von Cloudflare Access: erreichbar, die Anmeldung fehlt noch.
-    return { tone: "ok", badge: "Erreichbar", detail: "Erreichbar · Die Anmeldung (z. B. Cloudflare Access) folgt gleich im App-Fenster." };
+    return { tone: "ok", badge: "Erreichbar", detail: "Erreichbar · Die Anmeldung (z. B. Cloudflare Access) läuft danach in deinem Browser." };
   }
   if (!result.bridge) {
     return {
