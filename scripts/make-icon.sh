@@ -5,6 +5,7 @@
 #   resources/tray/kiraTemplate(@2x).png           Menüleiste „verbunden“
 #   resources/tray/kiraOfflineTemplate(@2x).png    Menüleiste „getrennt“
 #   resources/tray/kiraDictatingTemplate(@2x).png  Menüleiste „Diktat läuft“
+#   resources/tray/kiraUpdateTemplate(@2x).png     Menüleiste „Update bereit“
 #   build/background.tiff                 DMG-Hintergrund, 540×380 + 1080×760
 #   build/icon-src/preview.png            Kontroll-Übersicht aller Ergebnisse
 #
@@ -48,7 +49,7 @@ fi
 for tool in sips iconutil tiffutil; do
   command -v "$tool" >/dev/null 2>&1 || die "$tool fehlt – das Skript läuft nur unter macOS."
 done
-for f in icon.svg icon-small.svg tray-connected.svg tray-offline.svg tray-dictating.svg \
+for f in icon.svg icon-small.svg tray-connected.svg tray-offline.svg tray-dictating.svg tray-update.svg \
          dmg-background.html preview.html; do
   [ -f "$SRC/$f" ] || die "Quelle fehlt: build/icon-src/$f"
 done
@@ -163,7 +164,7 @@ echo "✓ build/icon.icns (10 Bilder 16–1024 px, Alpha geprüft)"
 # --- Menüleiste (Template-Bilder: Schwarz + Alpha) ---------------------------------
 echo "Menüleisten-Symbole …"
 for pair in "tray-connected:kiraTemplate" "tray-offline:kiraOfflineTemplate" \
-            "tray-dictating:kiraDictatingTemplate"; do
+            "tray-dictating:kiraDictatingTemplate" "tray-update:kiraUpdateTemplate"; do
   src="${pair%%:*}"; name="${pair#*:}"
   render_svg "$SRC/$src.svg" 18 1 "$TRAY_DIR/$name.png"
   render_svg "$SRC/$src.svg" 18 2 "$TRAY_DIR/$name@2x.png"

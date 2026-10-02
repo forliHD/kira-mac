@@ -1,17 +1,20 @@
-## KIRA für Mac 0.3.3
-
-**Neu**
-
-- **Deine Diktate im Schnellfenster.** ⌥ Leertaste, dann oben auf
-  **Diktate** (oder ⌘2): die letzten Diktate als Karten mit Zeit und
-  Programm. **Kopieren**, **In den Chat** (der Text wird zur Frage an KIRA)
-  oder löschen. Das Eingabefeld sucht dort über alle Diktate, ↑/↓ wählt, ↩
-  kopiert. Neue Diktate erscheinen sofort oben. In der Menüleiste führt
-  „Diktat-Verlauf…“ direkt dorthin.
+## KIRA für Mac 0.3.4
 
 **Behoben**
 
-- Die Denkschritte zählten die Statuszeile „Denke nach…“ mit.
+- „Jetzt neu starten“ beim Update startet jetzt wirklich neu (vorher
+  verschwand nur das Fenster).
 
-Die App aktualisiert sich selbst und installiert das Update beim nächsten
-Beenden (oder sofort über die Menüleiste → „Nach Updates suchen“).
+**Neu: Updates sind sichtbar**
+
+- Ist ein Update geladen, bekommt das K in der Menüleiste einen **Punkt**,
+  ganz oben im Menü steht „**Update installieren (Neustart)**“, und unten im
+  Schnellfenster erscheint „KIRA x.y.z ist bereit – **Jetzt neu starten**“.
+- Die Mitteilung „KIRA x.y.z ist bereit“ hat einen Knopf „Neu starten“.
+- Während des Ladens zeigt das Menüleisten-Menü den Fortschritt;
+  „Nach Updates suchen“ zeigt ihn ebenfalls und fragt, sobald das Update
+  bereit ist.
+
+Hinweis zum Umstieg: Die Korrektur des Neustarts steckt in 0.3.4 selbst. Von
+einer älteren Version aus KIRA einmal über die Menüleiste → „KIRA beenden“
+schließen und neu öffnen – dann wird 0.3.4 installiert.

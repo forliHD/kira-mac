@@ -16,6 +16,9 @@ export interface MenuDeps {
   onNewWindow: () => void;
   hotkeys: () => { quickWindow: string; dictation: string };
   isDictating: () => boolean;
+  /** Fertig geladenes Update (Version) oder null. */
+  updateReady: () => string | null;
+  onInstallUpdate: () => void;
 }
 
 export function buildAppMenu(deps: MenuDeps): void {
@@ -28,7 +31,9 @@ export function buildAppMenu(deps: MenuDeps): void {
         { label: "Über KIRA", role: "about" },
         { type: "separator" },
         { label: "Einstellungen…", accelerator: "Command+,", click: () => deps.onSettings() },
-        { label: "Nach Updates suchen…", click: () => deps.onUpdates() },
+        ...(deps.updateReady()
+          ? [{ label: `Update auf ${deps.updateReady() ?? ""} installieren und neu starten`, click: () => deps.onInstallUpdate() }]
+          : [{ label: "Nach Updates suchen…", click: () => deps.onUpdates() }]),
         { type: "separator" },
         { label: "Dienste", role: "services" },
         { type: "separator" },

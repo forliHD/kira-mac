@@ -10,7 +10,7 @@
 
 import { type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { type DictationEntry, type KiraLocalApi, type QuickDictation, type QuickMessage, type QuickTool } from "../../shared/local-api";
+import { type DictationEntry, type KiraLocalApi, type QuickDictation, type QuickMessage, type QuickTool, type UpdateState } from "../../shared/local-api";
 import { localApi } from "../lib/useLocalState";
 import {
   AlertIcon,
@@ -91,6 +91,18 @@ export function App(): ReactNode {
   const [dictSel, setDictSel] = useState(0);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // Auto-Update: ist eine neue Version geladen, unten ein Hinweis mit „Jetzt neu starten“.
+  const [update, setUpdate] = useState<UpdateState | null>(null);
+  useEffect(() => {
+    try {
+      localApi()
+        .getState()
+        .then((s) => setUpdate(s.update))
+        .catch(() => undefined);
+    } catch {
+      /* Vorschau ohne Hülle */
+    }
+  }, []);
 
   const rootRef = useRef<HTMLElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
@@ -198,6 +210,8 @@ export function App(): ReactNode {
           inputRef.current?.select();
         } else if (event.type === "quick-view") {
           switchView(event.view);
+        } else if (event.type === "update") {
+          setUpdate(event.update);
         } else if (event.type === "dictation-history") {
           // Neues Diktat (oder gelöscht): Liste frisch, falls sie schon geladen war.
           if (viewRef.current === "dictations") void loadDictations();
@@ -574,6 +588,16 @@ export function App(): ReactNode {
             <span>{OFFLINE_HINT}</span>
           </p>
         )
+      ) : null}
+
+      {update?.status === "downloaded" ? (
+        <div className="q-update" role="status">
+          <span className="q-update-dot" aria-hidden="true" />
+          <span className="q-ellipsis">KIRA {update.version} ist bereit – das Update wird beim Neustart installiert.</span>
+          <button type="button" className="q-update-btn" onClick={() => call((api) => api.installUpdate())}>
+            Jetzt neu starten
+          </button>
+        </div>
       ) : null}
 
       {view === "dictations" ? (

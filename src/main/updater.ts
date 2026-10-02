@@ -2,6 +2,13 @@
 // electron-builder.yml → app-update.yml). Prüfung 30 s nach dem Start und
 // alle 6 h, Menüpunkt für die Prüfung von Hand, Hinweis bei fertigem Download,
 // Installation beim Beenden.
+//
+// Owner-Fund 02.10.2026: Nach dem Download sah man nur kurz eine Mitteilung,
+// dann nichts mehr; jeder Klick auf „Nach Updates suchen“ stieß den laufenden
+// Download neu an. Jetzt: von Hand geprüft → Rückfrage „Jetzt neu starten“,
+// sobald das Update bereit ist; währenddessen zeigt die Prüfung nur den
+// Fortschritt. Dauerhaft sichtbar machen es Menüleiste (Punkt + Menüeintrag)
+// und Schnellfenster (Hinweis) – siehe index.ts.
 
 import { EventEmitter } from "node:events";
 
@@ -25,6 +32,23 @@ export class Updater extends EventEmitter<UpdaterEvents> {
   private timer: NodeJS.Timeout | null = null;
   private interval: NodeJS.Timeout | null = null;
   private wired = false;
+  /** Von Hand geprüft: beim fertigen Download direkt fragen, ob neu gestartet werden soll. */
+  private manualRequested = false;
+  /** Referenz halten – sonst räumt der GC die Mitteilung samt Klick-Handler ab. */
+  private readyNotice: Notification | null = null;
+  /** Vor dem Installieren: die App auf „wird beendet“ stellen (index.ts). */
+  private beforeInstall: (() => void) | null = null;
+
+  /**
+   * Live-Befund 02.10.2026: „Jetzt neu starten“ startete nicht neu – KIRA
+   * verschwand nur, das Menüleisten-Symbol blieb. `quitAndInstall` schließt
+   * zuerst alle Fenster und beendet die App erst danach; das Hauptfenster
+   * fängt „Schließen“ aber ab (Ausblenden, Menüleisten-App), solange die App
+   * nicht weiß, dass sie beendet wird – `before-quit` kommt hier zu spät.
+   */
+  setBeforeInstall(fn: () => void): void {
+    this.beforeInstall = fn;
+  }
 
   get state(): UpdateState {
     return this.current;
@@ -58,6 +82,24 @@ export class Updater extends EventEmitter<UpdaterEvents> {
       return this.current;
     }
     this.wire();
+    // Läuft schon ein Download oder ist er fertig: nicht neu anstoßen.
+    if (this.current.status === "downloading") {
+      if (manual) {
+        this.manualRequested = true;
+        const pct = this.current.progress !== null ? ` (${this.current.progress} %)` : "";
+        await dialog.showMessageBox({
+          type: "info",
+          message: `Version ${this.current.version ?? ""} wird gerade geladen${pct}.`,
+          detail: "Sobald sie bereit ist, fragt KIRA, ob neu gestartet werden soll. Den Stand siehst du auch in der Menüleiste.",
+          buttons: ["OK"],
+        });
+      }
+      return this.current;
+    }
+    if (this.current.status === "downloaded") {
+      if (manual) await this.promptRestart();
+      return this.current;
+    }
     this.set({ status: "checking", message: "Suche nach Updates…", progress: null });
     try {
       const result = await autoUpdater.checkForUpdates();
@@ -68,10 +110,11 @@ export class Updater extends EventEmitter<UpdaterEvents> {
           await dialog.showMessageBox({ type: "info", message: "KIRA ist auf dem neuesten Stand.", detail: `Version ${app.getVersion()}`, buttons: ["OK"] });
         }
       } else if (manual) {
+        this.manualRequested = true;
         await dialog.showMessageBox({
           type: "info",
           message: `Version ${info.version} wird geladen.`,
-          detail: "Die Installation erfolgt beim nächsten Beenden von KIRA.",
+          detail: "Sobald sie bereit ist, fragt KIRA, ob neu gestartet werden soll. Den Stand siehst du auch in der Menüleiste.",
           buttons: ["OK"],
         });
       }
@@ -86,7 +129,23 @@ export class Updater extends EventEmitter<UpdaterEvents> {
   /** Sofort installieren (Menüpunkt, sobald ein Download fertig ist). */
   installNow(): void {
     if (this.current.status !== "downloaded") return;
+    log.info("update_install_now", { version: this.current.version });
+    this.beforeInstall?.();
     autoUpdater.quitAndInstall();
+  }
+
+  /** „KIRA x.y.z ist bereit – Jetzt neu starten / Später“. */
+  private async promptRestart(): Promise<void> {
+    const version = this.current.version ?? "";
+    const r = await dialog.showMessageBox({
+      type: "info",
+      message: `KIRA ${version} ist bereit.`,
+      detail: "Jetzt neu starten, um das Update zu installieren? Sonst wird es beim nächsten Beenden installiert.",
+      buttons: ["Jetzt neu starten", "Später"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (r.response === 0) this.installNow();
   }
 
   private wire(): void {
@@ -108,11 +167,19 @@ export class Updater extends EventEmitter<UpdaterEvents> {
       this.set({ status: "downloaded", version: info.version, message: `Version ${info.version} ist bereit und wird beim Beenden installiert.`, progress: 100 });
       if (Notification.isSupported()) {
         const n = new Notification({
-          title: "KIRA-Update bereit",
-          body: `Version ${info.version} wird beim nächsten Beenden installiert. Klicken, um jetzt neu zu starten.`,
+          title: `KIRA ${info.version} ist bereit`,
+          body: "Neu starten, um das Update zu installieren – oder es kommt beim nächsten Beenden.",
+          actions: [{ type: "button", text: "Neu starten" }],
+          closeButtonText: "Später",
         });
-        n.on("click", () => autoUpdater.quitAndInstall());
+        n.on("click", () => this.installNow());
+        n.on("action", () => this.installNow());
+        this.readyNotice = n;
         n.show();
+      }
+      if (this.manualRequested) {
+        this.manualRequested = false;
+        void this.promptRestart();
       }
     });
     autoUpdater.on("error", (err) => {

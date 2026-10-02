@@ -200,6 +200,14 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
 - **Schnellfenster-Denkschritte** (seit 0.3.2): Frames `thinking` und
   `inner_thought` → `QuickMessage.reasoning` (`appendReasoning`, höchstens 40
   Schritte), eingeklappt als „Nachgedacht“ (`Reasoning` in quick/App.tsx).
+- **Update-Neustart braucht das Beenden-Signal vorher** (seit 0.3.4):
+  `autoUpdater.quitAndInstall()` schließt erst alle Fenster und beendet dann –
+  das Hauptfenster blendet sich beim Schließen aber nur aus, solange
+  `quitting` falsch ist (`before-quit` kommt zu spät). `updater.installNow()`
+  ruft deshalb vorher den Haken aus `setBeforeInstall` (setzt `quitting`).
+  Sichtbarkeit eines fertigen Updates: Menüleisten-Symbol „update“ (Punkt),
+  Menüeintrag oben, App-Menü, Schnellfenster-Hinweis (`q-update`, Ereignis
+  `update` geht auch ans Schnellfenster), Mitteilung mit Knopf.
 - **Mitteilungs-Stream ohne Anmeldung wartet** (`LOGIN_WAIT_MS`, 5 min) auf
   `loginChanged()` statt im Takt anzufragen; `reconnectNow()` (Minuten-Prüfung)
   weckt ihn nicht, ein stehender Stream übersteht Token-Erneuerungen.

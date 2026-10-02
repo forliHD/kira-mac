@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">
+  <!--
+    Menüleiste, Zustand „Update bereit“ → resources/tray/kiraUpdateTemplate(@2x).png.
+    Sprechblase mit „K“ wie „verbunden“, oben rechts ein gefüllter Punkt (r 2.6 pt);
+    um den Punkt ist die Blase ausgespart (Maske, 1.2 pt Abstand), damit er auch
+    als Template-Bild (nur Schwarz + Alpha) frei steht.
+  -->
+  <defs>
+    <mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="18" height="18">
+      <rect width="18" height="18" fill="#fff"/>
+      <circle cx="14.4" cy="3.6" r="3.8" fill="#000"/>
+    </mask>
+  </defs>
+  <g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" mask="url(#cut)">
+    <path d="M3.25 8.5A5.75 5.75 0 1 1 9 14.25H4.6875L3.25 15.6875Z" stroke-width="1.5"/>
+    <path d="M7.25 6V11M10.75 6L7.4 9.1M8.75 7.95L10.85 11" stroke-width="1.25"/>
+  </g>
+  <circle cx="14.4" cy="3.6" r="2.6" fill="#000"/>
+</svg>

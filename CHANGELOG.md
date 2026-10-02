@@ -6,6 +6,25 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-10-02
+
+### Behoben
+- **„Jetzt neu starten“ startete nicht neu** – KIRA verschwand nur, das
+  Menüleisten-Symbol blieb. `quitAndInstall` schließt zuerst alle Fenster, das
+  Hauptfenster blendete sich aber nur aus (Menüleisten-App), weil die App noch
+  nicht wusste, dass sie beendet wird. Der Updater meldet das jetzt vorher
+  (`setBeforeInstall`).
+
+### Geändert
+- **Updates sind sichtbar:** Ist ein Update geladen, bekommt das
+  Menüleisten-Symbol einen Punkt, ganz oben im Menüleisten-Menü und im
+  KIRA-Menü steht „Update installieren (Neustart)“, das Schnellfenster zeigt
+  „KIRA x.y.z ist bereit – Jetzt neu starten“, und die Mitteilung hat einen
+  Knopf „Neu starten“. Während des Ladens zeigt das Menüleisten-Menü den
+  Fortschritt. „Nach Updates suchen“ stößt einen laufenden Download nicht mehr
+  neu an, sondern zeigt den Stand – und fragt „Jetzt neu starten / Später“,
+  sobald das Update bereit ist.
+
 ## [0.3.3] - 2026-10-02
 
 ### Hinzugefügt

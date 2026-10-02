@@ -1,10 +1,12 @@
 // Menüleisten-Symbol: Status (verbunden/offline), Öffnen, Schnellfenster,
 // Diktat starten/stoppen, Einstellungen, Nach Updates suchen, Beenden.
-// Drei Template-Bilder (resources/tray/): verbunden, getrennt (gestrichelt),
-// Diktat läuft (Mikrofon). Fehlt eines, nimmt es das verbundene.
+// Vier Template-Bilder (resources/tray/): verbunden, getrennt (gestrichelt),
+// Diktat läuft (Mikrofon), Update bereit (Punkt). Fehlt eines, nimmt es das
+// verbundene. Ist ein Update geladen, steht „installieren“ ganz oben im Menü.
 
 import { Menu, type MenuItemConstructorOptions, type NativeImage, Tray, nativeImage } from "electron";
 
+import { type UpdateState } from "../shared/local-api";
 import { describeAccelerator } from "./hotkeys";
 import { scoped } from "./log";
 import { resourcePath } from "./paths";
@@ -24,14 +26,18 @@ export interface TrayDeps {
   hasDictation: () => boolean;
   onCopyLastDictation: () => void;
   onDictationHistory: () => void;
+  /** Stand des Auto-Updates (updater.ts). */
+  update: () => UpdateState;
+  onInstallUpdate: () => void;
 }
 
-type TrayLook = "online" | "offline" | "dictating";
+type TrayLook = "online" | "offline" | "dictating" | "update";
 
 const TRAY_FILES: Record<TrayLook, string> = {
   online: "kiraTemplate.png",
   offline: "kiraOfflineTemplate.png",
   dictating: "kiraDictatingTemplate.png",
+  update: "kiraUpdateTemplate.png",
 };
 
 function loadTemplate(file: string): NativeImage | null {
@@ -80,13 +86,22 @@ export class TrayController {
     if (!this.tray) return;
     const hk = this.deps.hotkeys();
     const dictating = this.deps.isDictating();
-    const look: TrayLook = dictating ? "dictating" : this.online ? "online" : "offline";
+    const update = this.deps.update();
+    const ready = update.status === "downloaded";
+    const look: TrayLook = dictating ? "dictating" : ready ? "update" : this.online ? "online" : "offline";
     if (look !== this.look) {
       const image = this.images[look] ?? this.images.online;
       if (image) this.tray.setImage(image);
       this.look = look;
     }
+    // Update ganz oben: bereit → installieren; beim Laden der Fortschritt.
+    const updateItems: MenuItemConstructorOptions[] = ready
+      ? [{ label: `Update auf ${update.version ?? "neue Version"} installieren (Neustart)`, click: () => this.deps.onInstallUpdate() }, { type: "separator" }]
+      : update.status === "downloading"
+        ? [{ label: `Update ${update.version ?? ""} wird geladen … ${update.progress ?? 0} %`, enabled: false }, { type: "separator" }]
+        : [];
     const template: MenuItemConstructorOptions[] = [
+      ...updateItems,
       {
         label: this.online ? `Verbunden mit ${this.label}` : `Offline – ${this.detail ?? "Instanz nicht erreichbar"}`,
         enabled: false,
@@ -110,7 +125,7 @@ export class TrayController {
       { label: "KIRA beenden", click: () => this.deps.onQuit() },
     ];
     this.tray.setContextMenu(Menu.buildFromTemplate(template));
-    this.tray.setToolTip(this.online ? `KIRA – verbunden mit ${this.label}` : "KIRA – offline");
+    this.tray.setToolTip(ready ? `KIRA – Update ${update.version ?? ""} bereit` : this.online ? `KIRA – verbunden mit ${this.label}` : "KIRA – offline");
   }
 
   destroy(): void {

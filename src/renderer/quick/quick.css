@@ -1289,3 +1289,50 @@ html.quick body {
   flex: none;
   margin-top: 2px;
 }
+
+/* ── Hinweis „Update bereit“ ───────────────────────────────────────── */
+.q-update {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px 7px 12px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  color: var(--q-text);
+  background: color-mix(in srgb, var(--q-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--q-accent) 38%, transparent);
+}
+.q-update > .q-ellipsis {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.q-update-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--q-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--q-accent) 25%, transparent);
+}
+.q-update-btn {
+  all: unset;
+  box-sizing: border-box;
+  flex: none;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: light-dark(#ffffff, #04121b);
+  background: var(--q-accent);
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+.q-update-btn:hover {
+  filter: brightness(1.08);
+}
+.q-update-btn:focus-visible {
+  outline: 2px solid var(--q-focus);
+  outline-offset: 2px;
+}

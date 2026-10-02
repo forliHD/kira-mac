@@ -147,6 +147,8 @@ class KiraApp {
       isDictating: () => this.dictation.currentState !== "idle",
       hotkeys: () => this.config.hotkeys,
       hasDictation: () => this.history.latest() !== null,
+      update: () => updater.state,
+      onInstallUpdate: () => updater.installNow(),
       onCopyLastDictation: () => this.copyDictation(null),
       onDictationHistory: () => this.openQuickDictations(),
     });
@@ -154,7 +156,24 @@ class KiraApp {
     this.rebuildMenu();
     this.applyHotkeys();
     this.applyLoginItem();
-    updater.on("state", (state) => this.broadcast({ type: "update", update: state }));
+    // Vor quitAndInstall: Fenster dürfen sich wirklich schließen (sonst blendet das
+    // Hauptfenster sich nur aus und die App startet nie neu – updater.ts).
+    updater.setBeforeInstall(() => {
+      this.quitting = true;
+    });
+    let lastUpdate: { status: string; version: string | null; decile: number } | null = null;
+    updater.on("state", (state) => {
+      this.broadcast({ type: "update", update: state });
+      // Menüleiste, App-Menü und Schnellfenster nur bei echten Änderungen (der
+      // Fortschritt kommt jede Sekunde): Status, Version oder je 10 %.
+      const decile = Math.floor((state.progress ?? 0) / 10);
+      if (lastUpdate && lastUpdate.status === state.status && lastUpdate.version === state.version && lastUpdate.decile === decile) return;
+      const statusChanged = !lastUpdate || lastUpdate.status !== state.status || lastUpdate.version !== state.version;
+      lastUpdate = { status: state.status, version: state.version, decile };
+      this.quickWin?.send({ type: "update", update: state });
+      this.tray?.refresh();
+      if (statusChanged) this.rebuildMenu();
+    });
     updater.start();
 
     session.onSessionRequest(() => {
@@ -621,6 +640,8 @@ class KiraApp {
       onNewWindow: () => (this.quickWin.isFocused() ? this.quickChat.reset() : this.openInstanceWindow("/")),
       hotkeys: () => this.config.hotkeys,
       isDictating: () => this.dictation.currentState !== "idle",
+      updateReady: () => (updater.state.status === "downloaded" ? (updater.state.version ?? "neue Version") : null),
+      onInstallUpdate: () => updater.installNow(),
     });
   }
 
