@@ -123,8 +123,12 @@ export class Updater extends EventEmitter<UpdaterEvents> {
   }
 
   private set(patch: Partial<UpdateState>): void {
+    const before = this.current;
     this.current = { ...this.current, ...patch };
-    log.info("update_state", { status: this.current.status, version: this.current.version });
+    // Nur Statuswechsel protokollieren – der Fortschritt kommt beim Laden jede Sekunde.
+    if (before.status !== this.current.status || before.version !== this.current.version) {
+      log.info("update_state", { status: this.current.status, version: this.current.version });
+    }
     this.emit("state", this.current);
   }
 }

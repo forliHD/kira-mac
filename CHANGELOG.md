@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 [SemVer](https://semver.org/lang/de/).
 
+## [Unreleased]
+
+### Geändert
+- Das Protokoll hält beim Laden eines Updates nur noch Statuswechsel fest
+  (vorher eine Zeile je Sekunde Fortschritt).
+
 ## [0.1.1] - 2026-10-02
 
 ### Geändert
