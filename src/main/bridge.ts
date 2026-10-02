@@ -13,6 +13,7 @@ import {
   type AppInfo,
   BRIDGE_VERSION,
   type BridgeInfo,
+  type BrowserSignInResult,
   type Capability,
   type InstanceInfo,
   type NotifyPayload,
@@ -44,6 +45,8 @@ export interface BridgeContext {
   /** Hauptfenster zeigen + Navigation (Klick auf eine Benachrichtigung aus `notify`). */
   onNotificationClick: (url: string | undefined) => void;
   onSessionChanged: (hasTokens: boolean) => void;
+  /** SSO im System-Browser für die Instanz-Origin des Absenders (browser-login.ts). */
+  signInWithBrowser: (origin: string) => Promise<BrowserSignInResult>;
 }
 
 /** Bootstrap-Antwort für den Preload (synchron, beim Laden jeder Instanz-Seite). */
@@ -141,6 +144,17 @@ export function registerBridgeIpc(ctx: BridgeContext): void {
     if (!isTrusted(event, ctx.origins())) throw new Error("Nicht erlaubt.");
     if (typeof value !== "string" || !/^(https?|mailto|tel):/i.test(value)) throw new Error("openExternal erwartet eine http(s)-, mailto- oder tel-URL.");
     openExternalSafely(value);
+  });
+
+  ipcMain.handle(IPC.signInWithBrowser, async (event): Promise<BrowserSignInResult> => {
+    if (!isTrusted(event, ctx.origins())) throw new Error("Nicht erlaubt.");
+    let origin: string;
+    try {
+      origin = new URL(senderUrl(event)).origin;
+    } catch {
+      return { started: false, error: "Unbekannte Instanz-Adresse." };
+    }
+    return ctx.signInWithBrowser(origin);
   });
 
   ipcMain.handle(IPC.sttStatus, async (event): Promise<SttStatus> => {

@@ -19,6 +19,13 @@ describe("Konfiguration: Kürzel des globalen Diktats", () => {
     expect(cfg.hotkeys).toEqual({ quickWindow: "Alt+Space", dictation: "Control+Alt+D" });
   });
 
+  it("die 🌐 fn-Taste bleibt erhalten (einheitlich „Fn“), ist aber kein Standard", () => {
+    expect(migrateDictationHotkey("fn")).toBe("Fn");
+    expect(migrateDictationHotkey("Fn")).toBe("Fn");
+    expect(normalizeConfig({ hotkeys: { quickWindow: "Alt+Space", dictation: "FN" } }).hotkeys.dictation).toBe("Fn");
+    expect(normalizeConfig({}).hotkeys.dictation).toBe("Control+Alt+D");
+  });
+
   it("kennt die neuen Felder mit sicheren Standards", () => {
     const cfg = normalizeConfig({});
     expect(cfg.dictation.dashboardStt).toBe(true);

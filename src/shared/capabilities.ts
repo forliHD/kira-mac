@@ -8,7 +8,7 @@ import { type HelperFeatures } from "./helper-types";
  * Die Reihenfolge entspricht der Tabelle im Vertrag.
  */
 export function capabilitiesFrom(features: HelperFeatures | null | undefined): Capability[] {
-  const caps: Capability[] = ["session", "notifications", "open-external", "quick-window"];
+  const caps: Capability[] = ["session", "notifications", "open-external", "quick-window", "browser-login"];
   if (!features) return caps;
   if (features.stt) caps.push("stt");
   if (features.systemAudio) caps.push("system-audio");

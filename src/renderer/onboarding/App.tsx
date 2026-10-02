@@ -1,11 +1,13 @@
 // Einrichtung beim ersten Start (760×560, Ampel oben links, Vibrancy):
 // Schritt 1 – Adresse(n) der Instanz mit Live-Prüfung; Schritt 2 – was die
 // App kann und welche macOS-Freigaben später gefragt werden. „Los geht’s“
-// speichert (falls nötig) und schließt die Einrichtung ab.
+// speichert (falls nötig) und schließt die Einrichtung ab. „Ändern“ neben
+// einem Kürzel öffnet Einstellungen → Tastenkürzel (dort auch die 🌐 fn-Taste).
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { MIN_SERVER_VERSION_WITH_BRIDGE } from "../../shared/bridge";
+import { isFnHotkey } from "../../shared/hotkey";
 import { type LocalState } from "../../shared/local-api";
 import { mockParam } from "../lib/dev-mock";
 import { InstanceField, reachable, valueToSave } from "../lib/instance-field";
@@ -30,12 +32,15 @@ function Feature({
   icon,
   title,
   hotkey,
+  onChangeHotkey,
   warning,
   children,
 }: {
   icon: ReactNode;
   title: string;
   hotkey?: string;
+  /** „Ändern“ unter dem Kürzel → Einstellungen → Tastenkürzel. */
+  onChangeHotkey?: () => void;
   warning?: string | null;
   children: ReactNode;
 }): ReactNode {
@@ -53,7 +58,16 @@ function Feature({
             </span>
           ) : null}
         </div>
-        {hotkey ? <KbdCombo accelerator={hotkey} /> : null}
+        {hotkey ? (
+          <div className="flex flex-none flex-col items-end gap-[5px]">
+            <KbdCombo accelerator={hotkey} />
+            {onChangeHotkey ? (
+              <button type="button" className="g-link text-[12px]" aria-label={`Kürzel für „${title}“ ändern`} onClick={onChangeHotkey}>
+                Ändern
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </GlassCard>
     </li>
   );
@@ -170,6 +184,17 @@ export function App(): ReactNode {
   const bridgeWarning =
     best?.version && !best.bridge ? `Braucht KIRA ${MIN_SERVER_VERSION_WITH_BRIDGE} oder neuer – dein Server meldet ${best.version}.` : null;
 
+  // Einstellungen → Tastenkürzel (dort lässt sich das Diktat auch auf 🌐 fn legen).
+  function changeHotkeys(): void {
+    try {
+      void localApi()
+        .openSettings("kuerzel")
+        .catch((err: unknown) => setError(errorText(err)));
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
   return (
     <div className="onb">
       <div className="onb-aurora is-a" aria-hidden="true" />
@@ -238,11 +263,18 @@ export function App(): ReactNode {
           </div>
 
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
-            <Feature icon={<IconBolt size={20} />} title="Schnellfenster" hotkey={hotkeys.quickWindow}>
+            <Feature icon={<IconBolt size={20} />} title="Schnellfenster" hotkey={hotkeys.quickWindow} onChangeHotkey={changeHotkeys}>
               Frag KIRA aus jedem Programm, ohne das Hauptfenster zu öffnen.
             </Feature>
-            <Feature icon={<IconMic size={20} />} title="Diktat in jedes Programm" hotkey={hotkeys.dictation} warning={sttWarning}>
+            <Feature
+              icon={<IconMic size={20} />}
+              title="Diktat in jedes Programm"
+              hotkey={hotkeys.dictation}
+              onChangeHotkey={changeHotkeys}
+              warning={sttWarning}
+            >
               Der Text landet am Cursor. Erkannt auf dem Apple-Chip – der Ton bleibt auf dem Mac.
+              {isFnHotkey(hotkeys.dictation) ? " Tippen schaltet an und aus, Halten heißt Sprechen." : " Lieber mit der fn-Taste? Unter „Ändern“."}
             </Feature>
             <Feature icon={<IconBell size={20} />} title="Mitteilungen vom Server" warning={bridgeWarning}>
               Fertige Antworten und Erinnerungen als macOS-Mitteilung, auch bei geschlossenem Fenster.

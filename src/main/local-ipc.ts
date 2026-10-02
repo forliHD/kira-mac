@@ -26,7 +26,8 @@ export interface LocalIpcContext {
   logPath: () => string;
   hudStop: () => Promise<void>;
   retry: () => Promise<void>;
-  openSettings: () => void;
+  /** `section`: Bereich der Einstellungen („kuerzel“, „diktat“ …) oder null für den Standard. */
+  openSettings: (section: string | null) => void;
   openMain: () => void;
   openLink: (url: string) => void;
   quick: {
@@ -120,7 +121,14 @@ export function registerLocalIpc(ctx: LocalIpcContext): void {
   );
   ipcMain.handle(LOCAL_IPC.hudStop, guard(() => ctx.hudStop()));
   ipcMain.handle(LOCAL_IPC.retry, guard(() => ctx.retry()));
-  ipcMain.handle(LOCAL_IPC.openSettings, guard(() => ctx.openSettings()));
+  ipcMain.handle(
+    LOCAL_IPC.openSettings,
+    guard((section: unknown) => {
+      // Nur ein kurzer Bereichsname – die Einstellungsseite kennt die gültigen.
+      const s = typeof section === "string" && /^[a-z]{1,24}$/.test(section) ? section : null;
+      ctx.openSettings(s);
+    }),
+  );
   ipcMain.handle(LOCAL_IPC.openMain, guard(() => ctx.openMain()));
   ipcMain.handle(
     LOCAL_IPC.openLink,

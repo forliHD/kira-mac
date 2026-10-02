@@ -1,9 +1,11 @@
 // Globale Tastenkürzel (konfigurierbar). Standard: Schnellfenster Alt+Space,
 // globales Diktat Control+Alt+D (⌃⌥D). Konflikte (anderes Programm hält das Kürzel)
-// werden gemeldet statt still zu scheitern.
+// werden gemeldet statt still zu scheitern. Diktat auf der 🌐 fn-Taste („Fn“) ist
+// kein Electron-Kürzel – das übernimmt src/main/fn-key.ts über den Helfer.
 
 import { globalShortcut } from "electron";
 
+import { FN_LABEL, isFnHotkey } from "../shared/hotkey";
 import { type HotkeyConfig } from "../shared/local-api";
 import { scoped } from "./log";
 
@@ -22,8 +24,9 @@ export function isValidAccelerator(value: string): boolean {
   return keys.length === 1;
 }
 
-/** Menschlich lesbar (⌥⌘D) für Menüs und Hinweise. */
+/** Menschlich lesbar (⌥⌘D, 🌐 fn) für Menüs und Hinweise. */
 export function describeAccelerator(value: string): string {
+  if (isFnHotkey(value)) return FN_LABEL;
   return value
     .split("+")
     .map((p) => p.trim())
@@ -60,12 +63,18 @@ export interface HotkeyHandlers {
 export function registerHotkeys(hotkeys: HotkeyConfig, handlers: HotkeyHandlers): string[] {
   globalShortcut.unregisterAll();
   const conflicts: string[] = [];
-  const entries: Array<[string, string, () => void]> = [
-    ["Schnellfenster", hotkeys.quickWindow, handlers.quickWindow],
-    ["Globales Diktat", hotkeys.dictation, handlers.dictation],
+  // Letztes Feld: darf die 🌐 fn-Taste sein (nur das Diktat).
+  const entries: Array<[string, string, () => void, boolean]> = [
+    ["Schnellfenster", hotkeys.quickWindow, handlers.quickWindow, false],
+    ["Globales Diktat", hotkeys.dictation, handlers.dictation, true],
   ];
-  for (const [label, accelerator, handler] of entries) {
+  for (const [label, accelerator, handler, fnAllowed] of entries) {
     if (!accelerator) continue;
+    if (isFnHotkey(accelerator)) {
+      // fn ist kein Electron-Kürzel; fürs Diktat hört der Helfer darauf (fn-key.ts).
+      if (!fnAllowed) conflicts.push(`${label}: Die 🌐 fn-Taste geht nur für das Diktat.`);
+      continue;
+    }
     if (!isValidAccelerator(accelerator)) {
       conflicts.push(`${label}: „${accelerator}“ ist kein gültiges Tastenkürzel.`);
       continue;

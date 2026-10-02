@@ -16,6 +16,7 @@ import {
   updateLong,
   updateShort,
 } from "../src/renderer/lib/format";
+import { sectionFromName, sectionFromQuery } from "../src/renderer/settings/shared";
 import { type ProbeResult } from "../src/shared/local-api";
 
 const probe = (p: Partial<ProbeResult>): ProbeResult => ({ url: "https://kira.example.de", ok: true, version: "3.297.0", bridge: true, error: null, latencyMs: 12, ...p });
@@ -115,5 +116,16 @@ describe("Berechtigungen und Sprachen", () => {
     expect(hostOf("https://kira.example.de/")).toBe("kira.example.de");
     expect(hostOf("192.168.178.166:8420")).toBe("192.168.178.166:8420");
     expect(hostOf("")).toBeNull();
+  });
+});
+
+describe("Einstellungen: Bereich aus Name oder ?section=", () => {
+  it("kennt deutsche und englische Namen, sonst nichts", () => {
+    expect(sectionFromName("kuerzel")).toBe("kuerzel");
+    expect(sectionFromName("Hotkeys")).toBe("kuerzel");
+    expect(sectionFromName("constructor")).toBeNull();
+    expect(sectionFromName("")).toBeNull();
+    expect(sectionFromQuery("?section=hotkeys")).toBe("kuerzel");
+    expect(sectionFromQuery("?section=__proto__")).toBe("instanz");
   });
 });

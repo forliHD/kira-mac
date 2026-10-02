@@ -14,6 +14,7 @@ export const IPC = {
   openExternal: "kira:openExternal",
   sttStatus: "kira:sttStatus",
   transcribe: "kira:transcribe",
+  signInWithBrowser: "kira:signInWithBrowser",
   // Hauptprozess → Instanz-Preload (CustomEvent "kira:native")
   nativeEvent: "kira:event",
 } as const;

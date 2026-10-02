@@ -145,6 +145,7 @@ final class DispatcherTests: XCTestCase {
             "llm.status", "llm.generate", "llm.stream", "llm.cancel",
             "audio.system.start", "audio.system.stop",
             "text.insert", "text.frontmost",
+            "fn.watch", "fn.status",
         ]
         XCTAssertEqual(Set(dispatcher.commands), expected)
     }

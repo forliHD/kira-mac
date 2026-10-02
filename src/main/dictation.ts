@@ -130,6 +130,12 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
   private target: DictationTarget = "insert";
 
   private state: DictationState = "idle";
+  /** Zählt Starts; ein `start()`, dessen Zahl nicht mehr stimmt, wurde abgebrochen. */
+  private generation = 0;
+  /** `stt.start` ist unterwegs – ein Stopp muss die Antwort abwarten, sonst läuft der Stream weiter. */
+  private sttStarting = false;
+  /** Abgebrochen (`cancel`): ausstehende `stt.final` nicht mehr einsetzen. */
+  private discard = false;
   private vocabulary: { terms: string[]; fetchedAt: number } | null = null;
   private previousTail = "";
   private hudState: HudState = { phase: "starting", level: 0, partial: "", app: null, message: null };
@@ -163,7 +169,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     this.helper.off("event", this.onHelperEvent);
   }
 
-  /** Hotkey/Knopf: läuft es, wird gestoppt, sonst gestartet (optional mit festem Ziel). */
+  /** Hotkey/Knopf/fn-Tippen: läuft es, wird gestoppt, sonst gestartet (optional mit festem Ziel). */
   async toggle(target?: DictationTarget): Promise<void> {
     if (this.state === "listening" || this.state === "starting") await this.stop();
     else if (this.state === "idle") await this.start(target);
@@ -193,20 +199,26 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
 
   async start(target?: DictationTarget): Promise<void> {
     if (this.state !== "idle") return;
+    const generation = ++this.generation;
     const wanted = target ?? this.getTarget?.() ?? "insert";
     this.target = wanted === "quick" && this.quick ? "quick" : "insert";
+    this.discard = false;
     this.setState("starting");
     this.clearHideTimer();
     this.previousTail = "";
     this.setHud({ phase: "starting", level: 0, partial: "", app: null, message: null });
     if (this.target === "insert") this.hud.show();
 
+    // Nach jedem Warten: wurde inzwischen gestoppt/abgebrochen (z. B. fn
+    // nur kurz gehalten), hat stop()/cancel() schon aufgeräumt.
     const avail = await this.availability();
+    if (generation !== this.generation) return;
     if (!avail.ok) {
       this.failStart(avail.reason);
       return;
     }
     const perm = await this.ensurePermissions();
+    if (generation !== this.generation) return;
     if (perm) {
       this.failStart(perm);
       return;
@@ -216,8 +228,10 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       this.target === "insert" ? this.frontmost() : Promise.resolve(null),
       this.contextualStrings(),
     ]);
+    if (generation !== this.generation) return;
     this.setHud({ app: this.target === "quick" ? "KIRA" : (front?.name ?? null) });
 
+    this.sttStarting = true;
     try {
       await this.helper.request("stt.start", {
         stream: DICTATION_STREAM_ID,
@@ -226,17 +240,68 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
         source: "microphone",
       });
     } catch (err) {
-      this.failStart(`Spracherkennung konnte nicht starten: ${err instanceof Error ? err.message : String(err)}`);
+      this.sttStarting = false;
+      // Wer schon gestoppt hat, will keine Fehlermeldung mehr sehen.
+      if (this.stopRequested()) this.finish();
+      else this.failStart(`Spracherkennung konnte nicht starten: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    this.sttStarting = false;
+    if (this.stopRequested()) {
+      // stop()/cancel() kam, während stt.start lief: Stream gleich wieder beenden.
+      await this.requestStop();
       return;
     }
     this.setState("listening");
     this.setHud({ phase: "listening" });
   }
 
+  /** Beenden: noch ausstehender Text wird eingesetzt. */
   async stop(): Promise<void> {
-    if (this.state === "idle" || this.state === "stopping") return;
+    await this.end(false);
+  }
+
+  /**
+   * Abbrechen ohne Einsetzen (fn-Taste: es war doch eine Tastenkombination).
+   * Ausstehende Äußerungen werden verworfen, die Pille verschwindet sofort.
+   */
+  async cancel(): Promise<void> {
+    await this.end(true);
+  }
+
+  private async end(discard: boolean): Promise<void> {
+    if (discard) this.discard = true;
+    if (this.state === "idle") {
+      // Eine stehende Fehlermeldung (z. B. fehlende Freigabe) gleich mit wegnehmen.
+      if (discard) this.dismiss();
+      return;
+    }
+    if (this.state === "stopping") {
+      if (discard) this.dismiss();
+      return;
+    }
+    if (this.state === "starting" && !this.sttStarting) {
+      // Beim Helfer läuft noch nichts: sofort fertig; der laufende start()
+      // erkennt an der Zahl, dass er nicht mehr gemeint ist.
+      this.generation++;
+      this.finish();
+      return;
+    }
     this.setState("stopping");
-    this.setHud({ phase: "stopping" });
+    if (discard) this.dismiss();
+    else this.setHud({ phase: "stopping" });
+    if (this.sttStarting) return; // start() stoppt nach der Antwort auf stt.start
+    await this.requestStop();
+  }
+
+  /** Kam während des Starts ein stop()/cancel()? (Eigene Methode: TypeScript hält
+   *  `this.state` nach dem `idle`-Test am Anfang von start() sonst für unveränderlich.) */
+  private stopRequested(): boolean {
+    return this.state === "stopping";
+  }
+
+  private async requestStop(): Promise<void> {
+    const generation = this.generation;
     try {
       await this.helper.request("stt.stop", { stream: DICTATION_STREAM_ID });
     } catch (err) {
@@ -245,8 +310,16 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     }
     // `stt.ended` beendet den Zustand; falls es ausbleibt, räumt ein Timer auf.
     setTimeout(() => {
-      if (this.state === "stopping") this.finish();
+      if (this.state === "stopping" && generation === this.generation) this.finish();
     }, 3_000).unref?.();
+  }
+
+  /** Abbruch: Pille sofort weg, Schnellfenster wieder ruhig – ohne Meldung. */
+  private dismiss(): void {
+    this.clearHideTimer();
+    this.hudState = { ...this.hudState, phase: "stopping", level: 0, partial: "", message: null };
+    if (this.target === "quick") this.quick?.update({ active: false, level: 0, partial: "", reason: null });
+    else this.hud.hide();
   }
 
   /** Die Begriffe: Cache für eine Stunde, Server-Fehler ergeben die Mindestliste. */
@@ -322,11 +395,14 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
         this.setHud({ partial: typeof data.text === "string" ? data.text : "" });
         break;
       case "stt.final":
+        if (this.discard) break; // abgebrochen: nichts mehr einsetzen
         void this.insertFinal(typeof data.text === "string" ? data.text : "");
         break;
       case "stt.ended": {
         const ended = data as unknown as SttEnded;
-        if (ended.reason === "error") {
+        if (this.discard) {
+          this.finish();
+        } else if (ended.reason === "error") {
           this.setHud({ phase: "error", message: ended.message ?? "Spracherkennung abgebrochen." });
           this.finish(true);
         } else {
@@ -378,6 +454,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
   }
 
   private finish(linger = false): void {
+    this.sttStarting = false;
     this.setState("idle");
     if (this.target === "quick") {
       this.quick?.update({ active: false, level: 0, partial: "", reason: linger ? this.hudState.message : null });

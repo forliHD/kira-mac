@@ -20,6 +20,13 @@ const log = scoped("notifications");
 
 export const RECONNECT_BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000] as const;
 export const IDLE_TIMEOUT_MS = 60_000;
+/**
+ * Ohne Anmeldung (401, das Dashboard hat keine Tokens) wartet der Stream, bis
+ * `loginChanged()` ihn weckt – höchstens so lange, dann ein stiller Versuch.
+ * Live 02.10.: Abgemeldet fragte die App den Server alle 10–20 s an, und jede
+ * Runde bat das Dashboard zweimal um eine Sitzung.
+ */
+export const LOGIN_WAIT_MS = 5 * 60_000;
 
 export interface NotificationClientDeps {
   session: Session;
@@ -75,6 +82,8 @@ export class NotificationClient extends EventEmitter<NotificationClientEvents> {
   private loopPromise: Promise<void> | null = null;
   private wakeResolve: (() => void) | null = null;
   private connected = false;
+  private waitingForLogin = false;
+  private lastSubscribeStatus: number | null = null;
 
   constructor(deps: NotificationClientDeps) {
     super();
@@ -83,6 +92,11 @@ export class NotificationClient extends EventEmitter<NotificationClientEvents> {
 
   get isConnected(): boolean {
     return this.connected;
+  }
+
+  /** Wartet der Stream auf eine Anmeldung (401 ohne Tokens)? */
+  get isWaitingForLogin(): boolean {
+    return this.waitingForLogin;
   }
 
   get endpoint(): string {
@@ -105,8 +119,28 @@ export class NotificationClient extends EventEmitter<NotificationClientEvents> {
     this.loopPromise = null;
   }
 
-  /** Sofort neu verbinden (z. B. nach Instanzwechsel oder neuer Sitzung). */
+  /**
+   * Sofort neu verbinden (Verbindungsprüfung, Instanzwechsel). Wartet der
+   * Stream auf eine Anmeldung, bleibt er liegen – das weckt nur
+   * `loginChanged()`, sonst fragte die Minuten-Prüfung ohne Sitzung im
+   * Dauerlauf an.
+   */
   reconnectNow(): void {
+    if (this.waitingForLogin) return;
+    this.attempt = 0;
+    this.abort?.abort();
+    this.wakeResolve?.();
+  }
+
+  /**
+   * Neue Anmeldung: Tokens vom Dashboard (`setSession`) oder Seite nach einer
+   * Cloudflare-Anmeldung geladen. Ein stehender Stream bleibt stehen – jede
+   * Token-Erneuerung des Dashboards ruft das hier (früher: Neuaufbau dabei).
+   */
+  loginChanged(): void {
+    const wasWaiting = this.waitingForLogin;
+    this.waitingForLogin = false;
+    if (this.connected && !wasWaiting) return;
     this.attempt = 0;
     this.abort?.abort();
     this.wakeResolve?.();
@@ -120,14 +154,16 @@ export class NotificationClient extends EventEmitter<NotificationClientEvents> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subscription: { endpoint: this.endpoint }, prefs: null }),
       });
+      this.lastSubscribeStatus = res.status;
       if (!res.ok) {
-        log.warn("push_subscribe_failed", { status: res.status });
+        if (res.status !== 401) log.warn("push_subscribe_failed", { status: res.status });
         return false;
       }
       this.subscribedOnce = true;
       log.info("push_subscribed");
       return true;
     } catch (err) {
+      this.lastSubscribeStatus = null;
       log.warn("push_subscribe_error", { error: err instanceof Error ? err.message : String(err) });
       return false;
     }
@@ -150,10 +186,21 @@ export class NotificationClient extends EventEmitter<NotificationClientEvents> {
 
   private async loop(): Promise<void> {
     while (this.running) {
-      if (!this.subscribedOnce) await this.subscribe();
-      const outcome = await this.connectOnce();
+      let outcome: "retry-now" | "backoff" | "login";
+      if (!this.subscribedOnce && !(await this.subscribe()) && this.lastSubscribeStatus === 401) {
+        outcome = "login";
+      } else {
+        outcome = await this.connectOnce();
+      }
       if (!this.running) break;
       if (outcome === "retry-now") {
+        continue;
+      }
+      if (outcome === "login") {
+        if (!this.waitingForLogin) log.info("push_waiting_for_login");
+        this.waitingForLogin = true;
+        this.setConnected(false, "Nicht angemeldet");
+        await this.sleep(LOGIN_WAIT_MS);
         continue;
       }
       const delay = RECONNECT_BACKOFF_MS[Math.min(this.attempt, RECONNECT_BACKOFF_MS.length - 1)] ?? 30_000;
@@ -164,7 +211,7 @@ export class NotificationClient extends EventEmitter<NotificationClientEvents> {
     this.setConnected(false, "gestoppt");
   }
 
-  private async connectOnce(): Promise<"retry-now" | "backoff"> {
+  private async connectOnce(): Promise<"retry-now" | "backoff" | "login"> {
     const controller = new AbortController();
     this.abort = controller;
     let idleTimer: NodeJS.Timeout | null = null;
@@ -185,7 +232,7 @@ export class NotificationClient extends EventEmitter<NotificationClientEvents> {
       if (res.status === 401) {
         this.setConnected(false, "Sitzung abgelaufen");
         const ok = await this.deps.session.requestFreshSession();
-        return ok ? "retry-now" : "backoff";
+        return ok ? "retry-now" : "login";
       }
       if (res.status === 404) {
         const text = await res.text().catch(() => "");
@@ -217,6 +264,7 @@ export class NotificationClient extends EventEmitter<NotificationClientEvents> {
       });
       resetIdle();
       this.attempt = 0;
+      this.waitingForLogin = false;
       this.setConnected(true);
       await pumpSseStream(res.body, parser, controller.signal);
       this.setConnected(false, "Verbindung beendet");

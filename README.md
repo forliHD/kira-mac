@@ -17,7 +17,21 @@ lokale Diktat.
   ⌘N beginnt neu. Ohne Verbindung antwortet das Apple-Sprachmodell lokal
   (gekennzeichnet, nicht gespeichert).
 - **Globales Diktat** (⌃⌥D) in jedes Programm über die Glas-Pille unten
-  (HUD); im Schnellfenster landet es im Eingabefeld.
+  (HUD); im Schnellfenster landet es im Eingabefeld. Statt der Kombination
+  geht auch die **🌐 fn-Taste**: kurz tippen schaltet das Diktat an und aus,
+  gedrückt halten heißt sprechen – loslassen setzt den Text ein; fn zusammen
+  mit einer anderen Taste (fn + ←, fn + ⌫ …) bleibt, was es war
+  (`src/main/fn-key.ts`, Event-Tap im Helfer). Damit macOS beim Tippen nicht
+  zusätzlich „Emoji & Symbole“ o. ä. öffnet, in den Tastatur-Einstellungen
+  bei der fn-Taste „Keine Aktion“ wählen – die Einstellungen weisen darauf hin.
+- **Tastenkürzel ändern:** Einstellungen → Tastenkürzel (⌘, im Menü KIRA, oder
+  „Ändern“ neben den Kürzeln in der Einrichtung): Kürzel per Tastendruck
+  aufnehmen, fürs Diktat „fn-Taste“ oder „Tastenkombination“ wählen.
+- **Anmeldung über Microsoft & Co. im Browser** (ab KIRA 3.299.0, Fähigkeit
+  `browser-login`): Im App-Fenster funktionieren Passkeys nicht, deshalb öffnet
+  „Mit … anmelden“ den Standard-Browser (RFC 8252 + PKCE,
+  `src/main/browser-login.ts`). Danach kommt die Anmeldung über
+  `de.kira.mac:/auth/callback` in die App zurück.
 - **Diktat im Dashboard** über den Apple-Chip (Brücke `transcribe`).
 - **Mitteilungen** über den Geräte-Stream des Servers; kein Banner, wenn das
   Hauptfenster oder das Schnellfenster den Chat gerade zeigt.
@@ -117,6 +131,13 @@ Einstellungen und Offline-Seite und legt Bildschirmfotos des Webinhalts ab
 (natives Glas ist darauf nicht zu sehen). Beide Umgebungsvariablen wirken nur
 unverpackt; die ausgelieferte App sperrt `--inspect` per Electron-Fuse.
 
+**Anmeldung im Browser** Ende zu Ende: `scripts/e2e/browser-login.mjs` bringt
+einen Test-Anbieter (OIDC) mit; die Instanz läuft dafür OHNE Entwicklerzugang
+und zeigt auf ihn (Befehl im Kopf des Skripts). Geprüft wird Login-Seite →
+App öffnet `/api/auth/app/login` → Browser-Teil → Übergabe an
+`de.kira.mac:/auth/callback` → Einlösen → Dashboard angemeldet, Gerätesitzung
+„macOS · KIRA für Mac“, kein zweites Einlösen.
+
 ## Release (lokal, kein CI)
 
 Die Build-Ausgabe liegt in `~/Library/Caches/kira-mac/dist` (änderbar über
@@ -177,7 +198,7 @@ Berechtigungen zeigt den Stand und bietet Knöpfe zum Erteilen.
 |---|---|
 | Mikrofon | Diktat im Dashboard (WebView) und globales Diktat (Helfer) |
 | Spracherkennung | Erkennung auf dem Gerät (`Speech`-Framework) |
-| Bedienungshilfen | Text in das vorderste Programm einsetzen |
+| Bedienungshilfen | Text in das vorderste Programm einsetzen; die 🌐 fn-Taste als Diktat-Auslöser erkennen |
 | Bildschirmaufnahme | Computer-Ton bei Besprechungen (nur Audio, ScreenCaptureKit) |
 
 Die Texte dazu stehen in `electron-builder.yml` (`extendInfo`), die
@@ -195,12 +216,13 @@ src/main/            Hauptprozess
   notifications.ts   SSE-Client /api/push/stream, sse.ts  reiner Parser
   helper.ts          Swift-Helfer (Spawn, JSON-Zeilen, Zeitlimits, Neustart)
   dictation.ts       globales Diktat (Hotkey → stt.start → Befehle → text.insert)
+  fn-key.ts          🌐 fn-Taste: Tippen/Halten/Kombination → Diktat (Zustandsmaschine)
   bridge.ts          IPC hinter window.KiraNative, local-ipc.ts  IPC der lokalen Seiten
   hotkeys.ts tray.ts updater.ts links.ts downloads.ts menu.ts log.ts paths.ts
   windows/           main, quick, hud, settings, onboarding, common
 src/preload/         index.ts (Instanz: KiraNative), api.ts (reine Fabrik), audio.ts (WAV), local.ts (KiraLocal)
 src/renderer/        onboarding, settings, hud, offline, quick (React 19 + Tailwind 4), lib/, styles/
-src/shared/          bridge.ts (Vertragstypen), helper-types.ts, capabilities.ts, dictationText.js (Kopie)
+src/shared/          bridge.ts (Vertragstypen), helper-types.ts, capabilities.ts, hotkey.ts (fn-Taste), dictationText.js (Kopie)
 helper/              Swift-Helfer (eigenes Paket, siehe docs/helper-protocol.md)
 tests/               vitest
 scripts/             build-helper.sh, release.sh, sync-shared.sh, make-icon.sh, after-pack.cjs, e2e/

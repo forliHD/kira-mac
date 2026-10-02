@@ -11,7 +11,7 @@ import { type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttribute
 
 import { acceleratorKeys, spokenAccelerator } from "./accelerator";
 import { type Tone } from "./format";
-import { IconAlert, IconChat, IconCheck, IconInfo } from "./icons";
+import { IconAlert, IconChat, IconCheck, IconGlobe, IconInfo } from "./icons";
 
 export type { Tone };
 
@@ -186,6 +186,13 @@ function withGlyphs(text: string): ReactNode {
   const parts: ReactNode[] = [];
   let run = "";
   for (const ch of text) {
+    if (ch === "🌐") {
+      // Die 🌐 fn-Taste: einfarbiger Globus wie auf der Apple-Tastatur statt des bunten Emojis.
+      if (run) parts.push(run);
+      run = "";
+      parts.push(<IconGlobe key={parts.length} size={12} strokeWidth={2} className="g-kbd-globe" />);
+      continue;
+    }
     if (!KEY_GLYPHS.has(ch)) {
       run += ch;
       continue;

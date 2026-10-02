@@ -3,6 +3,7 @@
 // Einfügen von Diktat-Text, Höhenmeldung.
 
 import { insertAtCaret } from "../../shared/dictationText.js";
+import { FN_LABEL, isFnHotkey } from "../../shared/hotkey";
 import { type QuickMessage, type QuickState, type QuickTool } from "../../shared/local-api";
 
 export type Tone = "ok" | "warn" | "err" | "idle";
@@ -130,8 +131,9 @@ const KEY_GLYPHS: Record<string, string> = {
   plus: "+",
 };
 
-/** Electron-Kürzel („Alt+Space“, „CommandOrControl+Shift+D“) → Mac-Zeichen in Apple-Reihenfolge. */
+/** Electron-Kürzel („Alt+Space“, „CommandOrControl+Shift+D“) → Mac-Zeichen in Apple-Reihenfolge; „Fn“ → „🌐 fn“. */
 export function formatAccelerator(accelerator: string): string[] {
+  if (isFnHotkey(accelerator)) return [FN_LABEL];
   const parts = accelerator
     .split("+")
     .map((p) => p.trim())

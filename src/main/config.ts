@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 
 import { app } from "electron";
 
+import { FN_HOTKEY, isFnHotkey } from "../shared/hotkey";
 import { type DictationConfig, type GeneralConfig, type HotkeyConfig, type InstanceConfig } from "../shared/local-api";
 import { scoped } from "./log";
 
@@ -37,7 +38,9 @@ export interface AppConfig {
 export const DEFAULT_HOTKEYS: HotkeyConfig = {
   quickWindow: "Alt+Space",
   // ⌃⌥D: ⌥⌘D blendet unter macOS das Dock ein/aus (Systemkürzel) – 0.1.0
-  // hatte es als Standard, normalizeConfig zieht es um.
+  // hatte es als Standard, normalizeConfig zieht es um. Die 🌐 fn-Taste („Fn“)
+  // ist wählbar, aber kein Standard: macOS belegt 🌐 meist selbst (Emoji,
+  // Eingabequelle), das muss der Nutzer erst abschalten.
   dictation: "Control+Alt+D",
 };
 
@@ -55,8 +58,9 @@ export function defaultConfig(): AppConfig {
   };
 }
 
-/** ⌥⌘D (Standard in 0.1.0) kollidiert mit „Dock ein-/ausblenden“ – auf ⌃⌥D umziehen. */
+/** ⌥⌘D (Standard in 0.1.0) kollidiert mit „Dock ein-/ausblenden“ – auf ⌃⌥D umziehen; fn einheitlich „Fn“. */
 export function migrateDictationHotkey(value: string): string {
+  if (isFnHotkey(value)) return FN_HOTKEY;
   return value === "Alt+Command+D" ? DEFAULT_HOTKEYS.dictation : value;
 }
 

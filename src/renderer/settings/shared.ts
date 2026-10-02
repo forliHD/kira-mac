@@ -31,8 +31,14 @@ const ALIASES: Record<string, SectionId> = {
   updates: "ueber",
 };
 
+/** Bereich aus einem Namen („hotkeys“, „kuerzel“ …); unbekannt → null. */
+export function sectionFromName(name: string | null | undefined): SectionId | null {
+  const key = (name ?? "").toLowerCase();
+  // Nur eigene Einträge – „constructor“ & Co. vom Objekt-Prototyp sind kein Bereich.
+  return Object.hasOwn(ALIASES, key) ? (ALIASES[key] ?? null) : null;
+}
+
 /** Startbereich aus `?section=` (der Hauptprozess kann so gezielt öffnen). */
 export function sectionFromQuery(search: string): SectionId {
-  const value = new URLSearchParams(search).get("section")?.toLowerCase() ?? "";
-  return ALIASES[value] ?? "instanz";
+  return sectionFromName(new URLSearchParams(search).get("section")) ?? "instanz";
 }

@@ -12,7 +12,8 @@ Alles, was Apple-Schnittstellen braucht, lebt in Swift: Spracherkennung
 (`Speech` / `SpeechAnalyzer`, ab macOS 26; Rückfall `SFSpeechRecognizer`
 On-Device), Apple-Sprachmodell (`FoundationModels`, ab macOS 26),
 Systemton (`ScreenCaptureKit`), Text in das vorderste Programm einfügen
-(Accessibility / `CGEvent`), Berechtigungen. Electron bleibt frei von nativen
+(Accessibility / `CGEvent`), die 🌐 fn-Taste als Diktat-Auslöser
+(passiver Event-Tap), Berechtigungen. Electron bleibt frei von nativen
 Node-Modulen; der Helfer ist eine einzelne, signierte Binärdatei in
 `Contents/Resources/helper/kira-helper`.
 
@@ -109,6 +110,35 @@ Eingaben vorher zu; der Helfer meldet Überlänge als `context_too_long`.
 |---|---|---|
 | `text.insert` | `{"text", "mode": "auto" \| "ax" \| "paste"}` | `{"method": "ax" \| "paste"}`. `auto`: erst Accessibility (`kAXSelectedTextAttribute` des fokussierten Elements), bei Fehlschlag Einsetzen über die Zwischenablage mit ⌘V per `CGEvent`; der vorherige Inhalt der Zwischenablage wird danach wiederhergestellt |
 | `text.frontmost` | – | `{"bundleId", "name"}` des vordersten Programms (für den HUD-Hinweis „Diktat in Mail“) |
+
+### fn-Taste (🌐) als Diktat-Auslöser
+
+| `cmd` | `params` | `result` / Ereignisse |
+|---|---|---|
+| `fn.watch` | `{"enabled": true \| false}` | Status wie `fn.status`; `true` legt einen passiven Event-Tap (`listenOnly`, Sitzungsebene) auf einem eigenen Thread mit eigener Run-Loop an, `false` baut ihn ab (beides idempotent). Danach Ereignisse `fn.down` (`{"secure": bool}`), `fn.chord` (`{}`), `fn.up` (`{"chord": bool}`) |
+| `fn.status` | – | `{"watching": bool, "tap": "off" \| "active" \| "permission" \| "failed", "accessibility": bool, "inputMonitoring": bool, "fnUsage": 0…3 \| null}` |
+
+- `fn.down`/`fn.up`: die fn-Taste (`kVK_Function`, auch die Globus-Taste)
+  wurde gedrückt bzw. losgelassen. `fn.chord` kommt höchstens einmal je Druck,
+  sobald währenddessen irgendeine andere Taste kam (auch ⇧⌃⌥⌘ oder eine
+  Medien-/Helligkeitstaste, NX_SYSDEFINED); `fn.up` wiederholt das als
+  `chord`. Mausklicks zählen nicht. `secure: true`: sichere Texteingabe war
+  aktiv (Passwortfeld) – dann sieht der Tap keine anderen Tasten.
+- **Datenschutz:** Die Ereignisse tragen nur Wahrheitswerte. Tastencodes und
+  Zeichen anderer Tasten werden nie gelesen, gesendet, protokolliert oder
+  gespeichert; andere Tasten werden nur angesehen, solange fn gedrückt ist.
+- Schaltet macOS den Tap ab (`tapDisabledByTimeout`/`…ByUserInput`), schaltet
+  der Helfer ihn sofort wieder ein und holt ein verpasstes `fn.up` nach.
+- Ohne Freigabe „Bedienungshilfen“ (oder „Eingabeüberwachung“) antwortet
+  `fn.watch` mit `permission_denied` (`reason: "accessibility"`) und fragt
+  selbst NICHT nach – kein zweiter Systemdialog; die Hülle führt zu den
+  Bedienungshilfen, die sie fürs Einsetzen ohnehin braucht.
+- `fnUsage` ist die Systemeinstellung „🌐 drücken für“ (`com.apple.HIToolbox`
+  → `AppleFnUsageType`): 0 Keine Aktion, 1 Eingabequelle wechseln, 2 Emoji &
+  Symbole, 3 Diktat starten, `null` = nie geändert (macOS-Standard). Der
+  Helfer liest sie nur und ändert sie nie.
+- Was ein Druck bedeutet (Tippen, Halten, Kombination), entscheidet Electron
+  (`src/main/fn-key.ts`).
 
 ## Fehlercodes
 

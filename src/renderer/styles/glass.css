@@ -517,6 +517,11 @@ body[data-reduced-transparency="true"] {
     font-weight: 500;
     line-height: 1;
   }
+  /* 🌐 der fn-Taste als einfarbiger Globus (das Emoji wäre bunt) */
+  .g-kbd-globe {
+    flex: 0 0 auto;
+    margin-right: 4px;
+  }
   .g-kbd-combo {
     display: inline-flex;
     align-items: center;

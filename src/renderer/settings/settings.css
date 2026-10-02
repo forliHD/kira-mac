@@ -163,6 +163,67 @@ body[data-page="settings"][data-reduced-transparency="true"] {
   color: var(--g-warn);
 }
 
+/* Diktat-Auslöser: „🌐 fn-Taste“ | „Tastenkombination“ (Segmente im Glas-Stil) */
+.hk-seg {
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 11px;
+  border: 1px solid var(--g-pill-line);
+  background: var(--g-inset);
+  box-shadow: var(--g-field-inset);
+}
+.hk-seg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font: 500 12.5px/1 var(--g-font);
+  white-space: nowrap;
+  color: var(--g-text-2);
+  cursor: default;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+.hk-seg-item > svg {
+  flex: 0 0 auto;
+  opacity: 0.9;
+}
+.hk-seg-item:hover:not([aria-checked="true"]):not(:disabled) {
+  background: var(--g-ghost-hover);
+  color: var(--g-text);
+}
+.hk-seg-item[aria-checked="true"] {
+  background: var(--g-nav-active);
+  color: var(--g-nav-active-text);
+  box-shadow: var(--g-nav-active-edge);
+}
+.hk-seg-item:disabled {
+  opacity: 0.45;
+}
+.hk-seg-item:focus-visible {
+  outline-offset: 0;
+}
+
+/* Hinweis mit Knopf rechts (fehlende Freigabe, Systemeinstellung zu 🌐) */
+.hk-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+}
+.hk-note > span {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
 /* Über: Schlüssel/Wert-Liste */
 .about-list {
   margin: 0;

@@ -12,6 +12,7 @@ export interface InstanceConfig {
 
 export interface HotkeyConfig {
   quickWindow: string;
+  /** Electron-Kürzel („Control+Alt+D“) oder „Fn“ für die 🌐 fn-Taste (src/shared/hotkey.ts). */
   dictation: string;
 }
 
@@ -64,6 +65,24 @@ export interface DictationStatus {
   stt: HelperSttStatus | null;
   permissions: PermissionsStatus | null;
   hotkeyConflicts: string[];
+  fnKey: FnKeyStatus;
+}
+
+/** Was macOS selbst beim Drücken von 🌐 tut (`AppleFnUsageType`); `default` = nie geändert. */
+export type FnSystemAction = "none" | "inputSource" | "emoji" | "dictation" | "default";
+
+/** Die 🌐 fn-Taste als Auslöser des globalen Diktats (src/main/fn-key.ts). */
+export interface FnKeyStatus {
+  /**
+   * off: nicht gewählt · starting: wird eingeschaltet · active: KIRA hört auf fn ·
+   * paused: während ein Kürzel aufgenommen wird · permission: Freigabe „Bedienungshilfen“ fehlt ·
+   * unavailable: Helfer läuft nicht oder kennt fn nicht · error: anderer Fehler
+   */
+  state: "off" | "starting" | "active" | "paused" | "permission" | "unavailable" | "error";
+  /** Deutscher Satz zum Zustand (Grund bei permission/unavailable/error), sonst null. */
+  message: string | null;
+  /** macOS-Einstellung zu 🌐; null = unbekannt (Helfer hat nicht geantwortet). */
+  systemAction: FnSystemAction | null;
 }
 
 /** Wie die Fenster gezeichnet werden: echtes Liquid Glass (macOS 26+,
@@ -159,7 +178,9 @@ export type LocalEvent =
   /** Diktat im Schnellfenster: fertiger Text (Diktierbefehle schon angewandt) an der Cursorposition einfügen. */
   | { type: "quick-insert"; text: string }
   /** Schnellfenster wurde gezeigt: Eingabefeld fokussieren. */
-  | { type: "quick-shown" };
+  | { type: "quick-shown" }
+  /** Einstellungen (schon offen): zu diesem Bereich wechseln (`openSettings(section)`). */
+  | { type: "settings-section"; section: string };
 
 export interface KiraLocalApi {
   getState(): Promise<LocalState>;
@@ -178,7 +199,8 @@ export interface KiraLocalApi {
   openLogs(): Promise<void>;
   hudStop(): Promise<void>;
   retry(): Promise<void>;
-  openSettings(): Promise<void>;
+  /** Einstellungen öffnen, optional bei einem Bereich (z. B. „kuerzel“ für die Tastenkürzel). */
+  openSettings(section?: string): Promise<void>;
   openMain(): Promise<void>;
   /** Link aus einer lokalen Seite: Instanz-Adresse → Hauptfenster, sonst System-Browser. */
   openLink(url: string): Promise<void>;

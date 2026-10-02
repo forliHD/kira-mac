@@ -9,6 +9,11 @@
 // das Aufgenommene genau zu dem, was der Hauptprozess registriert. Folge auf
 // deutscher Tastatur: die mit „Z“ beschriftete Taste wird als „Y“ gespeichert –
 // und genau diese Taste löst das Kürzel später auch aus.
+//
+// „Fn“ (nur fürs Diktat) ist kein aufgenommenes Kürzel, sondern die 🌐 fn-Taste;
+// sie wird in den Einstellungen per Auswahl gesetzt und hier nur angezeigt.
+
+import { FN_LABEL, isFnHotkey } from "../../shared/hotkey";
 
 export type Modifier = "Control" | "Alt" | "Shift" | "Command";
 
@@ -197,6 +202,8 @@ export function sameAccelerator(a: string, b: string): boolean {
 /** Beschriftung einer Taste auf der Kappe. */
 export function keySymbol(key: string): string {
   switch (key.toLowerCase()) {
+    case "fn":
+      return FN_LABEL;
     case "space":
       return "␣";
     case "return":
@@ -244,6 +251,7 @@ export function modifierSymbols(modifiers: readonly Modifier[]): string[] {
 
 /** Für Bildschirmleser: „Wahltaste Befehlstaste D“. */
 export function spokenAccelerator(value: string): string {
+  if (isFnHotkey(value)) return "fn-Taste (Globus)";
   const { modifiers, key } = parseAccelerator(value);
   if (!modifiers.length && !key) return "kein Kürzel";
   const keyText = key === null ? "" : /^space$/i.test(key) ? "Leertaste" : key;

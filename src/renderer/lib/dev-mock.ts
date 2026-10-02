@@ -11,10 +11,14 @@
 // ext=…/int=… (gespeicherte Adressen; „offline“/„alt“/„cf.“ im Namen steuern
 // die Prüfung) ·
 // step=2 (Einrichtung) · conflicts=1 · update=<Status> · HUD: phase=…,
-// app=…, partial=…, message=…, live=1.
+// app=…, partial=…, message=…, live=1 · Diktat auf der 🌐 fn-Taste: fn=1
+// (bzw. fn=permission|unavailable|error), fnaction=none|inputSource|emoji|dictation|default.
 
+import { FN_HOTKEY, fnSystemActionFrom, isFnHotkey } from "../../shared/hotkey";
 import { type HelperInfo, type PermissionKind, type PermissionsStatus } from "../../shared/helper-types";
 import {
+  type FnKeyStatus,
+  type FnSystemAction,
   type HudPhase,
   type HudState,
   type KiraLocalApi,
@@ -92,6 +96,32 @@ function updateState(status: string | null): UpdateState {
   }
 }
 
+const FN_ACTIONS: Record<string, number | null> = { none: 0, inputSource: 1, emoji: 2, dictation: 3, default: null };
+
+function fnSystemAction(p: URLSearchParams): FnSystemAction {
+  const raw = p.get("fnaction") ?? "emoji";
+  return fnSystemActionFrom(raw in FN_ACTIONS ? FN_ACTIONS[raw] : null);
+}
+
+/** Wie der Hauptprozess (fn-key.ts) den Stand der fn-Taste meldet. */
+function fnKeyStatus(dictationHotkey: string, p: URLSearchParams, permissionGranted: boolean): FnKeyStatus {
+  const systemAction = fnSystemAction(p);
+  if (!isFnHotkey(dictationHotkey)) return { state: "off", message: null, systemAction };
+  const mode = p.get("fn");
+  if (mode === "unavailable" || p.get("helper") === "0") {
+    return { state: "unavailable", message: "Der Helfer läuft nicht – ohne ihn hört KIRA nicht auf die fn-Taste.", systemAction };
+  }
+  if (mode === "error") return { state: "error", message: "Die fn-Taste lässt sich nicht einschalten: macOS hat den Event-Tap abgelehnt.", systemAction };
+  if (mode === "permission" && !permissionGranted) {
+    return {
+      state: "permission",
+      message: "KIRA sieht die fn-Taste erst mit der Freigabe „Bedienungshilfen“. Bitte „KIRA für Mac“ unter „Datenschutz & Sicherheit → Bedienungshilfen“ erlauben.",
+      systemAction,
+    };
+  }
+  return { state: "active", message: null, systemAction };
+}
+
 function initialState(page: MockPage, p: URLSearchParams): LocalState {
   const offline = p.get("offline") === "1" || page === "offline";
   const bridge = p.get("bridge") !== "0";
@@ -126,7 +156,7 @@ function initialState(page: MockPage, p: URLSearchParams): LocalState {
             externalUrl: p.get("ext") ?? "https://kira.example.de",
             label: "kira.example.de",
           },
-    hotkeys: { quickWindow: "Alt+Space", dictation: "Control+Alt+D" },
+    hotkeys: { quickWindow: "Alt+Space", dictation: p.get("fn") ? FN_HOTKEY : "Control+Alt+D" },
     dictation: { locale: "de-DE", commands: true, dashboardStt: true },
     general: { launchAtLogin: true, notifications: true },
     connection: offline
@@ -148,6 +178,7 @@ function initialState(page: MockPage, p: URLSearchParams): LocalState {
       stt: helperRunning ? stt : null,
       permissions: helperRunning ? permissions(p.get("perms")) : null,
       hotkeyConflicts: p.get("conflicts") === "1" ? ["Globales Diktat: „⌃⌥D“ wird bereits von einem anderen Programm oder macOS belegt."] : [],
+      fnKey: fnKeyStatus(p.get("fn") ? FN_HOTKEY : "Control+Alt+D", p, helperRunning && permissions(p.get("perms")).accessibility),
     },
     onboarded: !onboarding,
     logPath: "/Users/kira/Library/Logs/KIRA/main.log",
@@ -230,8 +261,12 @@ function createMockApi(page: MockPage, p: URLSearchParams): KiraLocalApi {
     },
     setHotkeys: async (hotkeys) => {
       await delay(200);
-      const conflicts = p.get("conflicts") === "1" ? [`Globales Diktat: „${hotkeys.dictation}“ wird bereits von einem anderen Programm oder macOS belegt.`] : [];
-      return { state: setState({ ...state, hotkeys, dictationStatus: { ...state.dictationStatus, hotkeyConflicts: conflicts } }), conflicts };
+      const conflicts =
+        p.get("conflicts") === "1" && !isFnHotkey(hotkeys.dictation)
+          ? [`Globales Diktat: „${hotkeys.dictation}“ wird bereits von einem anderen Programm oder macOS belegt.`]
+          : [];
+      const fnKey = fnKeyStatus(hotkeys.dictation, p, state.dictationStatus.permissions?.accessibility === true);
+      return { state: setState({ ...state, hotkeys, dictationStatus: { ...state.dictationStatus, hotkeyConflicts: conflicts, fnKey } }), conflicts };
     },
     setDictation: async (dictation) => {
       await delay(150);
@@ -246,7 +281,8 @@ function createMockApi(page: MockPage, p: URLSearchParams): KiraLocalApi {
       const current = state.dictationStatus.permissions ?? permissions(null);
       const next: PermissionsStatus =
         kind === "accessibility" || kind === "screenRecording" ? { ...current, [kind]: true } : { ...current, [kind]: "granted" };
-      setState({ ...state, dictationStatus: { ...state.dictationStatus, permissions: next } });
+      const fnKey = kind === "accessibility" ? fnKeyStatus(state.hotkeys.dictation, p, true) : state.dictationStatus.fnKey;
+      setState({ ...state, dictationStatus: { ...state.dictationStatus, permissions: next, fnKey } });
       return next;
     },
     checkForUpdates: async () => {
@@ -265,7 +301,7 @@ function createMockApi(page: MockPage, p: URLSearchParams): KiraLocalApi {
       log("Erneut versuchen");
       await delay(1200);
     },
-    openSettings: async () => log("Einstellungen öffnen"),
+    openSettings: async (section) => log(`Einstellungen öffnen${section ? ` (Bereich ${section})` : ""}`),
     installUpdate: async () => log("Update installieren"),
     setHotkeyRecording: async (active) => log(`Kürzel ${active ? "ausgesetzt" : "wieder aktiv"}`),
     openMain: async () => log("Hauptfenster öffnen"),

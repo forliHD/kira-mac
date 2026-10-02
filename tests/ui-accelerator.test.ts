@@ -124,6 +124,14 @@ describe("Accelerator → Anzeige", () => {
     expect(spokenAccelerator("")).toBe("kein Kürzel");
   });
 
+  it("zeigt die 🌐 fn-Taste als eine Kappe", () => {
+    expect(acceleratorKeys("Fn")).toEqual(["🌐 fn"]);
+    expect(describeAccelerator("Fn")).toBe("🌐 fn");
+    expect(spokenAccelerator("Fn")).toBe("fn-Taste (Globus)");
+    expect(sameAccelerator("Fn", "fn")).toBe(true);
+    expect(sameAccelerator("Fn", "Control+Alt+D")).toBe(false);
+  });
+
   it("vergleicht unabhängig von Reihenfolge, Groß/klein und Aliasen", () => {
     expect(normalizeAccelerator("cmd+option+d")).toBe("Alt+Command+D");
     expect(sameAccelerator("Command+Alt+D", "alt+cmd+d")).toBe(true);

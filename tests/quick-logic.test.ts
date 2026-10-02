@@ -51,6 +51,7 @@ describe("Tasten", () => {
     expect(formatAccelerator("Command+Alt+Control+k")).toEqual(["⌃", "⌥", "⌘", "K"]);
     expect(formatAccelerator("F5")).toEqual(["F5"]);
     expect(formatAccelerator("")).toEqual([]);
+    expect(formatAccelerator("Fn")).toEqual(["🌐 fn"]);
   });
 });
 

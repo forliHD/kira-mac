@@ -4,7 +4,8 @@ Kommandozeilenprozess, den die Electron-Hülle startet und über JSON-Zeilen
 auf stdin/stdout anspricht. Der verbindliche Vertrag (Kommandos, Ereignisse,
 Fehlercodes) steht in `../docs/helper-protocol.md` (Protokoll 1). Alles, was
 Apple-Schnittstellen braucht, lebt hier: Spracherkennung auf dem Gerät,
-Apple-Sprachmodell, Systemton, Text ins vorderste Programm, Berechtigungen.
+Apple-Sprachmodell, Systemton, Text ins vorderste Programm, die 🌐 fn-Taste
+als Diktat-Auslöser, Berechtigungen.
 
 Mindestziel macOS 14 (Apple Silicon und Intel); SpeechAnalyzer und
 FoundationModels ab macOS 26, darunter Rückfall bzw. saubere Nichtverfügbarkeit.
@@ -36,6 +37,7 @@ echo '{"id":"2","cmd":"info"}' | .build/release/kira-helper
 echo '{"id":"3","cmd":"stt.prepare","params":{"locale":"de-DE"}}' | .build/release/kira-helper
 echo '{"id":"4","cmd":"stt.file","params":{"path":"/tmp/probe.wav","locale":"de-DE"}}' | .build/release/kira-helper
 echo '{"id":"5","cmd":"llm.generate","params":{"prompt":"Hauptstadt von Deutschland?","maxTokens":40}}' | .build/release/kira-helper
+echo '{"id":"6","cmd":"fn.status"}' | .build/release/kira-helper
 ```
 
 Mehrere Zeilen in einem Rutsch gehen auch (`printf '%s\n' … | kira-helper`);
@@ -61,6 +63,7 @@ afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/probe.aiff /tmp/probe.wav
 | Systemton aufnehmen | `audio.system.*` | „Bildschirmaufnahme“ (ScreenCaptureKit, es wird nur Audio verarbeitet) |
 | Text einfügen | `text.insert` | „Bedienungshilfen“ (Accessibility) — auch für den ⌘V-Rückfall |
 | Vorderstes Programm | `text.frontmost` | keine |
+| fn-Taste abhören | `fn.watch` | „Bedienungshilfen“ (oder „Eingabeüberwachung“); ohne Freigabe `permission_denied`, ohne eigenen Systemdialog |
 
 `permissions.status` zeigt den Stand, `permissions.request` fragt an;
 für Bedienungshilfen und Bildschirmaufnahme öffnet der Helfer zusätzlich die
@@ -99,6 +102,14 @@ Hülle muss deshalb `NSMicrophoneUsageDescription` (und für macOS 14/15
   `excludeSelf` nimmt den eigenen Prozess sowie die Mac-App (Elternprozess,
   gleiches Bundle-Präfix) aus dem Filter; `excludeBundleIds` (optional,
   additiv) erlaubt weitere.
+- **fn-Taste:** `fn.watch` legt einen `listenOnly`-Event-Tap (Sitzungsebene)
+  auf einem eigenen Thread mit eigener Run-Loop an (`kira-fn-tap`) und meldet
+  nur `fn.down`/`fn.chord`/`fn.up` – reine Wahrheitswerte, nie Tastencodes oder
+  Zeichen; andere Tasten werden nur angesehen, solange fn gedrückt ist.
+  Die Buchführung (`FnChordTracker`) und die Einordnung der Tap-Ereignisse
+  (`FnEventClassifier`) sind rein und ohne Tap getestet. Aus dem Terminal
+  gestartet, verweigert TCC den Tap (`permission_denied`) – echt prüfen lässt
+  er sich nur aus der Mac-App mit erteilten Bedienungshilfen.
 - **Text einfügen:** `auto` setzt erst `kAXSelectedTextAttribute` des
   fokussierten Elements und prüft über `kAXValueAttribute` nach, ob der Text
   wirklich angekommen ist; sonst Zwischenablage + ⌘V per `CGEvent`, nach 300 ms
@@ -133,5 +144,6 @@ Sources/KiraHelper/
   LLM/FoundationModelsService.swift  llm.*
   Audio/SystemAudioRecorder.swift    audio.system.*
   Text/TextInserter.swift            text.*
-Tests/KiraHelperTests/               Envelope, Dispatcher, Writer (ohne Berechtigungen)
+  Input/FnKeyMonitor.swift           fn.*: Event-Tap auf eigenem Thread, Tracker, Einordnung
+Tests/KiraHelperTests/               Envelope, Dispatcher, Writer, fn-Taste (ohne Berechtigungen)
 ```

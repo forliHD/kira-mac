@@ -6,9 +6,49 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-02
+
+### Hinzugefügt
+- **Anmeldung über Microsoft & Co. im Browser** (braucht KIRA 3.299.0): Die
+  Microsoft-Anmeldung hing im App-Fenster bei „Face, fingerprint, PIN or
+  security key“. Electron erreicht keine Passkeys aus dem iCloud-Schlüsselbund,
+  vom Handy oder von einem Sicherheitsschlüssel. „Mit … anmelden“ öffnet jetzt
+  den Standard-Browser (RFC 8252 + PKCE, Fähigkeit `browser-login`,
+  `signInWithBrowser()`). Dort klappen Passkeys, Touch ID und der
+  Passwort-Manager; danach kommt die Anmeldung über das neue URL-Schema
+  `de.kira.mac:/auth/callback` zurück. Die App löst den Einmalcode mit ihrem
+  Geheimnis ein und meldet das Dashboard an. Ein abgefangener Code ist ohne
+  dieses Geheimnis wertlos.
+- **Neues App-Symbol mit „K“:** die Glas-Sprechblase bleibt, darin schwebt ein
+  K aus tiefblauem Glas.
+- **Globales Diktat auf der 🌐 fn-Taste** (wählbar unter Einstellungen →
+  Tastenkürzel → Diktat: „fn-Taste“ oder „Tastenkombination“; Standard bleibt
+  ⌃⌥D). Kurz tippen schaltet das Diktat an und aus, gedrückt halten heißt
+  sprechen – loslassen setzt den Text ein. fn zusammen mit einer anderen Taste
+  (fn + ←, fn + ⌫, F-Tasten …) bleibt, was es war; hatte das Halten schon ein
+  Diktat gestartet, wird es ohne Einsetzen verworfen. Im Passwortfeld startet
+  fn nichts. Der Swift-Helfer hört dafür mit einem passiven Event-Tap auf einem
+  eigenen Thread (`fn.watch`, `fn.status`) und meldet nur „fn gedrückt“,
+  „andere Taste dazu“, „fn losgelassen“ – nie Tasten oder Zeichen. Braucht die
+  Freigabe „Bedienungshilfen“ (wie das Einsetzen); fehlt sie, zeigen die
+  Einstellungen das mit Knopf. Ist macOS bei der fn-Taste auf „Emoji &
+  Symbole“, „Eingabequelle wechseln“ o. ä. gestellt, weisen die Einstellungen
+  darauf hin und öffnen die Tastatur-Einstellungen (KIRA ändert sie nicht).
+- In der Einrichtung steht unter jedem Kürzel „Ändern“ – öffnet die
+  Einstellungen direkt bei den Tastenkürzeln.
+
 ### Geändert
 - Das Protokoll hält beim Laden eines Updates nur noch Statuswechsel fest
   (vorher eine Zeile je Sekunde Fortschritt).
+
+### Behoben
+- Ein Diktat, das noch startete, ließ sich nicht sauber beenden: Kam der Stopp
+  vor dem Start der Erkennung, lief das Mikrofon danach trotzdem weiter.
+- **Mitteilungen ohne Anmeldung:** Abgemeldet fragte die App den Server alle
+  10–20 Sekunden an und bat das Dashboard jedes Mal zweimal um eine Sitzung.
+  Jetzt wartet der Stream, bis die Anmeldung da ist, und versucht es sonst nur
+  alle fünf Minuten. Ein stehender Stream übersteht außerdem jede
+  Token-Erneuerung, statt neu aufgebaut zu werden.
 
 ## [0.1.1] - 2026-10-02
 

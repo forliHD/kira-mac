@@ -80,6 +80,12 @@ mac:
   # (KIRA.app/…); ohne „Contents/“ fand codesign die Datei nicht (Build 02.10.).
   binaries:
     - Contents/Resources/helper/kira-helper
+  # Rücksprung der Anmeldung im System-Browser (RFC 8252, src/main/browser-login.ts):
+  # der KIRA-Server öffnet nach dem Login de.kira.mac:/auth/callback?code=…
+  protocols:
+    - name: KIRA-Anmeldung
+      schemes:
+        - de.kira.mac
   extendInfo:
     NSMicrophoneUsageDescription: KIRA braucht das Mikrofon für das Diktat und für Besprechungsaufnahmen.
     NSSpeechRecognitionUsageDescription: KIRA erkennt Sprache auf diesem Mac, damit Diktate den Rechner nicht verlassen.

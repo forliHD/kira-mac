@@ -17,6 +17,8 @@ function io(overrides: Partial<PreloadIo> = {}): PreloadIo {
         return { available: true, engine: "apple", locale: "de-DE" };
       case IPC.transcribe:
         return { text: "Hallo Welt.", engine: "apple", durationMs: 1200 };
+      case IPC.signInWithBrowser:
+        return { started: true };
       default:
         return undefined;
     }
@@ -42,8 +44,8 @@ describe("Vertrag: Konstanten", () => {
   });
 
   it("Methoden- und Ereignislisten entsprechen den Tabellen", () => {
-    expect([...NATIVE_METHODS]).toEqual(["getInfo", "setSession", "notify", "openExternal", "sttStatus", "transcribe"]);
-    expect([...NATIVE_EVENT_TYPES]).toEqual(["navigate", "notification", "connectivity", "session-request", "share"]);
+    expect([...NATIVE_METHODS]).toEqual(["getInfo", "setSession", "notify", "openExternal", "sttStatus", "transcribe", "signInWithBrowser"]);
+    expect([...NATIVE_EVENT_TYPES]).toEqual(["navigate", "notification", "connectivity", "session-request", "share", "browser-login"]);
     expect([...CAPABILITIES]).toEqual([
       "session",
       "notifications",
@@ -54,6 +56,7 @@ describe("Vertrag: Konstanten", () => {
       "apple-intelligence",
       "insert-text",
       "inset-titlebar",
+      "browser-login",
     ]);
   });
 });
@@ -141,7 +144,7 @@ describe("Vertrag: window.KiraNative", () => {
 
 describe("Fähigkeiten aus info.features", () => {
   it("ohne Helfer nur die Electron-Fähigkeiten", () => {
-    expect(capabilitiesFrom(null)).toEqual(["session", "notifications", "open-external", "quick-window"]);
+    expect(capabilitiesFrom(null)).toEqual(["session", "notifications", "open-external", "quick-window", "browser-login"]);
   });
 
   it("mit Helfer je nach Feature-Flags", () => {
@@ -150,6 +153,7 @@ describe("Fähigkeiten aus info.features", () => {
       "notifications",
       "open-external",
       "quick-window",
+      "browser-login",
       "stt",
       "system-audio",
       "apple-intelligence",
@@ -160,6 +164,7 @@ describe("Fähigkeiten aus info.features", () => {
       "notifications",
       "open-external",
       "quick-window",
+      "browser-login",
       "insert-text",
     ]);
   });
@@ -168,5 +173,19 @@ describe("Fähigkeiten aus info.features", () => {
     for (const c of capabilitiesFrom({ stt: true, sttStream: true, llm: true, systemAudio: true, insertText: true })) {
       expect(CAPABILITIES).toContain(c);
     }
+  });
+});
+
+describe("Vertrag: signInWithBrowser (KIRA 3.299.0)", () => {
+  it("reicht { started, error } durch und prüft die Antwort", async () => {
+    const base = io();
+    const api = createKiraNative(base);
+    await expect(api.signInWithBrowser()).resolves.toEqual({ started: true });
+    const invoke = base.invoke as ReturnType<typeof vi.fn>;
+    expect(invoke).toHaveBeenLastCalledWith(IPC.signInWithBrowser);
+    invoke.mockResolvedValueOnce({ started: false, error: "kein Browser" });
+    await expect(api.signInWithBrowser()).resolves.toEqual({ started: false, error: "kein Browser" });
+    invoke.mockResolvedValueOnce("quatsch");
+    await expect(api.signInWithBrowser()).rejects.toThrow("signInWithBrowser");
   });
 });

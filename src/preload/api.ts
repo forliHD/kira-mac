@@ -6,6 +6,7 @@ import {
   type AppInfo,
   BRIDGE_VERSION,
   type BridgeInfo,
+  type BrowserSignInResult,
   type Capability,
   type InstanceInfo,
   type KiraNativeApi,
@@ -104,6 +105,15 @@ export function createKiraNative(io: PreloadIo): KiraNativeApi {
       });
       if (!isTranscribeResult(result)) throw new Error("Ungültige Antwort der Hülle (transcribe).");
       return { text: result.text, engine: "apple", durationMs: result.durationMs ?? durationMs };
+    },
+
+    async signInWithBrowser(): Promise<BrowserSignInResult> {
+      const result = await io.invoke(IPC.signInWithBrowser);
+      if (!result || typeof result !== "object" || typeof (result as BrowserSignInResult).started !== "boolean") {
+        throw new Error("Ungültige Antwort der Hülle (signInWithBrowser).");
+      }
+      const r = result as BrowserSignInResult;
+      return r.error ? { started: r.started, error: String(r.error) } : { started: r.started };
     },
   };
   return api;

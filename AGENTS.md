@@ -22,9 +22,10 @@ auf Deutsch, wenn sie das WARUM erklären.
    `src/shared/bridge.ts` (Typen/Konstanten). `tests/bridge.test.ts` ist der
    Vertragstest – Änderungen zuerst im Vertrag, dann hier, dann im Dashboard.
 2. **Electron ↔ Swift-Helfer:** `docs/helper-protocol.md`, Version 1.
-   Umsetzung: `src/main/helper.ts`, Typen in `src/shared/helper-types.ts`.
-   `helper/` wird von einem anderen Agenten/Paket gepflegt – nicht anfassen,
-   nur das Protokoll nutzen.
+   Umsetzung: `src/main/helper.ts`, Typen in `src/shared/helper-types.ts`,
+   Swift unter `helper/`. Jede Protokolländerung zuerst in
+   `docs/helper-protocol.md`, dann Swift (`swift test --scratch-path
+   ~/.cache/kira-helper-build` – nie im iCloud-Ordner bauen) und TypeScript.
 
 ## Befehle
 
@@ -129,6 +130,32 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   `config.lastServerVersion` ≥ 3.298.0 (`serverSupportsInsetTitlebar`); die
   Fähigkeit `inset-titlebar` geht nur an Seiten DIESES Fensters
   (`capabilities(sender)`).
+
+- **SSO nie im App-Fenster** (seit 0.2.0, KIRA ≥ 3.299.0): Electron erreicht
+  keine Passkeys (iCloud-Schlüsselbund, Handy, Sicherheitsschlüssel) – Microsofts
+  Passkey-Abfrage hängt dort endlos; `app.configureWebAuthn` kennt nur
+  gerätegebundene Touch-ID-Schlüssel. Die Login-Seite ruft
+  `signInWithBrowser()` (Fähigkeit `browser-login`), `src/main/browser-login.ts`
+  öffnet `/api/auth/app/login` im Standard-Browser (RFC 8252 + PKCE), der Server
+  schickt einen Einmalcode an `de.kira.mac:/auth/callback` (URL-Schema in
+  `electron-builder.yml` → `protocols`, `open-url` in `index.ts`, auch vor
+  `ready`), die App löst ihn mit dem Verifier bei `/api/auth/app/token` ein und
+  lädt `/auth/callback#…`. Der Verifier verlässt den Hauptprozess nie, Tokens
+  nie ins Protokoll. Nicht abgedeckt: Cloudflare-Access-Anmeldung der externen
+  URL (läuft weiter im Fenster). Prüfung: `tests/browser-login.test.ts`,
+  `scripts/e2e/browser-login.mjs` (Test-Anbieter eingebaut).
+- **Diktat auf der 🌐 fn-Taste** (`hotkeys.dictation = "Fn"`, seit 0.2.0): kein
+  `globalShortcut`, sondern ein Event-Tap im Helfer (`fn.watch`, Ereignisse
+  `fn.down`/`fn.chord`/`fn.up` NUR als Wahrheitswerte – nie Tastencodes, nie
+  Zeichen) und der Zustandsautomat `src/main/fn-key.ts` (< 300 ms tippen =
+  an/aus, halten = sprechen, fn + andere Taste = nichts). Braucht dieselbe
+  Freigabe Bedienungshilfen wie das Einfügen; bei sicherer Eingabe
+  (Passwortfeld) startet fn nie. macOS' eigene 🌐-Aktion (`AppleFnUsageType`
+  in `com.apple.HIToolbox`) nur LESEN und in den Einstellungen darauf
+  hinweisen – nie selbst umstellen.
+- **Mitteilungs-Stream ohne Anmeldung wartet** (`LOGIN_WAIT_MS`, 5 min) auf
+  `loginChanged()` statt im Takt anzufragen; `reconnectNow()` (Minuten-Prüfung)
+  weckt ihn nicht, ein stehender Stream übersteht Token-Erneuerungen.
 
 ## Offene Punkte (Stand 0.1.0)
 

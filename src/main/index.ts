@@ -9,12 +9,15 @@ import { BrowserWindow, Notification, type WebContents, app, session as electron
 
 import { type AppInfo, BRIDGE_VERSION, type Capability, type InstanceInfo, type NativeEvent } from "../shared/bridge";
 import { capabilitiesFrom } from "../shared/capabilities";
+import { isAllowedSettingsUrl, isFnHotkey } from "../shared/hotkey";
 import { type HelperEvent, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
 import { type ConnectionState, type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalEvent, type LocalState, type ProbeResult } from "../shared/local-api";
 import { registerBridgeIpc } from "./bridge";
+import { BrowserLogin, URL_SCHEME, callbackPath } from "./browser-login";
 import { type AppConfig, configStore } from "./config";
 import { GlobalDictation } from "./dictation";
 import { installDownloadHandler } from "./downloads";
+import { FnKeyController } from "./fn-key";
 import { HelperClient } from "./helper";
 import { registerHotkeys, unregisterHotkeys } from "./hotkeys";
 import {
@@ -55,6 +58,7 @@ class KiraApp {
   private quitting = false;
   private helper!: HelperClient;
   private dictation!: GlobalDictation;
+  private fnKey!: FnKeyController;
   private quickChat!: QuickChat;
   private notifications: NotificationClient | null = null;
   private mainWin!: MainWindowController;
@@ -66,6 +70,12 @@ class KiraApp {
   private pollTimer: NodeJS.Timeout | null = null;
   private connecting: Promise<void> | null = null;
   private statusCache: { at: number; stt: HelperSttStatus | null; permissions: PermissionsStatus | null } | null = null;
+  /** SSO im System-Browser (öffentlich für scripts/e2e/browser-login.mjs). */
+  browserLogin!: BrowserLogin;
+  /** Nur Ende-zu-Ende-Tests: abgefangene Browser-Starts statt echtem Browser. */
+  readonly testOpened: string[] = [];
+  /** `open-url`, bevor die Anmeldung bereitsteht (macOS startet die App dafür). */
+  private openUrlQueue: string[] = [];
 
   async boot(): Promise<void> {
     if (!app.requestSingleInstanceLock()) {
@@ -101,7 +111,9 @@ class KiraApp {
     this.setupHelper();
     this.setupQuickChat();
     this.setupDictation();
+    this.setupFnKey();
     this.setupWindows();
+    this.setupBrowserLogin();
     setLocalLinkHandler((url) => this.openLink(url));
     this.setupPermissions();
     installDownloadHandler(electronSession.defaultSession, () => this.mainWin.window);
@@ -135,9 +147,11 @@ class KiraApp {
     }
   }
 
-  /** Einstellungen zeigen (Menü, Menüleiste, lokale Seiten, Ende-zu-Ende-Tests). */
-  showSettings(): void {
-    settingsWindow.show();
+  /** Einstellungen zeigen (Menü, Menüleiste, lokale Seiten, Ende-zu-Ende-Tests), optional bei einem Bereich. */
+  showSettings(section?: string | null): void {
+    const wasOpen = settingsWindow.window !== null;
+    settingsWindow.show(section ? { section } : {});
+    if (wasOpen && section) settingsWindow.send({ type: "settings-section", section });
   }
 
   // ── Aufbau ────────────────────────────────────────────────────────────
@@ -283,6 +297,28 @@ class KiraApp {
     });
   }
 
+  /** Was das Diktat-Kürzel tut – auch fn-Tippen geht genau hierüber (gleiches Ziel). */
+  private toggleDictation(): void {
+    void this.dictation.toggle();
+  }
+
+  /** 🌐 fn-Taste als Diktat-Auslöser (nur wenn gewählt): Tippen = Kürzel, Halten = Sprechen. */
+  private setupFnKey(): void {
+    this.fnKey = new FnKeyController({
+      helper: this.helper,
+      enabled: () => isFnHotkey(this.config.hotkeys.dictation),
+      dictation: {
+        isActive: () => this.dictation.currentState === "starting" || this.dictation.currentState === "listening",
+        toggle: () => this.toggleDictation(),
+        start: () => void this.dictation.start(),
+        stop: () => void this.dictation.stop(),
+        cancel: () => void this.dictation.cancel(),
+      },
+      log: scoped("fn-key"),
+    });
+    this.fnKey.on("status", () => this.broadcastState());
+  }
+
   private setupWindows(): void {
     this.mainWin = new MainWindowController({
       origins: () => this.origins(),
@@ -295,6 +331,9 @@ class KiraApp {
       onLoadFailed: (reason) => this.onMainLoadFailed(reason),
       onDashboardLoaded: () => {
         this.mainWin.sendNative({ type: "connectivity", online: this.connection.online });
+        // Nach einer Cloudflare-Anmeldung gibt es keine Tokens, nur das Cookie –
+        // der wartende Mitteilungs-Stream versucht es dann einmal neu.
+        if (this.notifications?.isWaitingForLogin) this.notifications.loginChanged();
       },
       insetTitleBar: () => serverSupportsInsetTitlebar(this.config.lastServerVersion),
     });
@@ -343,8 +382,9 @@ class KiraApp {
       onNotificationClick: (url) => this.mainWin.navigate(session.getOrigin(), url ?? "/"),
       onSessionChanged: (hasTokens) => {
         this.dictation.invalidateVocabulary();
-        if (hasTokens) this.notifications?.reconnectNow();
+        if (hasTokens) this.notifications?.loginChanged();
       },
+      signInWithBrowser: (origin) => this.browserLogin.start(origin),
     });
     registerLocalIpc({
       getState: () => this.localState(),
@@ -363,6 +403,7 @@ class KiraApp {
       setHotkeys: async (hotkeys: HotkeyConfig) => {
         this.config = configStore.update({ hotkeys });
         this.applyHotkeys();
+        await this.fnKey.apply(); // Antwort zeigt schon, ob KIRA auf fn hört
         this.tray.refresh();
         this.rebuildMenu();
         this.quickChat.refresh();
@@ -388,13 +429,15 @@ class KiraApp {
       checkForUpdates: () => updater.check(false),
       installUpdate: () => updater.installNow(),
       setHotkeyRecording: (active) => {
+        // Auch fn: sonst löst das Aufnehmen eines Kürzels das Diktat aus.
+        this.fnKey.setPaused(active);
         if (active) unregisterHotkeys();
         else this.applyHotkeys();
       },
       logPath: () => logFilePath(),
       hudStop: () => this.dictation.stop(),
       retry: () => this.connect(true),
-      openSettings: () => settingsWindow.show(),
+      openSettings: (section) => this.showSettings(section),
       openMain: () => this.mainWin.show(),
       openLink: (url) => this.openLink(url),
       quick: {
@@ -416,6 +459,11 @@ class KiraApp {
 
   /** Link aus einer lokalen Seite: Instanz oder Pfad (/…) → Hauptfenster, sonst System-Browser. */
   private openLink(url: string): void {
+    if (isAllowedSettingsUrl(url)) {
+      // Systemeinstellungen → Tastatur (Hinweis zur 🌐-Taste) – nur genau diese Seite.
+      void shell.openExternal(url).catch((err: unknown) => this.log.warn("settings_open_failed", { error: err instanceof Error ? err.message : String(err) }));
+      return;
+    }
     if (url.startsWith("/") && !url.startsWith("//")) {
       this.mainWin.navigate(session.getOrigin(), url);
       return;
@@ -469,11 +517,13 @@ class KiraApp {
   private applyHotkeys(): void {
     this.hotkeyConflicts = registerHotkeys(this.config.hotkeys, {
       quickWindow: () => this.quickWin.toggle(),
-      dictation: () => void this.dictation.toggle(),
+      dictation: () => this.toggleDictation(),
     });
     if (this.hotkeyConflicts.length && Notification.isSupported()) {
       new Notification({ title: "Tastenkürzel belegt", body: this.hotkeyConflicts.join("\n") }).show();
     }
+    // „Fn“ ist kein Electron-Kürzel: Abhören über den Helfer ein- bzw. ausschalten.
+    void this.fnKey.apply();
   }
 
   // ── Instanz & Verbindung ──────────────────────────────────────────────
@@ -665,7 +715,7 @@ class KiraApp {
       connection: this.connection,
       update: updater.state,
       helper: { running: this.helper.running, info: this.helper.info, lastError: missing },
-      dictationStatus: { stt: status.stt, permissions: status.permissions, hotkeyConflicts: this.hotkeyConflicts },
+      dictationStatus: { stt: status.stt, permissions: status.permissions, hotkeyConflicts: this.hotkeyConflicts, fnKey: await this.fnKey.refresh() },
       onboarded: this.config.onboarded,
       logPath: logFilePath(),
     };
@@ -699,6 +749,66 @@ class KiraApp {
   private broadcastState(): void {
     void this.localState().then((state) => this.broadcast({ type: "state", state }));
   }
+
+  // ── Anmeldung im System-Browser (browser-login.ts) ──────────────────────
+
+  private setupBrowserLogin(): void {
+    const testHooks = !app.isPackaged && process.env.KIRA_MAC_TEST_HOOKS === "1";
+    // Gepackt: diese App ist der Empfänger für de.kira.mac: (Info.plist meldet
+    // das Schema schon an; das hier gewinnt gegen eine zweite Kopie im DMG).
+    if (app.isPackaged && !app.isDefaultProtocolClient(URL_SCHEME)) app.setAsDefaultProtocolClient(URL_SCHEME);
+    this.browserLogin = new BrowserLogin({
+      log: scoped("browser-login"),
+      openExternal: async (url) => {
+        if (testHooks) {
+          this.testOpened.push(url);
+          return;
+        }
+        await shell.openExternal(url);
+      },
+      postJson: async (url, body) => {
+        const res = await session.rawFetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(body),
+        });
+        let parsed: unknown = null;
+        try {
+          parsed = await res.json();
+        } catch {
+          /* kein JSON */
+        }
+        return { status: res.status, body: parsed };
+      },
+      complete: (origin, tokens) => {
+        // Das Dashboard speichert die Tokens (Seite /auth/callback) und ruft danach
+        // setSession – ab da wie nach jeder Anmeldung.
+        this.mainWin.loadInstance(origin, callbackPath(tokens));
+        this.mainWin.show();
+        app.focus({ steal: true });
+      },
+      report: (status, message) => {
+        this.mainWin.show();
+        this.mainWin.sendNative({ type: "browser-login", status, ...(message ? { message } : {}) });
+      },
+      onStray: () => this.mainWin.show(),
+    });
+    for (const url of this.openUrlQueue.splice(0)) void this.browserLogin.handleCallback(url);
+  }
+
+  /** `open-url` von macOS (de.kira.mac:/auth/callback?…); vor dem Start gepuffert. */
+  handleOpenUrl(url: string): void {
+    if (!this.browserLogin) {
+      this.openUrlQueue.push(url);
+      return;
+    }
+    void this.browserLogin.handleCallback(url);
+  }
+
+  /** Nur Ende-zu-Ende-Tests: hat die Hülle Tokens vom Dashboard? */
+  sessionHasTokens(): boolean {
+    return session.hasTokens();
+  }
 }
 
 // Entwicklung und Tests: eigenes Profil (Konfiguration, Cookies, Sperre der
@@ -707,6 +817,12 @@ class KiraApp {
 if (!app.isPackaged && process.env.KIRA_MAC_PROFILE) app.setPath("userData", process.env.KIRA_MAC_PROFILE);
 
 const kira = new KiraApp();
+// Rücksprung der Anmeldung im System-Browser. Startet macOS die App erst
+// dafür, kommt `open-url` vor `ready` – deshalb hier oben registriert.
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  kira.handleOpenUrl(url);
+});
 // Ende-zu-Ende-Tests (scripts/e2e/): Zugriff auf die App-Instanz über den
 // Node-Inspector – nur unverpackt und nur auf ausdrücklichen Wunsch.
 if (!app.isPackaged && process.env.KIRA_MAC_TEST_HOOKS === "1") (globalThis as Record<string, unknown>).__kira = kira;

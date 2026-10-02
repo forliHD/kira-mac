@@ -19,6 +19,9 @@ export const CAPABILITIES = [
   // über dem Inhalt) – das Dashboard macht seine obere Leiste zum Zieh-Bereich
   // und rückt die Seitenleiste ein. Nur für das Hauptfenster gesetzt.
   "inset-titlebar",
+  // Seit KIRA 3.299.0: SSO-Anmeldung im System-Browser (`signInWithBrowser`),
+  // weil Passkeys im App-Fenster nicht funktionieren (browser-login.ts).
+  "browser-login",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -30,11 +33,12 @@ export const NATIVE_METHODS = [
   "openExternal",
   "sttStatus",
   "transcribe",
+  "signInWithBrowser",
 ] as const;
 export type NativeMethod = (typeof NATIVE_METHODS)[number];
 
 /** Ereignistypen Hülle → Dashboard (`CustomEvent("kira:native", { detail })`). */
-export const NATIVE_EVENT_TYPES = ["navigate", "notification", "connectivity", "session-request", "share"] as const;
+export const NATIVE_EVENT_TYPES = ["navigate", "notification", "connectivity", "session-request", "share", "browser-login"] as const;
 export type NativeEventType = (typeof NATIVE_EVENT_TYPES)[number];
 
 export interface AppInfo {
@@ -88,6 +92,12 @@ export interface TranscribeResult {
   durationMs?: number;
 }
 
+/** Antwort von `signInWithBrowser()`: Browser offen (oder warum nicht). */
+export interface BrowserSignInResult {
+  started: boolean;
+  error?: string;
+}
+
 /** Das Objekt, das der Preload per `contextBridge` als `window.KiraNative` bereitstellt. */
 export interface KiraNativeApi {
   bridge: typeof BRIDGE_VERSION;
@@ -99,6 +109,7 @@ export interface KiraNativeApi {
   openExternal(url: string): Promise<void>;
   sttStatus(): Promise<SttStatus>;
   transcribe(audio: ArrayBuffer, options: TranscribeOptions): Promise<TranscribeResult>;
+  signInWithBrowser(): Promise<BrowserSignInResult>;
 }
 
 export type NativeEvent =
@@ -106,7 +117,8 @@ export type NativeEvent =
   | { type: "notification"; title: string; body: string; url?: string; category?: string }
   | { type: "connectivity"; online: boolean }
   | { type: "session-request" }
-  | { type: "share"; title?: string; text?: string; url?: string };
+  | { type: "share"; title?: string; text?: string; url?: string }
+  | { type: "browser-login"; status: "error" | "expired" | "cancelled"; message?: string };
 
 /** Payload eines `notification`-Frames vom Server (identisch zu Web Push). */
 export interface ServerNotification {

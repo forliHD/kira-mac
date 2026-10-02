@@ -65,9 +65,25 @@ class FakeHelper extends EventEmitter implements DictationHelper {
   readonly calls: Array<{ cmd: string; params?: Record<string, unknown> }> = [];
   permissions = { microphone: "granted", speech: "granted", accessibility: true, screenRecording: false };
   sttStatus: { available: boolean; engine: string | null; assets: string; reason?: string } = { available: true, engine: "analyzer", assets: "installed" };
+  /** Hält `stt.start` auf, bis die Zusage erfüllt ist (Start dauert). */
+  sttStartGate: Promise<void> | null = null;
+  /** Diese Äußerungen spült `stt.stop` noch als `stt.final`, bevor `stt.ended` kommt. */
+  flushOnStop: string[] = [];
 
   request<T = unknown>(cmd: string, params?: Record<string, unknown>): Promise<T> {
     this.calls.push({ cmd, params });
+    if (cmd === "stt.start" && this.sttStartGate) {
+      return this.sttStartGate.then(() => ({ started: true }) as unknown as T);
+    }
+    if (cmd === "stt.stop") {
+      const pending = this.flushOnStop;
+      this.flushOnStop = [];
+      queueMicrotask(() => {
+        for (const text of pending) this.emit("event", { event: "stt.final", stream: "dictation", data: { text } });
+        this.emit("event", { event: "stt.ended", stream: "dictation", data: { reason: "stopped" } });
+      });
+      return Promise.resolve({ stopped: true } as unknown as T);
+    }
     switch (cmd) {
       case "stt.status":
         return Promise.resolve(this.sttStatus as unknown as T);
@@ -100,12 +116,15 @@ class FakeHelper extends EventEmitter implements DictationHelper {
   }
 }
 
-function build(helper: FakeHelper, opts: { commands?: boolean; vocabulary?: string | null } = {}) {
+function build(helper: FakeHelper, opts: { commands?: boolean; vocabulary?: string | null; vocabularyGate?: Promise<void> } = {}) {
   const hud = { show: vi.fn(), hide: vi.fn(), update: vi.fn<(s: HudState) => void>() };
   const dictation = new GlobalDictation({
     helper,
     server: {
-      fetchVocabulary: async () => opts.vocabulary ?? "Musterfirma, Proxmox",
+      fetchVocabulary: async () => {
+        if (opts.vocabularyGate) await opts.vocabularyGate;
+        return opts.vocabulary ?? "Musterfirma, Proxmox";
+      },
       fetchDisplayName: async () => "Lucas",
     },
     hud,
@@ -240,6 +259,91 @@ describe("GlobalDictation", () => {
     expect(helper.calls.find((c) => c.cmd === "permissions.request")?.params).toEqual({ kind: "microphone" });
     expect(dictation.currentState).toBe("idle");
     expect(helper.calls.find((c) => c.cmd === "stt.start")).toBeUndefined();
+  });
+
+  it("Stopp während des Starts (vor stt.start): sofort aus, kein Stream beim Helfer", async () => {
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const helper = new FakeHelper();
+    const { dictation, hud } = build(helper, { vocabularyGate: gate });
+    const states: string[] = [];
+    dictation.on("state", (st) => states.push(st));
+    const starting = dictation.start();
+    await tick();
+    expect(dictation.currentState).toBe("starting");
+    await dictation.stop();
+    expect(dictation.currentState).toBe("idle");
+    expect(hud.hide).toHaveBeenCalled();
+    open();
+    await starting;
+    await tick();
+    expect(helper.calls.find((c) => c.cmd === "stt.start")).toBeUndefined();
+    expect(dictation.currentState).toBe("idle");
+    expect(states).not.toContain("listening");
+  });
+
+  it("Stopp, während stt.start unterwegs ist: der Stream wird danach gleich beendet", async () => {
+    let open!: () => void;
+    const helper = new FakeHelper();
+    helper.sttStartGate = new Promise<void>((resolve) => (open = resolve));
+    const { dictation } = build(helper);
+    const states: string[] = [];
+    dictation.on("state", (st) => states.push(st));
+    const starting = dictation.start();
+    await vi.waitFor(() => expect(helper.calls.some((c) => c.cmd === "stt.start")).toBe(true));
+    await dictation.stop();
+    expect(dictation.currentState).toBe("stopping");
+    expect(helper.calls.find((c) => c.cmd === "stt.stop")).toBeUndefined();
+    open();
+    await starting;
+    await tick();
+    const cmds = helper.calls.map((c) => c.cmd);
+    expect(cmds.indexOf("stt.stop")).toBeGreaterThan(cmds.indexOf("stt.start"));
+    expect(dictation.currentState).toBe("idle");
+    expect(states).not.toContain("listening");
+  });
+
+  it("cancel verwirft ausstehende Äußerungen und blendet die Pille sofort aus", async () => {
+    const helper = new FakeHelper();
+    const { dictation, hud } = build(helper);
+    await dictation.start();
+    helper.flushOnStop = ["noch gespült"];
+    hud.hide.mockClear();
+    const cancelling = dictation.cancel();
+    expect(hud.hide).toHaveBeenCalledTimes(1);
+    await cancelling;
+    await tick();
+    expect(helper.calls.find((c) => c.cmd === "stt.stop")).toBeDefined();
+    expect(helper.calls.filter((c) => c.cmd === "text.insert")).toHaveLength(0);
+    expect(dictation.currentState).toBe("idle");
+
+    // Der nächste Start setzt wieder ein.
+    await dictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Danach" } });
+    await tick();
+    expect(helper.calls.filter((c) => c.cmd === "text.insert").map((c) => c.params?.text)).toEqual(["Danach"]);
+  });
+
+  it("stop setzt dagegen noch gespülte Äußerungen ein", async () => {
+    const helper = new FakeHelper();
+    const { dictation } = build(helper);
+    await dictation.start();
+    helper.flushOnStop = ["letzter Satz"];
+    await dictation.stop();
+    await tick();
+    expect(helper.calls.filter((c) => c.cmd === "text.insert").map((c) => c.params?.text)).toEqual(["letzter Satz"]);
+  });
+
+  it("cancel ohne laufendes Diktat nimmt eine stehende Meldung weg", async () => {
+    const helper = new FakeHelper();
+    helper.sttStatus = { available: false, engine: null, assets: "missing", reason: "Sprachmodell fehlt." };
+    const { dictation, hud } = build(helper);
+    await dictation.start();
+    expect(hud.update.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "unavailable" });
+    hud.hide.mockClear();
+    await dictation.cancel();
+    expect(hud.hide).toHaveBeenCalledTimes(1);
+    expect(dictation.currentState).toBe("idle");
   });
 
   it("hält den Wortschatz eine Stunde im Cache", async () => {

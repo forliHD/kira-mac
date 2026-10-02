@@ -1,12 +1,13 @@
 // Einstellungen (900×620, Ampel über der Seitenleiste, Vibrancy): links die
 // Bereiche als senkrechte Tab-Liste, rechts Titel + Karten. Die Auswahl ist
-// reiner Zustand (kein Router); `?section=` wählt den Startbereich.
+// reiner Zustand (kein Router); `?section=` wählt den Startbereich, das
+// Ereignis `settings-section` wechselt in einem schon offenen Fenster.
 
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import { updateShort } from "../lib/format";
 import { IconGear, IconGlobe, IconInfo, IconKeyboard, IconMic, IconShield } from "../lib/icons";
-import { useLocalState } from "../lib/useLocalState";
+import { localApi, useLocalState } from "../lib/useLocalState";
 import { GlassCard, InfoNote, SectionHeader, Spinner, StatusDot, cx } from "../lib/ui";
 import { AboutSection } from "./AboutSection";
 import { DictationSection } from "./DictationSection";
@@ -14,7 +15,7 @@ import { GeneralSection } from "./GeneralSection";
 import { HotkeySection } from "./HotkeySection";
 import { InstanceSection } from "./InstanceSection";
 import { PermissionsSection } from "./PermissionsSection";
-import { type HotkeyName, type SectionId, type SectionProps, sectionFromQuery } from "./shared";
+import { type HotkeyName, type SectionId, type SectionProps, sectionFromName, sectionFromQuery } from "./shared";
 
 const SECTIONS: Array<{ id: SectionId; label: string; icon: ReactNode; title: string; subtitle: string }> = [
   {
@@ -90,6 +91,23 @@ export function App(): ReactNode {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
   }, [section]);
+
+  // „Ändern“ aus der Einrichtung o. ä., während die Einstellungen schon offen sind.
+  useEffect(() => {
+    let off = (): void => undefined;
+    try {
+      off = localApi().on((event) => {
+        if (event.type !== "settings-section") return;
+        const target = sectionFromName(event.section);
+        if (!target) return;
+        setFocusHotkey(null);
+        setSection(target);
+      });
+    } catch {
+      /* außerhalb der App: nichts zu hören */
+    }
+    return () => off();
+  }, []);
 
   function go(id: SectionId, focus?: HotkeyName): void {
     setFocusHotkey(focus ?? null);

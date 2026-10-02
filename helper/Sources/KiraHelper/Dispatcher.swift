@@ -5,7 +5,8 @@ import Foundation
 typealias CommandHandler = @Sendable (Request) async throws -> JSONValue
 
 /// Alle Dienste des Helfers, einmal je Prozess. Die Kommandotabellen greifen
-/// darüber auf Sprache, Sprachmodell, Systemton, Text und Berechtigungen zu.
+/// darüber auf Sprache, Sprachmodell, Systemton, Text, fn-Taste und
+/// Berechtigungen zu.
 final class Services: Sendable {
     let writer: OutputWriter
     let permissions: PermissionsService
@@ -13,6 +14,7 @@ final class Services: Sendable {
     let llm: FoundationModelsService
     let audio: SystemAudioRecorder
     let text: TextInserter
+    let fnKey: FnKeyMonitor
 
     init(writer: OutputWriter) {
         self.writer = writer
@@ -21,6 +23,7 @@ final class Services: Sendable {
         self.llm = FoundationModelsService(writer: writer)
         self.audio = SystemAudioRecorder(writer: writer)
         self.text = TextInserter()
+        self.fnKey = FnKeyMonitor(writer: writer)
     }
 
     /// Beendet alle laufenden Streams (vor `shutdown` und bei EOF auf stdin).
@@ -28,6 +31,7 @@ final class Services: Sendable {
         await speech.stopAll()
         await llm.cancelAll()
         await audio.stopAll()
+        fnKey.stop()
     }
 }
 
@@ -101,6 +105,7 @@ final class Dispatcher: Sendable {
         LLMCommands.register(into: &table, services: services)
         AudioCommands.register(into: &table, services: services)
         TextCommands.register(into: &table, services: services)
+        FnKeyCommands.register(into: &table, services: services)
         self.table = table
     }
 
