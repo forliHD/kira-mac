@@ -104,12 +104,16 @@ describe("QuickChat – Server", () => {
     expect(a.tools).toEqual([{ name: "mail_search", label: "Durchsucht das Postfach", status: "done" }]);
     // Unterwegs war die Aktivität sichtbar.
     expect(states.some((st) => last(st).activity === "Durchsucht das Postfach…")).toBe(true);
-    // Denkschritte (thinking + inner_thought) bleiben für das eingeklappte „Nachgedacht“.
-    expect(a.reasoning).toEqual(["Denke nach…", "x"]);
+    // Denkschritte (thinking + inner_thought) bleiben für das eingeklappte „Nachgedacht“;
+    // die Statuszeile „Denke nach…“ des Servers ist kein Schritt (Live 02.10.2026).
+    expect(a.reasoning).toEqual(["x"]);
   });
 
   it("begrenzt Denkschritte und überspringt Wiederholungen", () => {
     expect(appendReasoning(["a"], "a")).toEqual(["a"]);
+    expect(appendReasoning([], "Denke nach…")).toEqual([]);
+    expect(appendReasoning([], "Denkt nach...")).toEqual([]);
+    expect(appendReasoning([], "Denke nach, ob days=1 reicht")).toEqual(["Denke nach, ob days=1 reicht"]);
     expect(appendReasoning(["a"], "b")).toEqual(["a", "b"]);
     const many = Array.from({ length: REASONING_MAX_STEPS }, (_, i) => `s${i}`);
     expect(appendReasoning(many, "neu")).toHaveLength(REASONING_MAX_STEPS);

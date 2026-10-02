@@ -6,6 +6,10 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+### Behoben
+- „Nachgedacht“ im Schnellfenster zählte die Statuszeile „Denke nach…“ des
+  Servers als ersten Denkschritt mit.
+
 ## [0.3.2] - 2026-10-02
 
 ### Hinzugefügt

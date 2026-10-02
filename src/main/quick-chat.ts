@@ -125,8 +125,12 @@ const TOOL_LABELS: Record<string, string> = {
 export const REASONING_MAX_STEPS = 40;
 export const REASONING_MAX_CHARS = 2_000;
 
+/** Statuszeilen des Servers („Denke nach…“) sind kein Denkschritt. */
+const REASONING_PLACEHOLDER = /^(denke|denkt|überlege|überlegt)( kurz)? nach\s*(…|\.{3})?$/i;
+
 /** Denkschritt anhängen (begrenzt; ein wiederholter letzter Schritt zählt nicht doppelt). */
 export function appendReasoning(steps: readonly string[], step: string): string[] {
+  if (REASONING_PLACEHOLDER.test(step.trim())) return [...steps];
   const clipped = step.length > REASONING_MAX_CHARS ? `${step.slice(0, REASONING_MAX_CHARS)}…` : step;
   if (steps[steps.length - 1] === clipped) return [...steps];
   return [...steps, clipped].slice(-REASONING_MAX_STEPS);
