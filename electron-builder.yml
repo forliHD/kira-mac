@@ -29,6 +29,19 @@ extraResources:
 
 asar: true
 
+# Härtung der ausgelieferten App (Electron-Fuses): kein ELECTRON_RUN_AS_NODE,
+# keine NODE_OPTIONS, kein --inspect – sonst ließe sich über die signierte App
+# fremder Code mit ihren Berechtigungen (Mikrofon, Bedienungshilfen) starten.
+# Cookies (Cloudflare-Access-Sitzung) verschlüsselt auf der Platte, App-Code nur
+# aus dem geprüften asar.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+
 # Nur Deutsch und Englisch: Electron bringt über 200 Sprachordner mit, jede
 # Datei darin wird einzeln signiert (mit Apple-Zeitstempel). So bleibt die App
 # kleiner, und das Signieren dauert Sekunden statt einer Viertelstunde.

@@ -8,6 +8,25 @@ Links im System-Browser, Auto-Update. Alles Zustandsbehaftete bleibt auf dem
 Server; ohne Server zeigt die App einen ehrlichen Offline-Zustand und das
 lokale Diktat.
 
+## Was die App kann
+
+- **Schnellfenster** (⌥ Leertaste): schwebender Mini-Chat aus echtem Liquid
+  Glass (Panel wie Spotlight, aktiviert die App nicht). Der Hauptprozess führt
+  den Zug über `POST /api/chat/stream` (`src/main/quick-chat.ts`), die Seite
+  `src/renderer/quick` zeigt nur Zustand. ⌘↩ öffnet den Chat im Hauptfenster,
+  ⌘N beginnt neu. Ohne Verbindung antwortet das Apple-Sprachmodell lokal
+  (gekennzeichnet, nicht gespeichert).
+- **Globales Diktat** (⌥⌘D) in jedes Programm über die Glas-Pille unten
+  (HUD); im Schnellfenster landet es im Eingabefeld.
+- **Diktat im Dashboard** über den Apple-Chip (Brücke `transcribe`).
+- **Mitteilungen** über den Geräte-Stream des Servers; kein Banner, wenn das
+  Hauptfenster oder das Schnellfenster den Chat gerade zeigt.
+- **Hauptfenster** mit eingelassener Ampel in der Kopfleiste des Dashboards
+  (ab KIRA 3.298.0, Fähigkeit `inset-titlebar`), Menüleiste mit drei
+  Zuständen, Auto-Update.
+- **Liquid Glass** über `electron-liquid-glass` (NSGlassEffectView, macOS 26+),
+  sonst Vibrancy – eine Stelle: `src/main/glass.ts`.
+
 ## Architektur in einem Absatz
 
 Electron (TypeScript, `electron-vite`) bildet die Hülle: der Hauptprozess
@@ -74,6 +93,30 @@ scripts/sync-shared.sh /pfad/zum/kira-checkout
 Die Nocturne-Token (`src/renderer/styles/tokens.css`) stammen aus
 `kira/dashboard/src/index.css`.
 
+## Testen
+
+```bash
+npm run typecheck && npm run lint && npm test     # Vitest: Vertrag, SSE, Helfer, Diktat, Schnellfenster, …
+cd helper && swift test --scratch-path ~/.cache/kira-helper-build
+```
+
+**Ende zu Ende** gegen eine laufende KIRA-Instanz (lokal mit
+`KIRA_ENV=development` + `KIRA_DEV_BYPASS=true`, dann braucht es kein
+Passwort):
+
+```bash
+npm run build
+node scripts/e2e/run.mjs --instance http://localhost:8420 --out /tmp/kira-e2e
+```
+
+Das Skript startet die unverpackte App mit eigenem Profil
+(`KIRA_MAC_PROFILE`), Testschnittstelle (`KIRA_MAC_TEST_HOOKS=1`) und
+DevTools-Protokoll, prüft Brücke, eingelassene Titelleiste, Mitteilungs-Stream,
+eine echte Frage im Schnellfenster, „Im Hauptfenster öffnen“, HUD,
+Einstellungen und Offline-Seite und legt Bildschirmfotos des Webinhalts ab
+(natives Glas ist darauf nicht zu sehen). Beide Umgebungsvariablen wirken nur
+unverpackt; die ausgelieferte App sperrt `--inspect` per Electron-Fuse.
+
 ## Release (lokal, kein CI)
 
 Die Build-Ausgabe liegt in `~/Library/Caches/kira-mac/dist` (änderbar über
@@ -99,30 +142,31 @@ Einmalig einrichten:
    `APPLE_TEAM_ID` in der Umgebung.
 
 
-Verteilung als DMG + ZIP über GitHub Releases (`forliHD/kira-mac`);
-`electron-updater` liest `latest-mac.yml` von dort. Signatur mit Developer ID,
-Hardened Runtime und Notarisierung.
+Verteilung als DMG + ZIP über GitHub Releases (`forliHD/kira-mac`, öffentlich,
+damit `electron-updater` die `latest-mac.yml` ohne Token lesen kann). Signatur
+mit Developer ID, Hardened Runtime, Notarisierung, angeheftetem Ticket und
+Electron-Fuses (kein `ELECTRON_RUN_AS_NODE`, keine `NODE_OPTIONS`, kein
+`--inspect`, App-Code nur aus dem geprüften asar, verschlüsselte Cookies).
 
 ```bash
-export APPLE_ID="…@…"                       # Apple-ID des Entwicklerkontos
-export APPLE_APP_SPECIFIC_PASSWORD="xxxx-…"  # appleid.apple.com → App-spezifische Passwörter
-export APPLE_TEAM_ID="XXXXXXXXXX"
-# optional, wenn mehrere Zertifikate im Schlüsselbund liegen:
-export CSC_NAME="Developer ID Application: Name (XXXXXXXXXX)"
-
 # 1. Version in package.json erhöhen, CHANGELOG.md und RELEASE_NOTES.md füllen, committen
-# 2. App-Symbol (einmalig oder bei Änderung):
-scripts/make-icon.sh /pfad/zum/kira/dashboard/public/icon-source.svg
-# 3. Release:
+# 2. App-Symbol, nur bei Änderung der Quelle unter build/icon-src/:
+scripts/make-icon.sh
+# 3. Release (baut Helfer + App, signiert, beglaubigt, Tag, GitHub-Release):
 npm run release      # = scripts/release.sh
 ```
 
-`scripts/release.sh` prüft den sauberen Arbeitsbaum, baut den Helfer,
-führt Typprüfung und Tests aus, baut mit `electron-builder --mac`
-(signiert + notarisiert), setzt den Tag `v<version>` und legt den
-GitHub-Release mit `*.dmg`, `*.zip` und `latest-mac.yml` an. Jeder Schritt
-bricht bei Fehlern ab. `npm run dist` baut nur das Paket, ohne zu
-veröffentlichen.
+`scripts/release.sh` prüft Zertifikat, Notarisierungs-Profil und den sauberen
+Arbeitsbaum, baut den Helfer, führt Typprüfung und Tests aus, baut mit
+`electron-builder --mac` (signiert + notarisiert, Ausgabe außerhalb von iCloud),
+setzt den Tag `v<version>` und legt den GitHub-Release mit `*.dmg`, `*.zip` und
+`latest-mac.yml` an. Jeder Schritt bricht bei Fehlern ab. `npm run dist` baut
+nur das Paket, ohne zu veröffentlichen. Prüfen eines fertigen Pakets:
+
+```bash
+spctl -a -vv -t exec ~/Library/Caches/kira-mac/dist/mac-arm64/KIRA.app   # → accepted, Notarized Developer ID
+xcrun stapler validate ~/Library/Caches/kira-mac/dist/mac-arm64/KIRA.app
+```
 
 ## Berechtigungen
 
@@ -144,6 +188,8 @@ Entitlements in `build/entitlements.mac.plist`.
 ```
 src/main/            Hauptprozess
   index.ts           Lebenszyklus, Verdrahtung
+  quick-chat.ts      Gespräch des Schnellfensters (Server-Stream, Apple-Modell offline)
+  glass.ts           Liquid Glass mit Rückfall auf Vibrancy
   config.ts          config.json (atomar), instance.ts  URL-Politik + Health-Wahl
   session.ts         alle Serveranfragen (Bearer/Cookie), session-request-Fluss
   notifications.ts   SSE-Client /api/push/stream, sse.ts  reiner Parser
@@ -153,11 +199,11 @@ src/main/            Hauptprozess
   hotkeys.ts tray.ts updater.ts links.ts downloads.ts menu.ts log.ts paths.ts
   windows/           main, quick, hud, settings, onboarding, common
 src/preload/         index.ts (Instanz: KiraNative), api.ts (reine Fabrik), audio.ts (WAV), local.ts (KiraLocal)
-src/renderer/        onboarding, settings, hud, offline (React 19 + Tailwind 4), styles/tokens.css
+src/renderer/        onboarding, settings, hud, offline, quick (React 19 + Tailwind 4), lib/, styles/
 src/shared/          bridge.ts (Vertragstypen), helper-types.ts, capabilities.ts, dictationText.js (Kopie)
 helper/              Swift-Helfer (eigenes Paket, siehe docs/helper-protocol.md)
 tests/               vitest
-scripts/             build-helper.sh, release.sh, sync-shared.sh, make-icon.sh
+scripts/             build-helper.sh, release.sh, sync-shared.sh, make-icon.sh, after-pack.cjs, e2e/
 build/               entitlements.mac.plist, icon.icns
 resources/tray/      Menüleisten-Symbol (Template)
 docs/                helper-protocol.md

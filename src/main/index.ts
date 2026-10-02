@@ -134,6 +134,11 @@ class KiraApp {
     }
   }
 
+  /** Einstellungen zeigen (Menü, Menüleiste, lokale Seiten, Ende-zu-Ende-Tests). */
+  showSettings(): void {
+    settingsWindow.show();
+  }
+
   // ── Aufbau ────────────────────────────────────────────────────────────
 
   private applyUserAgent(): void {
@@ -663,7 +668,15 @@ class KiraApp {
   }
 }
 
+// Entwicklung und Tests: eigenes Profil (Konfiguration, Cookies, Sperre der
+// Einzelinstanz) über KIRA_MAC_PROFILE – muss vor dem ersten Zugriff auf
+// userData stehen. Die gepackte App ignoriert beides.
+if (!app.isPackaged && process.env.KIRA_MAC_PROFILE) app.setPath("userData", process.env.KIRA_MAC_PROFILE);
+
 const kira = new KiraApp();
+// Ende-zu-Ende-Tests (scripts/e2e/): Zugriff auf die App-Instanz über den
+// Node-Inspector – nur unverpackt und nur auf ausdrücklichen Wunsch.
+if (!app.isPackaged && process.env.KIRA_MAC_TEST_HOOKS === "1") (globalThis as Record<string, unknown>).__kira = kira;
 void kira.boot().catch((err: unknown) => {
   scoped("app").error("boot_failed", { error: err instanceof Error ? err.stack ?? err.message : String(err) });
   app.quit();

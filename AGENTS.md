@@ -105,14 +105,39 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   `dictation.ts`, `notifications.ts` genutzt; `@types/node` nicht unter 22
   absenken.
 
+- **Liquid Glass nur über `src/main/glass.ts`**: `electron-liquid-glass`
+  legt ein NSGlassEffectView hinter den Webinhalt (macOS 26+), sonst Vibrancy.
+  Fenster dafür `transparent: true`, KEINE `vibrancy`-Option gleichzeitig,
+  Seitenhintergrund transparent. Die Tönung hängt am Erscheinungsbild –
+  Schnellfenster und HUD werden bei `nativeTheme.updated` neu gebaut. Electron
+  selbst hat keine Glas-API (PR #50415 nie gemergt).
+- **Signieren**: Repo liegt in iCloud → Finder-Metadaten brechen `codesign`
+  („resource fork … detritus“). Darum `scripts/after-pack.cjs` (`xattr -cr`)
+  und Ausgabe nach `~/Library/Caches/kira-mac/dist`. `electronLanguages` hält
+  nur de/en – sonst signiert electron-builder über 200 Sprachordner einzeln
+  (15 min). Pfad im `binaries`-Eintrag relativ zum Bündel: `Contents/…`.
+- **Electron-Fuses** in der gepackten App: kein `--inspect`, kein
+  `ELECTRON_RUN_AS_NODE`. Ende-zu-Ende-Tests laufen deshalb unverpackt
+  (`scripts/e2e/run.mjs`, Umgebung `KIRA_MAC_PROFILE` + `KIRA_MAC_TEST_HOOKS=1`,
+  beides nur unverpackt wirksam).
+- **Schnellfenster** = lokale Seite + `src/main/quick-chat.ts` (Server-Zug über
+  `POST /api/chat/stream`, Frames wie im Dashboard). Ohne Verbindung antwortet
+  das Apple-Modell (`llm.stream`), gekennzeichnet `local`, nichts geht an den
+  Server. Diktat mit Ziel `quick` setzt in das Eingabefeld ein (kein HUD, keine
+  Bedienungshilfen nötig).
+- **Eingelassene Titelleiste** des Hauptfensters nur, wenn
+  `config.lastServerVersion` ≥ 3.298.0 (`serverSupportsInsetTitlebar`); die
+  Fähigkeit `inset-titlebar` geht nur an Seiten DIESES Fensters
+  (`capabilities(sender)`).
+
 ## Offene Punkte (Stand 0.1.0)
 
 - `share`-Ereignis (Teilen aus Finder/Dock) braucht eine Share-Extension – noch
   nicht umgesetzt, der Ereignistyp ist im Vertrag vorgesehen.
-- `isStandalone()` des Dashboards (Installations-Hinweise ausblenden) kennt
-  die Hülle nur über `window.KiraNative`/User-Agent – das Dashboard entscheidet.
-- Apple-Sprachmodell (`llm.*`) und Systemton (`audio.system.*`) sind im Helfer-
-  Protokoll beschrieben und als Fähigkeiten gemeldet, aber in der Hülle noch
-  ohne eigene Oberfläche.
-- Das endgültige Design der lokalen Seiten liefert der Owner; aktuell schlicht
-  mit Nocturne-Token.
+- Systemton (`audio.system.*`) ist im Helfer fertig, aber in der Hülle noch
+  ohne Oberfläche (Besprechung mit Computer-Ton läuft im Dashboard weiter über
+  die Bildschirmfreigabe).
+- Apple-Sprachmodell: im Schnellfenster ohne Verbindung genutzt; Textwerkzeuge
+  auf Markierung (Umformulieren, Kürzen) fehlen noch.
+- Textfeld-Einfügen (`text.insert`) und Systemton sind nur kompiliert geprüft –
+  live braucht es die Freigaben Bedienungshilfen bzw. Bildschirmaufnahme.
