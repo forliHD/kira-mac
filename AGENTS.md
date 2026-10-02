@@ -184,8 +184,14 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   (`history`-Getter): unsignierte Entwickler-Electrons teilen sich den
   Schlüsselbund-Eintrag „Electron Safe Storage“ – dort blockierte der
   Schlüsselbund-Dialog den Hauptprozess beim Start. Ohne Verschlüsselung nur im
-  Speicher, nie Klartext auf der Platte. UI: Einstellungen → Diktat → Verlauf,
-  Menüleiste „Letztes Diktat kopieren“.
+  Speicher, nie Klartext auf der Platte. UI: Schnellfenster-Ansicht „Diktate“
+  (⌘2, `quick/Dictations.tsx`; Suche im Eingabefeld, Menüleiste
+  „Diktat-Verlauf…“ öffnet sie per Ereignis `quick-view`), dazu Einstellungen →
+  Diktat → Verlauf und Menüleiste „Letztes Diktat kopieren“. Änderungen am
+  Verlauf meldet `notifyHistoryChanged()` an Einstellungen, Schnellfenster UND
+  Menüleiste (das Schnellfenster hängt nicht an `broadcast`). Beide Ansichten
+  teilen sich `.q-thread`/`.q-log` – die Höhenmessung beobachtet genau diese
+  Elemente, also nie durch andere ersetzen.
 - **Einsetzen in Web-Inhalte über die Zwischenablage** (seit 0.3.2,
   `TextInserter.isInWebContent`): AXSelectedText in Chromium/Electron/WebKit
   meldet Erfolg, ohne verlässlich einzufügen (Live: nur Punkte). Reine

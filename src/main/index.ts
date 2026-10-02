@@ -148,7 +148,7 @@ class KiraApp {
       hotkeys: () => this.config.hotkeys,
       hasDictation: () => this.history.latest() !== null,
       onCopyLastDictation: () => this.copyDictation(null),
-      onDictationHistory: () => this.showSettings("diktat"),
+      onDictationHistory: () => this.openQuickDictations(),
     });
     this.tray.create();
     this.rebuildMenu();
@@ -320,8 +320,7 @@ class KiraApp {
     // Jedes Diktat in den Verlauf – auch wenn das Einsetzen scheiterte.
     this.dictation.on("session", (s) => {
       this.history.add({ at: s.startedAt, app: s.app, target: s.target, text: s.text, failed: s.failed });
-      this.broadcast({ type: "dictation-history" });
-      this.tray?.refresh();
+      this.notifyHistoryChanged();
     });
   }
 
@@ -363,6 +362,23 @@ class KiraApp {
 
   private historyView(): { entries: ReturnType<DictationHistory["list"]>; persistent: boolean } {
     return { entries: this.history.list(), persistent: this.history.persistent };
+  }
+
+  /** Verlauf geändert: Einstellungen, Schnellfenster (Diktate-Ansicht) und Menüleiste auffrischen. */
+  private notifyHistoryChanged(): void {
+    this.broadcast({ type: "dictation-history" });
+    this.quickWin?.send({ type: "dictation-history" });
+    this.tray?.refresh();
+  }
+
+  /** Schnellfenster mit der Diktate-Ansicht (Menüleiste „Diktat-Verlauf…“). */
+  private openQuickDictations(): void {
+    if (!this.config.onboarded) {
+      onboardingWindow.show();
+      return;
+    }
+    this.quickWin.show();
+    this.quickWin.send({ type: "quick-view", view: "dictations" });
   }
 
   /** Text eines Verlaufseintrags (oder des letzten) in die Zwischenablage. */
@@ -523,12 +539,12 @@ class KiraApp {
         view: () => this.historyView(),
         copy: (id) => this.copyDictation(id),
         remove: (id) => {
-          if (this.history.remove(id)) this.tray.refresh();
+          if (this.history.remove(id)) this.notifyHistoryChanged();
           return this.historyView();
         },
         clear: () => {
           this.history.clear();
-          this.tray.refresh();
+          this.notifyHistoryChanged();
           return this.historyView();
         },
       },

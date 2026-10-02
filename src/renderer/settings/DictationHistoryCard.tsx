@@ -110,7 +110,7 @@ export function DictationHistoryCard(): ReactNode {
           <p className="dh-sub">
             Deine letzten Diktate zum Herauskopieren – auch wenn das Einsetzen nicht geklappt hat. Bleibt nur auf diesem Mac
             {view && !view.persistent ? " und nur bis zum Beenden der App" : ", verschlüsselt im Schlüsselbund"} (höchstens 100 Diktate, 30
-            Tage).
+            Tage). Schneller geht es im Schnellfenster: ⌥ Leertaste, dann ⌘2.
           </p>
         </div>
         {entries.length > 0 ? (

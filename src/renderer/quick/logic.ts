@@ -4,7 +4,7 @@
 
 import { insertAtCaret } from "../../shared/dictationText.js";
 import { FN_LABEL, isFnHotkey } from "../../shared/hotkey";
-import { type QuickMessage, type QuickState, type QuickTool } from "../../shared/local-api";
+import { type DictationEntry, type QuickMessage, type QuickState, type QuickTool } from "../../shared/local-api";
 
 export type Tone = "ok" | "warn" | "err" | "idle";
 export type QuickMode = QuickState["mode"];
@@ -79,7 +79,7 @@ export interface KeyInfo {
   isComposing: boolean;
 }
 
-export type QuickKeyAction = "hide" | "open-main" | "reset" | null;
+export type QuickKeyAction = "hide" | "open-main" | "reset" | "view-chat" | "view-dictations" | null;
 
 /**
  * Tasten am Wurzelelement. Bewusst eng: nur Esc, ⌘↩ und ⌘N; alles andere
@@ -92,7 +92,43 @@ export function keyAction(k: KeyInfo, ctx: { hasSession: boolean }): QuickKeyAct
   if (k.key === "Escape" && plain) return "hide";
   if (k.key === "Enter" && cmdOnly) return ctx.hasSession ? "open-main" : null;
   if ((k.key === "n" || k.key === "N") && cmdOnly) return "reset";
+  // Ansicht wechseln: ⌘1 Chat, ⌘2 Diktate (Owner-Wunsch 02.10.2026).
+  if (k.key === "1" && cmdOnly) return "view-chat";
+  if (k.key === "2" && cmdOnly) return "view-dictations";
   return null;
+}
+
+// ── Diktate-Ansicht ─────────────────────────────────────────────────────
+
+/** Suche über Text und Programm: jedes Wort muss vorkommen (Groß/klein egal). */
+export function filterDictations(entries: readonly DictationEntry[], query: string): DictationEntry[] {
+  const words = query.toLocaleLowerCase("de-DE").split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [...entries];
+  return entries.filter((e) => {
+    const hay = `${e.text} ${e.app ?? ""}`.toLocaleLowerCase("de-DE");
+    return words.every((w) => hay.includes(w));
+  });
+}
+
+/** „gerade eben“, „vor 4 Min.“, „heute 13:52“, „gestern 11:56“, „28.09. 09:10“. */
+export function dictationTime(at: number, now: number = Date.now()): string {
+  const diff = now - at;
+  if (diff < 60_000) return "gerade eben";
+  if (diff < 60 * 60_000) return `vor ${Math.floor(diff / 60_000)} Min.`;
+  const date = new Date(at);
+  const time = date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  const day = (d: Date): number => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((day(new Date(now)) - day(date)) / 86_400_000);
+  if (days === 0) return `heute ${time}`;
+  if (days === 1) return `gestern ${time}`;
+  return `${date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })} ${time}`;
+}
+
+/** Auswahl mit ↑/↓: bleibt im Bereich, ohne Einträge -1. */
+export function moveSelection(index: number, delta: number, length: number): number {
+  if (length <= 0) return -1;
+  if (index < 0) return delta > 0 ? 0 : length - 1;
+  return Math.max(0, Math.min(length - 1, index + delta));
 }
 
 /** ↩ ohne Umschalt/Modifikator sendet; ⇧↩ (und IME-Bestätigung) nicht. */

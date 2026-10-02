@@ -1089,3 +1089,203 @@ html.quick body {
     transition: none;
   }
 }
+
+/* ── Umschalter Chat | Diktate (Kopf) ──────────────────────────────── */
+.q-seg {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 10px;
+  background: var(--q-sunk);
+  border: 1px solid var(--q-sunk-line);
+  -webkit-app-region: no-drag;
+}
+.q-seg-btn {
+  all: unset;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 24px;
+  color: var(--q-text-3);
+  cursor: default;
+}
+.q-seg-btn:hover {
+  color: var(--q-text);
+}
+.q-seg-btn.is-active {
+  color: var(--q-text-strong);
+  background: var(--q-pill-bg);
+  box-shadow:
+    inset 0 0 0 1px var(--q-pill-line),
+    inset 0 1px 0 var(--q-pill-hi);
+}
+.q-seg-btn:focus-visible {
+  outline: 2px solid var(--q-focus);
+  outline-offset: 1px;
+}
+
+/* ── Diktate-Ansicht ───────────────────────────────────────────────── */
+.q-dict-count {
+  flex: none;
+  align-self: center;
+  padding: 0 6px;
+  font-size: 11.5px;
+  color: var(--q-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.q-dict-log {
+  padding-top: 2px;
+}
+.q-dict-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.q-dict {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--q-pill-bg);
+  border: 1px solid var(--q-pill-line);
+  box-shadow: inset 0 1px 0 var(--q-pill-hi);
+}
+.q-dict.is-selected {
+  border-color: color-mix(in srgb, var(--q-accent) 55%, transparent);
+  box-shadow:
+    inset 0 1px 0 var(--q-pill-hi),
+    0 0 0 3px color-mix(in srgb, var(--q-accent) 16%, transparent);
+}
+.q-dict-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--q-text-3);
+}
+.q-dict-time {
+  font-variant-numeric: tabular-nums;
+}
+.q-dict-app {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--q-sunk);
+  border: 1px solid var(--q-sunk-line);
+  color: var(--q-text-2);
+}
+.q-dict-failed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: light-dark(#b45309, #fbbf24);
+}
+.q-dict-text {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--q-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.q-dict-text.is-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.q-dict-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.q-dict-more {
+  all: unset;
+  font-size: 12px;
+  color: var(--q-link);
+  cursor: default;
+}
+.q-dict-more:hover {
+  color: var(--q-link-hover);
+}
+.q-dict-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.q-dict-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--q-pill-text);
+  background: var(--q-sunk);
+  border: 1px solid var(--q-sunk-line);
+  cursor: default;
+}
+.q-dict-btn:hover {
+  background: var(--q-pill-hover);
+}
+.q-dict-btn.is-primary {
+  color: light-dark(#ffffff, #04121b);
+  background: var(--q-accent);
+  border-color: transparent;
+}
+.q-dict-btn.is-primary:hover {
+  filter: brightness(1.08);
+}
+.q-dict-btn.is-done {
+  background: light-dark(#15803d, #4ade80);
+}
+.q-dict-del {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  color: var(--q-text-3);
+  cursor: default;
+}
+.q-dict-del:hover {
+  color: var(--q-text);
+  background: var(--q-pill-hover);
+}
+.q-dict-btn:focus-visible,
+.q-dict-del:focus-visible,
+.q-dict-more:focus-visible {
+  outline: 2px solid var(--q-focus);
+  outline-offset: 1px;
+}
+.q-dict-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 4px 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--q-text-3);
+}
+.q-dict-empty svg {
+  flex: none;
+  margin-top: 2px;
+}

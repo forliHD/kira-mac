@@ -1,23 +1,17 @@
-## KIRA für Mac 0.3.2
+## KIRA für Mac 0.3.3
 
 **Neu**
 
-- **Diktat-Verlauf.** Jedes Diktat findest du jetzt auch unter Einstellungen →
-  Diktat → Verlauf und kannst es dort kopieren – selbst wenn es im anderen
-  Programm nicht angekommen ist. In der Menüleiste: „Letztes Diktat kopieren“.
-  Der Verlauf bleibt nur auf deinem Mac, verschlüsselt (höchstens 100 Diktate,
-  30 Tage).
-- **Denkschritte im Schnellfenster.** Wie im Dashboard: „Nachgedacht · 2
-  Schritte“, eingeklappt; ein Klick zeigt, was KIRA überlegt hat.
-- **KIRA mit „K“** im Schnellfenster statt der lila Fläche.
+- **Deine Diktate im Schnellfenster.** ⌥ Leertaste, dann oben auf
+  **Diktate** (oder ⌘2): die letzten Diktate als Karten mit Zeit und
+  Programm. **Kopieren**, **In den Chat** (der Text wird zur Frage an KIRA)
+  oder löschen. Das Eingabefeld sucht dort über alle Diktate, ↑/↓ wählt, ↩
+  kopiert. Neue Diktate erscheinen sofort oben. In der Menüleiste führt
+  „Diktat-Verlauf…“ direkt dorthin.
 
 **Behoben**
 
-- Statt des diktierten Texts kamen manchmal nur Punkte an. Reine Satzzeichen
-  werden verworfen, und in Web-Programmen (Chrome, Teams, Slack …) setzt KIRA
-  über die Zwischenablage ein.
-- Das Schnellfenster scrollt nach dem Senden wieder zuverlässig zur neuen
-  Nachricht.
+- Die Denkschritte zählten die Statuszeile „Denke nach…“ mit.
 
 Die App aktualisiert sich selbst und installiert das Update beim nächsten
 Beenden (oder sofort über die Menüleiste → „Nach Updates suchen“).

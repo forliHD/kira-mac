@@ -6,6 +6,17 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-02
+
+### Hinzugefügt
+- **Diktate im Schnellfenster** (Owner-Wunsch: der Verlauf war unter
+  Einstellungen zu versteckt): Umschalter **Chat | Diktate** im Kopf (⌘1/⌘2).
+  Die Diktate-Ansicht zeigt die letzten Diktate als Karten (Zeit, Programm,
+  „nicht eingesetzt“) mit **Kopieren**, **In den Chat** (Text wird zur Frage
+  an KIRA) und Löschen; das Eingabefeld sucht dort über alle Diktate, ↑/↓
+  wählt, ↩ kopiert, ⌘↩ übernimmt in den Chat. Neue Diktate erscheinen sofort
+  oben. Die Menüleiste „Diktat-Verlauf…“ öffnet direkt diese Ansicht.
+
 ### Behoben
 - „Nachgedacht“ im Schnellfenster zählte die Statuszeile „Denke nach…“ des
   Servers als ersten Denkschritt mit.

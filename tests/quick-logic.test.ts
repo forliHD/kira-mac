@@ -5,6 +5,8 @@ import {
   activityLine,
   connectionPill,
   desiredHeight,
+  dictationTime,
+  filterDictations,
   footerNote,
   formatAccelerator,
   groupTools,
@@ -12,6 +14,7 @@ import {
   isSubmitKey,
   keyAction,
   micLevel,
+  moveSelection,
   partialPreview,
   shouldReport,
   stoppedNote,
@@ -26,6 +29,13 @@ describe("Tasten", () => {
     expect(keyAction(key("Enter", { metaKey: true }), { hasSession: true })).toBe("open-main");
     expect(keyAction(key("Enter", { metaKey: true }), { hasSession: false })).toBeNull();
     expect(keyAction(key("n", { metaKey: true }), { hasSession: false })).toBe("reset");
+  });
+
+  it("⌘1 Chat, ⌘2 Diktate – ohne ⌘ nichts", () => {
+    expect(keyAction(key("1", { metaKey: true }), { hasSession: false })).toBe("view-chat");
+    expect(keyAction(key("2", { metaKey: true }), { hasSession: false })).toBe("view-dictations");
+    expect(keyAction(key("2"), { hasSession: false })).toBeNull();
+    expect(keyAction(key("2", { metaKey: true, shiftKey: true }), { hasSession: false })).toBeNull();
   });
 
   it("fängt während einer IME-Komposition und bei fremden Kürzeln nichts ab", () => {
@@ -138,5 +148,37 @@ describe("Einfügen und Höhe", () => {
     expect(micLevel(0.25)).toBeCloseTo(0.55);
     expect(micLevel(3)).toBe(1);
     expect(micLevel(Number.NaN)).toBe(0);
+  });
+});
+
+
+describe("Diktate-Ansicht", () => {
+  const e = (id: string, text: string, app: string | null = "Mail", at = 0) => ({ id, at, app, target: "insert" as const, text, failed: false });
+  const list = [e("1", "Hallo Herr Kaya, anbei die Unterlagen"), e("2", "Datensicherung fehlgeschlagen", "Google Chrome"), e("3", "Was steht heute an?", "KIRA")];
+
+  it("sucht in Text und Programm, jedes Wort muss passen", () => {
+    expect(filterDictations(list, "").map((x) => x.id)).toEqual(["1", "2", "3"]);
+    expect(filterDictations(list, "kaya").map((x) => x.id)).toEqual(["1"]);
+    expect(filterDictations(list, "chrome sicherung").map((x) => x.id)).toEqual(["2"]);
+    expect(filterDictations(list, "kaya chrome")).toEqual([]);
+    expect(filterDictations(list, "  HEUTE  ").map((x) => x.id)).toEqual(["3"]);
+  });
+
+  it("Zeitangaben", () => {
+    const now = new Date(2026, 9, 2, 14, 0).getTime();
+    expect(dictationTime(now - 20_000, now)).toBe("gerade eben");
+    expect(dictationTime(now - 4 * 60_000, now)).toBe("vor 4 Min.");
+    expect(dictationTime(new Date(2026, 9, 2, 9, 5).getTime(), now)).toBe("heute 09:05");
+    expect(dictationTime(new Date(2026, 9, 1, 11, 56).getTime(), now)).toBe("gestern 11:56");
+    expect(dictationTime(new Date(2026, 8, 28, 9, 10).getTime(), now)).toBe("28.09. 09:10");
+  });
+
+  it("Auswahl mit Pfeiltasten bleibt im Bereich", () => {
+    expect(moveSelection(-1, 1, 3)).toBe(0);
+    expect(moveSelection(-1, -1, 3)).toBe(2);
+    expect(moveSelection(0, -1, 3)).toBe(0);
+    expect(moveSelection(2, 1, 3)).toBe(2);
+    expect(moveSelection(1, 1, 3)).toBe(2);
+    expect(moveSelection(0, 1, 0)).toBe(-1);
   });
 });

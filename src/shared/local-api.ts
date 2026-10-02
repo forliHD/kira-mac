@@ -186,7 +186,9 @@ export type LocalEvent =
   /** Cloudflare-Access-Anmeldung im Browser ist gescheitert (Seite „Im Browser anmelden“). */
   | { type: "access-login"; status: "error" | "expired"; message: string }
   /** Der Diktat-Verlauf hat sich geändert (neues Diktat, gelöscht). */
-  | { type: "dictation-history" };
+  | { type: "dictation-history" }
+  /** Schnellfenster: Ansicht wechseln (Menüleiste „Diktat-Verlauf…“ → Diktate). */
+  | { type: "quick-view"; view: "chat" | "dictations" };
 
 /** Ein Eintrag im Diktat-Verlauf (nur auf diesem Mac, src/main/dictation-history.ts). */
 export interface DictationEntry {

@@ -164,3 +164,40 @@ export function ChevronIcon(props: IconProps): ReactNode {
     </Svg>
   );
 }
+
+export function CopyIcon(props: IconProps): ReactNode {
+  return (
+    <Svg {...props}>
+      <rect x="9" y="9" width="11" height="11" rx="2.5" />
+      <path d="M15 9V6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15H9" />
+    </Svg>
+  );
+}
+
+/** Schlichte Sprechblase („In den Chat“). */
+export function ChatIcon(props: IconProps): ReactNode {
+  return (
+    <Svg {...props}>
+      <path d="M4 12c0-4.4 3.6-8 8-8s8 3.6 8 8-3.6 8-8 8H6l-2 2v-10z" />
+    </Svg>
+  );
+}
+
+/** Schloss („nur auf diesem Mac“). */
+export function LockIcon(props: IconProps): ReactNode {
+  return (
+    <Svg {...props}>
+      <rect x="5" y="11" width="14" height="9" rx="2.5" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </Svg>
+  );
+}
+
+/** Wellenform – das Diktat-Zeichen der Ansicht „Diktate“. */
+export function WaveIcon(props: IconProps): ReactNode {
+  return (
+    <Svg {...props}>
+      <path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2" />
+    </Svg>
+  );
+}
