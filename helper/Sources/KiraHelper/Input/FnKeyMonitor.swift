@@ -87,6 +87,26 @@ extension FnChordTracker.Output {
     }
 }
 
+// MARK: - Eigene Tastaturereignisse
+
+/// Kennzeichnung der Tastaturereignisse, die der Helfer selbst sendet (⌘V beim
+/// Einsetzen, `TextInserter`). Live-Befund 02.10.2026: Das Diktat setzt jeden
+/// fertigen Satz sofort ein – per ⌘V, wo Accessibility nicht greift. Der Tap
+/// sah dieses ⌘V als „andere Taste zu fn“ und verwarf ein gehaltenes Diktat
+/// nach dem ersten Satz (nach 15–20 s). Gekennzeichnete Ereignisse zählen nie.
+enum SyntheticKeyEvents {
+    /// „KIRA“ als Zahl, in `CGEventField.eventSourceUserData`.
+    static let marker: Int64 = 0x4B49_5241
+
+    static func mark(_ event: CGEvent) {
+        event.setIntegerValueField(.eventSourceUserData, value: marker)
+    }
+
+    static func isOwn(_ event: CGEvent) -> Bool {
+        event.getIntegerValueField(.eventSourceUserData) == marker
+    }
+}
+
 // MARK: - Einordnung eines Tap-Ereignisses (rein)
 
 enum FnEventClassifier {
@@ -118,10 +138,12 @@ enum FnEventClassifier {
     ///   - keyCode: nur bei `flagsChanged` von Belang (welche Zusatztaste)
     ///   - previousFlags: Zusatztasten vor diesem Ereignis
     ///   - systemDefinedKeyDown: bei NX_SYSDEFINED „Taste gedrückt“, sonst nil
+    ///   - own: vom Helfer selbst gesendet (`SyntheticKeyEvents`) – zählt nie
     static func classify(
         type: UInt32, keyCode: Int64, flags: CGEventFlags, previousFlags: CGEventFlags,
-        systemDefinedKeyDown: Bool?
+        systemDefinedKeyDown: Bool?, own: Bool = false
     ) -> FnChordTracker.Input? {
+        if own { return nil }
         switch type {
         case CGEventType.flagsChanged.rawValue:
             let fnNow = flags.contains(.maskSecondaryFn)
@@ -337,6 +359,9 @@ final class FnKeyMonitor: @unchecked Sendable {
             return
         }
         let raw = type.rawValue
+        // Eigenes ⌘V (Einsetzen beim Diktat) ist nie eine Kombination – und
+        // verändert auch den gemerkten Zustand der Zusatztasten nicht.
+        if SyntheticKeyEvents.isOwn(event) { return }
         let isFlagsChanged = raw == CGEventType.flagsChanged.rawValue
         var outputs: [FnChordTracker.Output] = []
         var sink: AsyncStream<Event>.Continuation?

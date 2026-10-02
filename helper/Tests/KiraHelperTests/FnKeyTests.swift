@@ -122,6 +122,31 @@ final class FnEventClassifierTests: XCTestCase {
             "Feststelltaste zählt nicht")
     }
 
+    func testOwnKeyEventsNeverCount() {
+        // Live-Befund 02.10.2026: das eigene ⌘V beim Einsetzen brach gehaltene Diktate ab.
+        XCTAssertNil(
+            FnEventClassifier.classify(
+                type: keyDown, keyCode: Int64(kVK_ANSI_V), flags: .maskCommand, previousFlags: [.maskSecondaryFn],
+                systemDefinedKeyDown: nil, own: true))
+        XCTAssertNil(
+            FnEventClassifier.classify(
+                type: flagsChanged, keyCode: Int64(kVK_Command), flags: [.maskSecondaryFn, .maskCommand],
+                previousFlags: [.maskSecondaryFn], systemDefinedKeyDown: nil, own: true))
+        XCTAssertEqual(
+            FnEventClassifier.classify(
+                type: keyDown, keyCode: Int64(kVK_ANSI_V), flags: .maskCommand, previousFlags: [.maskSecondaryFn],
+                systemDefinedKeyDown: nil, own: false),
+            .keyPressed, "dasselbe ⌘V vom Nutzer ist eine Kombination")
+    }
+
+    func testOwnEventMarkerRoundTrips() throws {
+        let source = CGEventSource(stateID: .privateState)
+        let event = try XCTUnwrap(CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true))
+        XCTAssertFalse(SyntheticKeyEvents.isOwn(event))
+        SyntheticKeyEvents.mark(event)
+        XCTAssertTrue(SyntheticKeyEvents.isOwn(event))
+    }
+
     func testKeyDownAndMediaKeys() {
         XCTAssertEqual(
             FnEventClassifier.classify(type: keyDown, keyCode: 0, flags: [], previousFlags: [], systemDefinedKeyDown: nil),

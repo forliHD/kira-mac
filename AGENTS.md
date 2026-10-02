@@ -171,6 +171,12 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   (Passwortfeld) startet fn nie. macOS' eigene 🌐-Aktion (`AppleFnUsageType`
   in `com.apple.HIToolbox`) nur LESEN und in den Einstellungen darauf
   hinweisen – nie selbst umstellen.
+- **Eigene Tastaturereignisse sind gekennzeichnet** (seit 0.3.1): Was der
+  Helfer selbst sendet (⌘V in `TextInserter`), trägt
+  `SyntheticKeyEvents.marker` in `eventSourceUserData`; der fn-Tap übergeht es.
+  Sonst wertete er das ⌘V beim Einsetzen eines Satzes als „fn + andere Taste“
+  und verwarf ein gehaltenes Diktat nach 15–20 s. Jedes neue künstliche
+  Tastaturereignis des Helfers MUSS `SyntheticKeyEvents.mark` bekommen.
 - **Mitteilungs-Stream ohne Anmeldung wartet** (`LOGIN_WAIT_MS`, 5 min) auf
   `loginChanged()` statt im Takt anzufragen; `reconnectNow()` (Minuten-Prüfung)
   weckt ihn nicht, ein stehender Stream übersteht Token-Erneuerungen.

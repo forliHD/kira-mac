@@ -144,6 +144,10 @@ final class TextInserter {
         else { return false }
         down.flags = .maskCommand
         up.flags = .maskCommand
+        // Gekennzeichnet: die fn-Erkennung darf das eigene ⌘V nicht als
+        // „fn + andere Taste“ werten (sonst bricht ein gehaltenes Diktat ab).
+        SyntheticKeyEvents.mark(down)
+        SyntheticKeyEvents.mark(up)
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
         return true

@@ -4,10 +4,11 @@
     Template-Bild: nur Schwarz + Alpha, macOS färbt es hell/dunkel. 18 x 18 pt,
     Strich 1.5 pt wie SF Symbols (regular). Gerade Kanten liegen auf halben Punkten,
     dadurch bei @2x pixelgenau (3 px). Sprechblase wie im Design-Pfad
-    (Kreis, linkes unteres Viertel eckig, Spitze unten links), darin zwei Zeilen.
+    (Kreis um 9/8.5, linkes unteres Viertel eckig, Spitze unten links), darin das
+    „K“ des App-Symbols: Stamm und Arme 1.25 pt, Versalhöhe 5 pt (6–11).
   -->
-  <g fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M3.25 8.5A5.75 5.75 0 1 1 9 14.25H4.6875L3.25 15.6875Z"/>
-    <path d="M6.75 7.25H11.25M6.75 10.25H9.25"/>
+  <g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.25 8.5A5.75 5.75 0 1 1 9 14.25H4.6875L3.25 15.6875Z" stroke-width="1.5"/>
+    <path d="M7.25 6V11M10.75 6L7.4 9.1M8.75 7.95L10.85 11" stroke-width="1.25"/>
   </g>
 </svg>

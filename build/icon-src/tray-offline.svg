@@ -1,11 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">
   <!--
     Menüleiste, Zustand „getrennt“ → resources/tray/kiraOfflineTemplate(@2x).png.
-    Gleiche Sprechblase gestrichelt, ohne Zeilen. Umfang des Pfads 40.629 pt, genau
-    8 Striche: sichtbarer Strich 3.58 pt, Lücke 1.5 pt (runde Kappen verlängern jeden
-    Strich um die Strichstärke). Der Versatz legt einen Strich mittig auf die Spitze.
+    Gleiche Sprechblase gestrichelt, darin dasselbe „K“ wie im Zustand „verbunden“.
+    Umfang des Pfads 40.629 pt, genau 8 Striche: sichtbarer Strich 3.58 pt, Lücke
+    1.5 pt (runde Kappen verlängern jeden Strich um die Strichstärke). Der Versatz
+    legt einen Strich mittig auf die Spitze.
   -->
-  <path d="M3.25 8.5A5.75 5.75 0 1 1 9 14.25H4.6875L3.25 15.6875Z" fill="none" stroke="#000"
-    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
-    stroke-dasharray="2.0786 3" stroke-dashoffset="3.1482"/>
+  <g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.25 8.5A5.75 5.75 0 1 1 9 14.25H4.6875L3.25 15.6875Z" stroke-width="1.5"
+      stroke-dasharray="2.0786 3" stroke-dashoffset="3.1482"/>
+    <path d="M7.25 6V11M10.75 6L7.4 9.1M8.75 7.95L10.85 11" stroke-width="1.25"/>
+  </g>
 </svg>

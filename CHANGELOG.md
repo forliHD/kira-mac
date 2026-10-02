@@ -6,6 +6,21 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-02
+
+### Behoben
+- **Langes Diktat auf der fn-Taste brach ab** (meist nach 15–20 Sekunden):
+  Das Diktat setzt jeden fertigen Satz sofort ein – in vielen Programmen per
+  ⌘V. Die fn-Erkennung sah dieses eigene ⌘V als „fn + andere Taste“ und
+  verwarf das gehaltene Diktat. Der Helfer kennzeichnet seine eigenen
+  Tastaturereignisse jetzt (`eventSourceUserData`), die fn-Erkennung
+  übergeht sie. Das Diktat läuft, solange fn gehalten wird.
+
+### Geändert
+- **Menüleisten-Symbol mit „K“:** Die Sprechblase oben in der Menüleiste
+  zeigt jetzt das K des App-Symbols (verbunden und getrennt), statt zweier
+  Zeilen.
+
 ## [0.3.0] - 2026-10-02
 
 ### Hinzugefügt
