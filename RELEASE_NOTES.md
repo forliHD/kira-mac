@@ -1,15 +1,12 @@
-## KIRA für Mac 0.3.5
+## KIRA für Mac 0.3.6
 
-Ein kleines Update – und die erste Gelegenheit, die neuen Update-Hinweise aus
-0.3.4 zu sehen: Punkt am K in der Menüleiste, „Update installieren
-(Neustart)“ ganz oben im Menü und „Jetzt neu starten“ im Schnellfenster.
+**Behoben**
 
-**Geändert**
-
-- Der Kopf des Schnellfensters ist aufgeräumt (Umschalter Chat | Diktate
-  ohne zusätzlichen Hinweis daneben).
-- Verständlichere Meldung im Protokoll, wenn unterwegs die Cloudflare-
-  Anmeldung fehlt.
+- Das Hauptfenster verschwand, wenn nach dem Start von KIRA zum ersten Mal
+  das Schnellfenster (⌥ Leertaste) oder das Diktat aufging. KIRA wurde dabei
+  versehentlich zu einem Hintergrundprogramm – ohne Dock-Symbol und ohne
+  ⌘-Tab. Jetzt bleibt KIRA ein normales Programm; Schnellfenster und Diktat
+  erscheinen weiterhin auch über Apps im Vollbild.
 
 Die App aktualisiert sich selbst; mit „Jetzt neu starten“ wird das Update
 sofort installiert.

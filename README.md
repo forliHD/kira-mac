@@ -140,6 +140,11 @@ App öffnet `/api/auth/app/login` → Browser-Teil → Übergabe an
 `de.kira.mac:/auth/callback` → Einlösen → Dashboard angemeldet, Gerätesitzung
 „macOS · KIRA für Mac“, kein zweites Einlösen.
 
+**Prozessart** ohne Server: `node scripts/e2e/process-type.mjs` öffnet
+Schnellfenster und Diktat-HUD und prüft per `lsappinfo`, dass KIRA ein normales
+Programm mit Dock-Symbol bleibt (`--hold N` lässt beide Fenster N Sekunden offen,
+etwa zum Ansehen über einer Vollbild-App).
+
 ## Release (lokal, kein CI)
 
 Die Build-Ausgabe liegt in `~/Library/Caches/kira-mac/dist` (änderbar über

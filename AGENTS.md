@@ -128,6 +128,12 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   das Apple-Modell (`llm.stream`), gekennzeichnet `local`, nichts geht an den
   Server. Diktat mit Ziel `quick` setzt in das Eingabefeld ein (kein HUD, keine
   Bedienungshilfen nötig).
+- **`setVisibleOnAllWorkspaces` nur mit `skipTransformProcessType: true`**
+  (Live-Befund 02.10.2026, 0.3.6): ohne verwandelt Electron die ganze App in ein
+  Hintergrundprogramm (UIElement – kein Dock, kein ⌘-Tab, Fokus weg); beim
+  ersten ⌥ Leertaste nach dem Start verschwand so das Hauptfenster. Panels
+  (`type: "panel"`) schweben auch ohne das über Vollbild-Apps. Prüfung:
+  `tests/panel-windows.test.ts`, `scripts/e2e/process-type.mjs` (`lsappinfo`).
 - **Eingelassene Titelleiste** des Hauptfensters nur, wenn
   `config.lastServerVersion` ≥ 3.298.0 (`serverSupportsInsetTitlebar`); die
   Fähigkeit `inset-titlebar` geht nur an Seiten DIESES Fensters

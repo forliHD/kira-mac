@@ -134,7 +134,11 @@ export class QuickWindowController {
       webPreferences: localWebPreferences(),
     });
     win.setAlwaysOnTop(true, "floating");
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    // Live-Befund 02.10.2026: Ohne skipTransformProcessType machte der erste
+    // Aufruf nach dem Start aus KIRA ein Hintergrundprogramm (kein Dock, kein
+    // ⌘-Tab) – das Hauptfenster verschwand hinter den anderen Programmen. Das
+    // Panel schwebt auch so über Vollbild-Apps (tests/panel-windows.test.ts).
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     applyGlass(win, { cornerRadius: QUICK_RADIUS, fallback: "hud" });
     guardLocalPage(win.webContents, (url) => {
       this.hide();

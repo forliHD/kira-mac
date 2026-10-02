@@ -6,6 +6,22 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-10-02
+
+### Behoben
+- **Hauptfenster verschwand beim ersten ⌥ Leertaste** (Owner-Befund: KIRA
+  frisch gestartet, Hauptfenster vorn, Schnellfenster geöffnet → das
+  Hauptfenster war weg). Das erste Schnellfenster – ebenso das erste
+  Diktat-HUD – rief `setVisibleOnAllWorkspaces(…, { visibleOnFullScreen: true })`.
+  Ohne `skipTransformProcessType` verwandelt Electron dabei die ganze App in ein
+  Hintergrundprogramm: kein Dock-Symbol, kein ⌘-Tab, keine Menüleiste, die App
+  verliert den Fokus und ihr Fenster rutscht hinter die anderen. Beide Fenster
+  sind Panels und schweben auch ohne diese Umwandlung über Vollbild-Apps
+  (geprüft über TextEdit im Vollbild). Regressionstest
+  `tests/panel-windows.test.ts`, Ende-zu-Ende-Prüfung
+  `scripts/e2e/process-type.mjs` (fragt macOS per `lsappinfo` nach der
+  Prozessart).
+
 ## [0.3.5] - 2026-10-02
 
 ### Geändert

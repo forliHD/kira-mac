@@ -76,7 +76,9 @@ export class HudWindowController {
       webPreferences: localWebPreferences(),
     });
     win.setAlwaysOnTop(true, "screen-saver");
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    // Wie das Schnellfenster: die App nicht in ein Hintergrundprogramm verwandeln
+    // (Live-Befund 02.10.2026, src/main/windows/quick.ts).
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     applyGlass(win, { cornerRadius: RADIUS, fallback: "hud" });
     guardLocalPage(win.webContents, (url) => openLocalLink(url));
     win.webContents.on("did-finish-load", () => {
