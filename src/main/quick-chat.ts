@@ -74,6 +74,7 @@ const TOOL_LABELS: Record<string, string> = {
   mail_move: "Verschiebt E-Mails",
   mail_folders: "Schaut in die Mail-Ordner",
   mail_attachment_read: "Liest einen Mail-Anhang",
+  mail_send_to_me: "Schickt dir eine Mail",
   check_mail: "Prüft neue Mails",
   email_filter: "Sichtet Mails",
   email_parse: "Liest Mails",

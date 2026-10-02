@@ -40,6 +40,7 @@ describe("toolLabel / localReason", () => {
     // Mail-Schreibwerkzeuge des Agenten (KIRA 3.301.0): eigene Zeile statt „Arbeitet im Postfach“.
     expect(toolLabel("mail_mark")).toBe("Markiert E-Mails");
     expect(toolLabel("mail_move")).toBe("Verschiebt E-Mails");
+    expect(toolLabel("mail_send_to_me")).toBe("Schickt dir eine Mail");
     expect(toolLabel("tool_web_search")).toBe("Sucht im Web");
     expect(toolLabel("browser_navigate")).toBe("Arbeitet im KI-Browser");
     expect(toolLabel("sandbox_run")).toBe("Arbeitet in der Sandbox");
