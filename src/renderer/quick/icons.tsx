@@ -25,7 +25,6 @@ function Svg({ size = 16, strokeWidth = 2, children, ...rest }: IconProps & { ch
   );
 }
 
-/** Sprechblase – das KIRA-Zeichen der Kachel (wie Menüleiste und Design). */
 /** Sprechblase mit dem „K“ des App-Symbols (Kopf des Schnellfensters). */
 export function BubbleIcon(props: IconProps): ReactNode {
   return (
@@ -144,6 +143,24 @@ export function ImageIcon(props: IconProps): ReactNode {
     <Svg {...props}>
       <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
       <path d="M8.5 10.5a1.5 1.5 0 1 0 0-.01M20.5 15.5l-5-5-9 9" />
+    </Svg>
+  );
+}
+
+/** Denkschritte („Nachgedacht“), wie das Gehirn-Symbol im Dashboard. */
+export function BrainIcon(props: IconProps): ReactNode {
+  return (
+    <Svg {...props}>
+      <path d="M9.5 4.5a2.5 2.5 0 0 0-2.45 2 2.75 2.75 0 0 0-1.8 4.3A2.75 2.75 0 0 0 7 15.5a2.5 2.5 0 0 0 2.5 2.5h.5V4.5z" />
+      <path d="M14.5 4.5a2.5 2.5 0 0 1 2.45 2 2.75 2.75 0 0 1 1.8 4.3A2.75 2.75 0 0 1 17 15.5a2.5 2.5 0 0 1-2.5 2.5H14V4.5z" />
+    </Svg>
+  );
+}
+
+export function ChevronIcon(props: IconProps): ReactNode {
+  return (
+    <Svg {...props}>
+      <path d="m9 6 6 6-6 6" />
     </Svg>
   );
 }

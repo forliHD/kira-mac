@@ -6,7 +6,16 @@ import { type IpcMainInvokeEvent, app, ipcMain, shell } from "electron";
 
 import { type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
 import { LOCAL_IPC } from "../shared/ipc-local";
-import { type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalState, type ProbeResult, type QuickState, type UpdateState } from "../shared/local-api";
+import {
+  type DictationConfig,
+  type DictationHistoryView,
+  type GeneralConfig,
+  type HotkeyConfig,
+  type LocalState,
+  type ProbeResult,
+  type QuickState,
+  type UpdateState,
+} from "../shared/local-api";
 import { scoped } from "./log";
 
 const log = scoped("local-ipc");
@@ -32,6 +41,12 @@ export interface LocalIpcContext {
   openLink: (url: string) => void;
   accessLogin: () => Promise<void>;
   accessLoginInWindow: () => void;
+  history: {
+    view: () => DictationHistoryView;
+    copy: (id: string) => void;
+    remove: (id: string) => DictationHistoryView;
+    clear: () => DictationHistoryView;
+  };
   quick: {
     getState: () => QuickState;
     send: (text: string) => Promise<void>;
@@ -138,6 +153,16 @@ export function registerLocalIpc(ctx: LocalIpcContext): void {
   );
   ipcMain.handle(LOCAL_IPC.accessLogin, guard(() => ctx.accessLogin()));
   ipcMain.handle(LOCAL_IPC.accessLoginInWindow, guard(() => ctx.accessLoginInWindow()));
+  ipcMain.handle(LOCAL_IPC.dictationHistory, guard(() => ctx.history.view()));
+  ipcMain.handle(
+    LOCAL_IPC.copyDictation,
+    guard((id: unknown) => ctx.history.copy(str(id))),
+  );
+  ipcMain.handle(
+    LOCAL_IPC.deleteDictation,
+    guard((id: unknown) => ctx.history.remove(str(id))),
+  );
+  ipcMain.handle(LOCAL_IPC.clearDictationHistory, guard(() => ctx.history.clear()));
   ipcMain.handle(LOCAL_IPC.quickGetState, guard(() => ctx.quick.getState()));
   ipcMain.handle(
     LOCAL_IPC.quickSend,

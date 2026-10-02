@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { type QuickChatDeps, QuickChat, buildLocalPrompt, localReason, toolLabel } from "../src/main/quick-chat";
+import { type QuickChatDeps, QuickChat, REASONING_MAX_CHARS, REASONING_MAX_STEPS, appendReasoning, buildLocalPrompt, localReason, toolLabel } from "../src/main/quick-chat";
 import { type QuickMessage, type QuickState } from "../src/shared/local-api";
 
 // Schnellfenster-Gespräch: Frames des KIRA-Servers (POST /api/chat/stream),
@@ -58,6 +58,7 @@ describe("buildLocalPrompt", () => {
     status,
     tools: [],
     activity: null,
+    reasoning: [],
     local: false,
     error: null,
   });
@@ -103,6 +104,17 @@ describe("QuickChat – Server", () => {
     expect(a.tools).toEqual([{ name: "mail_search", label: "Durchsucht das Postfach", status: "done" }]);
     // Unterwegs war die Aktivität sichtbar.
     expect(states.some((st) => last(st).activity === "Durchsucht das Postfach…")).toBe(true);
+    // Denkschritte (thinking + inner_thought) bleiben für das eingeklappte „Nachgedacht“.
+    expect(a.reasoning).toEqual(["Denke nach…", "x"]);
+  });
+
+  it("begrenzt Denkschritte und überspringt Wiederholungen", () => {
+    expect(appendReasoning(["a"], "a")).toEqual(["a"]);
+    expect(appendReasoning(["a"], "b")).toEqual(["a", "b"]);
+    const many = Array.from({ length: REASONING_MAX_STEPS }, (_, i) => `s${i}`);
+    expect(appendReasoning(many, "neu")).toHaveLength(REASONING_MAX_STEPS);
+    expect(appendReasoning(many, "neu").at(-1)).toBe("neu");
+    expect(appendReasoning([], "x".repeat(REASONING_MAX_CHARS + 50)).at(0)).toHaveLength(REASONING_MAX_CHARS + 1);
   });
 
   it("schickt ab dem zweiten Zug die Sitzung mit", async () => {

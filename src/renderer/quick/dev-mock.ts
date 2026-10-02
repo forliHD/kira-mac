@@ -14,11 +14,11 @@ let seq = 0;
 const id = (): string => `mock-${++seq}`;
 
 function user(text: string): QuickMessage {
-  return { id: id(), role: "user", text, status: "done", tools: [], activity: null, local: false, error: null };
+  return { id: id(), role: "user", text, status: "done", tools: [], activity: null, reasoning: [], local: false, error: null };
 }
 
 function kira(text: string, patch: Partial<QuickMessage> = {}): QuickMessage {
-  return { id: id(), role: "assistant", text, status: "done", tools: [], activity: null, local: false, error: null, ...patch };
+  return { id: id(), role: "assistant", text, status: "done", tools: [], activity: null, reasoning: [], local: false, error: null, ...patch };
 }
 
 const tool = (name: string, label: string, status: QuickTool["status"] = "done"): QuickTool => ({ name, label, status });
@@ -232,6 +232,10 @@ export function installQuickMock(params: URLSearchParams): void {
       // Für Bildschirmfotos: gewünschte Höhe ablesbar (z. B. per --dump-dom).
       document.documentElement.dataset.mockHeight = String(height);
     },
+    dictationHistory: notInPreview,
+    copyDictation: notInPreview,
+    deleteDictation: notInPreview,
+    clearDictationHistory: notInPreview,
     quickToggleDictation: async () => {
       const active = !state.dictation.active;
       set({ ...state, dictation: { ...state.dictation, active, partial: active ? "" : state.dictation.partial, level: 0 } });

@@ -63,7 +63,13 @@ final class TextInserter {
     /// Setzt `kAXSelectedTextAttribute` des fokussierten Elements. Viele
     /// Programme (WebViews, Electron) nehmen den Wert an, ohne ihn
     /// einzufügen — deshalb wird, wo möglich, über `kAXValueAttribute`
-    /// nachgeprüft.
+    /// nachgeprüft, sonst über die Zeichenzahl.
+    ///
+    /// Live-Befund 02.10.2026: Nach langem Diktat kamen im fremden Programm nur
+    /// Punkte an, obwohl die Erkennung ganze Sätze lieferte und jedes Einsetzen
+    /// „erfolgreich“ war. In Web-Inhalten (Chromium, Electron, WebKit) ist das
+    /// Setzen von AXSelectedText nicht verlässlich und der Wert oft nicht
+    /// lesbar – dort geht der Text deshalb immer über die Zwischenablage.
     private func insertViaAccessibility(_ text: String) -> Bool {
         let systemWide = AXUIElementCreateSystemWide()
         var focusedRef: CFTypeRef?
@@ -73,24 +79,62 @@ final class TextInserter {
         // swiftlint:disable:next force_cast
         let element = focusedRef as! AXUIElement
 
+        if Self.isInWebContent(element) { return false }
+
         var settable = DarwinBoolean(false)
         let settableStatus = AXUIElementIsAttributeSettable(
             element, kAXSelectedTextAttribute as CFString, &settable)
         guard settableStatus == .success, settable.boolValue else { return false }
 
+        let countBefore = Self.characterCount(element)
         let setStatus = AXUIElementSetAttributeValue(
             element, kAXSelectedTextAttribute as CFString, text as CFTypeRef)
         guard setStatus == .success else { return false }
 
-        // Nachprüfen, wenn der Wert lesbar ist; bei sehr langen Texten oder
-        // Feldern ohne Wert dem Ergebniscode vertrauen.
+        // Nachprüfen, wenn der Wert lesbar ist; sonst muss sich wenigstens die
+        // Zeichenzahl geändert haben. Nur ohne beides dem Ergebniscode vertrauen.
         var valueRef: CFTypeRef?
         let valueStatus = AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef)
         if valueStatus == .success, let value = valueRef as? String {
             let probe = text.count > 200 ? String(text.prefix(200)) : text
             return value.contains(probe)
         }
+        if let countBefore, let countAfter = Self.characterCount(element) {
+            return countAfter != countBefore
+        }
         return true
+    }
+
+    /// Liegt das Element in Web-Inhalt (Rolle `AXWebArea` in der Vorfahrenkette)?
+    static func isInWebContent(_ element: AXUIElement) -> Bool {
+        var current: AXUIElement? = element
+        for _ in 0..<40 {
+            guard let node = current else { return false }
+            if Self.role(of: node) == "AXWebArea" { return true }
+            var parentRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(node, kAXParentAttribute as CFString, &parentRef) == .success,
+                let parentRef, CFGetTypeID(parentRef) == AXUIElementGetTypeID()
+            else { return false }
+            // swiftlint:disable:next force_cast
+            current = (parentRef as! AXUIElement)
+        }
+        return false
+    }
+
+    private static func role(of element: AXUIElement) -> String? {
+        var roleRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef) == .success else {
+            return nil
+        }
+        return roleRef as? String
+    }
+
+    private static func characterCount(_ element: AXUIElement) -> Int? {
+        var countRef: CFTypeRef?
+        guard
+            AXUIElementCopyAttributeValue(element, kAXNumberOfCharactersAttribute as CFString, &countRef) == .success
+        else { return nil }
+        return (countRef as? NSNumber)?.intValue
     }
 
     // MARK: Zwischenablage

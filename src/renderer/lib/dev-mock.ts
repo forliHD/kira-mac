@@ -17,6 +17,7 @@
 import { FN_HOTKEY, fnSystemActionFrom, isFnHotkey } from "../../shared/hotkey";
 import { type HelperInfo, type PermissionKind, type PermissionsStatus } from "../../shared/helper-types";
 import {
+  type DictationEntry,
   type FnKeyStatus,
   type FnSystemAction,
   type HudPhase,
@@ -215,6 +216,16 @@ function hudScript(p: URLSearchParams, emit: (hud: HudState) => void): () => voi
 function createMockApi(page: MockPage, p: URLSearchParams): KiraLocalApi {
   let state = initialState(page, p);
   const listeners = new Set<(event: LocalEvent) => void>();
+  // Diktat-Verlauf der Attrappe (Einstellungen → Diktat).
+  const minute = 60_000;
+  let history: DictationEntry[] =
+    p.get("history") === "0"
+      ? []
+      : [
+          { id: "d3", at: Date.now() - 4 * minute, app: "Mail", target: "insert", text: "Hallo Herr Kaya, anbei die Unterlagen für Montag. Viele Grüße", failed: false },
+          { id: "d2", at: Date.now() - 52 * minute, app: "Google Chrome", target: "insert", text: "Die Datensicherung ist heute Nacht fehlgeschlagen, weil die externe Festplatte nicht eingesteckt war.", failed: true },
+          { id: "d1", at: Date.now() - 26 * 60 * minute, app: "KIRA", target: "quick", text: "Was steht heute an?", failed: false },
+        ];
   const emit = (event: LocalEvent): void => listeners.forEach((l) => l(event));
   const setState = (next: LocalState): LocalState => {
     state = next;
@@ -319,6 +330,16 @@ function createMockApi(page: MockPage, p: URLSearchParams): KiraLocalApi {
     quickHide: async () => undefined,
     quickResize: async () => undefined,
     quickToggleDictation: async () => undefined,
+    dictationHistory: async () => ({ entries: history, persistent: true }),
+    copyDictation: async (id) => log(`Diktat kopiert: ${id}`),
+    deleteDictation: async (id) => {
+      history = history.filter((e) => e.id !== id);
+      return { entries: history, persistent: true };
+    },
+    clearDictationHistory: async () => {
+      history = [];
+      return { entries: history, persistent: true };
+    },
     on: (listener) => {
       listeners.add(listener);
       const stop = page === "hud" ? hudScript(p, (hud) => listener({ type: "hud", hud })) : () => undefined;

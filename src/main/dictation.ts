@@ -74,10 +74,31 @@ export interface DictationOptions {
 
 export type DictationState = "idle" | "starting" | "listening" | "stopping";
 
+/** Ein fertiges Diktat (Start bis Ende) für den Verlauf (dictation-history.ts). */
+export interface DictationSession {
+  startedAt: number;
+  app: string | null;
+  target: DictationTarget;
+  text: string;
+  /** Mindestens ein Satz ließ sich nicht einsetzen. */
+  failed: boolean;
+}
+
 export interface DictationEvents {
   state: [DictationState];
   inserted: [{ text: string; method: string }];
   unavailable: [string];
+  session: [DictationSession];
+}
+
+/**
+ * Kein Wort, keine Zahl – nur Satzzeichen („.“, „..“, „?“). Live-Befund
+ * 02.10.2026: im fremden Programm kamen nach langem Diktat nur Punkte an. Ein
+ * gesprochenes „Punkt“ hat Buchstaben und bleibt ein Diktierbefehl.
+ */
+export function isPunctuationOnly(raw: string): boolean {
+  const t = raw.trim();
+  return t !== "" && !/[\p{L}\p{N}]/u.test(t);
 }
 
 /** Teilt den Wortschatz wie `core/brain/speech_vocabulary.split_terms`: Komma oder Zeile. */
@@ -138,6 +159,8 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
   private discard = false;
   private vocabulary: { terms: string[]; fetchedAt: number } | null = null;
   private previousTail = "";
+  /** Das laufende Diktat für den Verlauf (wird in finish() gemeldet). */
+  private session: DictationSession | null = null;
   private hudState: HudState = { phase: "starting", level: 0, partial: "", app: null, message: null };
   private readonly onHelperEvent = (ev: HelperEvent): void => this.handleHelperEvent(ev);
   private hideTimer: NodeJS.Timeout | null = null;
@@ -206,6 +229,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     this.setState("starting");
     this.clearHideTimer();
     this.previousTail = "";
+    this.session = { startedAt: this.now(), app: null, target: this.target, text: "", failed: false };
     this.setHud({ phase: "starting", level: 0, partial: "", app: null, message: null });
     if (this.target === "insert") this.hud.show();
 
@@ -230,6 +254,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     ]);
     if (generation !== this.generation) return;
     this.setHud({ app: this.target === "quick" ? "KIRA" : (front?.name ?? null) });
+    if (this.session) this.session.app = this.target === "quick" ? "KIRA" : (front?.name ?? null);
 
     this.sttStarting = true;
     try {
@@ -416,6 +441,10 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
   }
 
   private async insertFinal(raw: string): Promise<void> {
+    if (isPunctuationOnly(raw)) {
+      this.log.info("dictation_final_skipped", { reason: "punctuation", chars: raw.trim().length });
+      return;
+    }
     const { text, op } = applyDictationCommands(raw, { enabled: this.getCommandsEnabled() });
     if (op === "undo") {
       // In fremden Programmen gibt es kein verlässliches Rückgängig der
@@ -424,6 +453,9 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       return;
     }
     if (!text) return;
+    // Zuerst in den Verlauf – vor jedem Warten, damit der Text auch dann
+    // gesichert ist, wenn das Einsetzen scheitert oder das Diktat gleich endet.
+    if (this.session) this.session.text = joinDictation(this.session.text, text);
     if (this.target === "quick" && this.quick) {
       // Die Seite fügt an der Cursorposition ein und kümmert sich um Leerzeichen.
       this.quick.insert(text);
@@ -437,11 +469,14 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       const res = await this.helper.request<{ method: string }>("text.insert", { text: piece, mode: "auto" });
       this.previousTail = piece.slice(-2);
       this.setHud({ partial: "", message: null });
+      // Nur Methode und Länge – nie der Text (Protokoll-Regel).
+      this.log.info("dictation_inserted", { method: res?.method ?? "?", chars: piece.length });
       this.emit("inserted", { text: piece, method: res?.method ?? "?" });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.log.warn("dictation_insert_failed", { error: message });
-      this.setHud({ message: `Einfügen fehlgeschlagen: ${message}` });
+      if (this.session) this.session.failed = true;
+      this.setHud({ message: `Einfügen fehlgeschlagen – der Text steht im Diktat-Verlauf. (${message})` });
     }
   }
 
@@ -455,6 +490,9 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
 
   private finish(linger = false): void {
     this.sttStarting = false;
+    const session = this.session;
+    this.session = null;
+    if (session && session.text.trim()) this.emit("session", session);
     this.setState("idle");
     if (this.target === "quick") {
       this.quick?.update({ active: false, level: 0, partial: "", reason: linger ? this.hudState.message : null });

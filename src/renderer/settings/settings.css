@@ -247,3 +247,97 @@ body[data-page="settings"][data-reduced-transparency="true"] {
   color: var(--g-text);
   overflow-wrap: anywhere;
 }
+
+/* ── Diktat-Verlauf (DictationHistoryCard) ─────────────────────────── */
+.dh-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+}
+.dh-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.dh-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+}
+.dh-sub,
+.dh-empty {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--g-text-3);
+}
+.dh-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dh-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+  border-top: 1px solid var(--g-pill-line);
+}
+.dh-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--g-text-3);
+}
+.dh-app {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--g-pill);
+  box-shadow: inset 0 0 0 1px var(--g-pill-line);
+  color: var(--g-text-2);
+}
+.dh-failed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--g-warn);
+}
+.dh-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--g-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.dh-text.is-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.dh-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dh-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dh-more {
+  font-size: 12px;
+}
+.dh-delete.h-10 {
+  height: 30px;
+  width: 30px;
+}

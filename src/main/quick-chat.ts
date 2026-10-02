@@ -121,6 +121,17 @@ const TOOL_LABELS: Record<string, string> = {
   http_request: "Fragt einen Dienst ab",
 };
 
+/** Höchstens so viele Denkschritte je Antwort, je Schritt höchstens so viele Zeichen. */
+export const REASONING_MAX_STEPS = 40;
+export const REASONING_MAX_CHARS = 2_000;
+
+/** Denkschritt anhängen (begrenzt; ein wiederholter letzter Schritt zählt nicht doppelt). */
+export function appendReasoning(steps: readonly string[], step: string): string[] {
+  const clipped = step.length > REASONING_MAX_CHARS ? `${step.slice(0, REASONING_MAX_CHARS)}…` : step;
+  if (steps[steps.length - 1] === clipped) return [...steps];
+  return [...steps, clipped].slice(-REASONING_MAX_STEPS);
+}
+
 /** Deutsche Beschreibung eines Werkzeugs für die Aktivitätszeile. */
 export function toolLabel(name: string): string {
   const key = name.replace(/^tool_/, "");
@@ -171,7 +182,7 @@ export function buildLocalPrompt(messages: QuickMessage[], maxChars = LOCAL_CONT
 }
 
 function newMessage(role: QuickMessage["role"], text: string): QuickMessage {
-  return { id: randomUUID(), role, text, status: role === "user" ? "done" : "streaming", tools: [], activity: null, local: false, error: null };
+  return { id: randomUUID(), role, text, status: role === "user" ? "done" : "streaming", tools: [], activity: null, reasoning: [], local: false, error: null };
 }
 
 function settleTools(tools: QuickTool[], status: QuickTool["status"] = "done"): QuickTool[] {
@@ -324,12 +335,23 @@ export class QuickChat extends EventEmitter<QuickChatEvents> {
       case "start":
         if (typeof p.session_id === "number") this.session = p.session_id;
         break;
-      case "thinking":
-        if (!msg.tools.some((t) => t.status === "running") && !msg.text) this.patch(id, { activity: "Denkt nach…" });
+      case "thinking": {
+        // Jeder Frame ist ein Denkschritt (wie im Dashboard, ChatPage „Nachgedacht“).
+        const step = str(p.message).trim();
+        const reasoning = step ? appendReasoning(msg.reasoning, step) : msg.reasoning;
+        const activity = !msg.tools.some((t) => t.status === "running") && !msg.text ? "Denkt nach…" : msg.activity;
+        this.patch(id, { reasoning, activity });
         break;
+      }
       case "tool_call": {
         const name = str(p.tool);
-        if (!name || name === "inner_thought" || name === "send_message") break;
+        if (name === "inner_thought") {
+          const args = p.args && typeof p.args === "object" ? (p.args as Record<string, unknown>) : {};
+          const thought = str(args.thought).trim();
+          if (thought) this.patch(id, { reasoning: appendReasoning(msg.reasoning, thought) });
+          break;
+        }
+        if (!name || name === "send_message") break;
         const label = toolLabel(name);
         this.patch(id, { tools: [...msg.tools, { name, label, status: "running" }], activity: `${label}…` });
         break;

@@ -177,6 +177,23 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   Sonst wertete er das ⌘V beim Einsetzen eines Satzes als „fn + andere Taste“
   und verwarf ein gehaltenes Diktat nach 15–20 s. Jedes neue künstliche
   Tastaturereignis des Helfers MUSS `SyntheticKeyEvents.mark` bekommen.
+- **Diktat-Verlauf** (seit 0.3.2, `src/main/dictation-history.ts`): jedes
+  globale Diktat (Ereignis `session` aus `GlobalDictation`, Text VOR dem
+  Einsetzen gesammelt) → Verlauf, höchstens 100 Einträge/30 Tage. Verschlüsselt
+  über `safeStorage` NUR in der gepackten App und erst beim ersten Gebrauch
+  (`history`-Getter): unsignierte Entwickler-Electrons teilen sich den
+  Schlüsselbund-Eintrag „Electron Safe Storage“ – dort blockierte der
+  Schlüsselbund-Dialog den Hauptprozess beim Start. Ohne Verschlüsselung nur im
+  Speicher, nie Klartext auf der Platte. UI: Einstellungen → Diktat → Verlauf,
+  Menüleiste „Letztes Diktat kopieren“.
+- **Einsetzen in Web-Inhalte über die Zwischenablage** (seit 0.3.2,
+  `TextInserter.isInWebContent`): AXSelectedText in Chromium/Electron/WebKit
+  meldet Erfolg, ohne verlässlich einzufügen (Live: nur Punkte). Reine
+  Satzzeichen-Finals verwirft `dictation.ts::isPunctuationOnly`. Das Protokoll
+  nennt Methode und Zeichenzahl (`dictation_inserted`), nie den Text.
+- **Schnellfenster-Denkschritte** (seit 0.3.2): Frames `thinking` und
+  `inner_thought` → `QuickMessage.reasoning` (`appendReasoning`, höchstens 40
+  Schritte), eingeklappt als „Nachgedacht“ (`Reasoning` in quick/App.tsx).
 - **Mitteilungs-Stream ohne Anmeldung wartet** (`LOGIN_WAIT_MS`, 5 min) auf
   `loginChanged()` statt im Takt anzufragen; `reconnectNow()` (Minuten-Prüfung)
   weckt ihn nicht, ein stehender Stream übersteht Token-Erneuerungen.

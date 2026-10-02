@@ -10,7 +10,22 @@ import { type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEven
 
 import { type KiraLocalApi, type QuickDictation, type QuickMessage, type QuickTool } from "../../shared/local-api";
 import { localApi } from "../lib/useLocalState";
-import { AlertIcon, ArrowUpIcon, BubbleIcon, CheckIcon, ChipIcon, ComposeIcon, CrossIcon, HistoryIcon, MicIcon, OfflineIcon, OpenIcon, StopIcon } from "./icons";
+import {
+  AlertIcon,
+  ArrowUpIcon,
+  BrainIcon,
+  BubbleIcon,
+  CheckIcon,
+  ChevronIcon,
+  ChipIcon,
+  ComposeIcon,
+  CrossIcon,
+  HistoryIcon,
+  MicIcon,
+  OfflineIcon,
+  OpenIcon,
+  StopIcon,
+} from "./icons";
 import {
   type KeyInfo,
   LOCAL_NOTE,
@@ -76,6 +91,20 @@ export function App(): ReactNode {
   const mode = state?.mode ?? null;
   const sessionId = state?.sessionId ?? null;
   const dictation = state?.dictation ?? null;
+
+  // Owner-Fund 02.10.2026: nach dem Senden blieb die neue Nachricht unten
+  // außer Sicht. Folgt der Verlauf dem Ende, nach JEDER Änderung der
+  // Nachrichten (neue Nachricht, Text, Werkzeuge, Denkschritte) ans Ende –
+  // zusätzlich zur Höhenmessung (useReportHeight), die nur auf Größenänderungen
+  // reagiert. tests/quick-scroll.test.tsx
+  const lastMessage = messages[messages.length - 1];
+  const scrollKey = `${messages.length}:${lastMessage?.id ?? ""}:${lastMessage?.text.length ?? 0}:${lastMessage?.tools.length ?? 0}:${lastMessage?.reasoning.length ?? 0}:${lastMessage?.status ?? ""}`;
+  useLayoutEffect(() => {
+    const thread = threadRef.current;
+    if (!thread || thread.hidden || !followRef.current) return;
+    thread.scrollTop = thread.scrollHeight;
+    updateFade(thread);
+  }, [scrollKey]);
 
   // Schreibmarke nach programmgesteuerter Änderung (Diktat, Vorschlag) setzen.
   useLayoutEffect(() => {
@@ -416,15 +445,52 @@ function UserMessage({ message }: { message: QuickMessage }): ReactNode {
   );
 }
 
+/**
+ * Denkschritte eingeklappt wie im Dashboard („Nachgedacht · 3 Schritte“), auf
+ * Klick aufgeklappt. Owner-Wunsch 02.10.2026: sehen können, was KIRA gedacht hat,
+ * ohne dass es Platz frisst.
+ */
+export function Reasoning({ steps, streaming }: { steps: string[]; streaming: boolean }): ReactNode {
+  const [open, setOpen] = useState(false);
+  if (steps.length === 0) return null;
+  const count = `${steps.length} ${steps.length === 1 ? "Schritt" : "Schritte"}`;
+  const preview = steps[steps.length - 1]?.replace(/\s+/g, " ").trim() ?? "";
+  return (
+    <div className={`q-reason${open ? " is-open" : ""}`}>
+      <button type="button" className="q-reason-head" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <span className={`q-reason-dot${streaming ? " is-busy" : ""}`} aria-hidden="true" />
+        <BrainIcon size={14} className="q-reason-icon" />
+        <span className="q-reason-label">{streaming ? "Denkt nach" : "Nachgedacht"}</span>
+        <span className="q-reason-count">{count}</span>
+        {!open ? <span className="q-reason-preview">{preview}</span> : <span className="q-reason-spacer" />}
+        <ChevronIcon size={14} className="q-reason-chevron" />
+      </button>
+      {open ? (
+        <ol className="q-reason-steps">
+          {steps.map((step, i) => (
+            <li key={i}>{step}</li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  );
+}
+
 function AssistantMessage({ message, onLink }: { message: QuickMessage; onLink: (href: string) => void }): ReactNode {
   const streaming = message.status === "streaming";
-  const activity = activityLine(message);
   const hasText = message.text.trim() !== "";
+  // „Denkt nach…“ steht schon in der Denkschritt-Zeile – nicht doppelt zeigen.
+  const rawActivity = activityLine(message);
+  const activity = rawActivity === "Denkt nach…" && message.reasoning.length > 0 ? null : rawActivity;
   return (
     <div className="q-msg q-msg-kira">
-      <span className={`q-avatar${streaming ? " is-busy" : ""}`} aria-hidden="true" />
+      {/* Wie im Dashboard-Chat: das „K“ der Marke statt einer leeren Fläche. */}
+      <span className={`q-avatar${streaming ? " is-busy" : ""}`} aria-hidden="true">
+        K
+      </span>
       <div className="q-msg-body">
         <span className="sr-only">KIRA:</span>
+        <Reasoning steps={message.reasoning} streaming={streaming && !hasText} />
         {message.tools.length > 0 ? <ToolChips tools={message.tools} /> : null}
         {activity ? (
           <p className="q-activity">

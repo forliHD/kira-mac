@@ -20,6 +20,10 @@ export interface TrayDeps {
   onQuit: () => void;
   isDictating: () => boolean;
   hotkeys: () => { quickWindow: string; dictation: string };
+  /** Gibt es ein Diktat im Verlauf? */
+  hasDictation: () => boolean;
+  onCopyLastDictation: () => void;
+  onDictationHistory: () => void;
 }
 
 type TrayLook = "online" | "offline" | "dictating";
@@ -97,6 +101,8 @@ export class TrayController {
         label: `${dictating ? "Diktat stoppen" : "Diktat starten"} (${describeAccelerator(hk.dictation)})`,
         click: () => this.deps.onDictation(),
       },
+      { label: "Letztes Diktat kopieren", enabled: this.deps.hasDictation(), click: () => this.deps.onCopyLastDictation() },
+      { label: "Diktat-Verlauf…", click: () => this.deps.onDictationHistory() },
       { type: "separator" },
       { label: "Einstellungen…", click: () => this.deps.onSettings() },
       { label: "Nach Updates suchen…", click: () => this.deps.onUpdates() },

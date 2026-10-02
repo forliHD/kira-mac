@@ -3,9 +3,10 @@
 // Benachrichtigungs-Stream, Auto-Update. Alles Zustandsbehaftete bleibt auf
 // dem Server; hier wird nur verdrahtet.
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
-import { BrowserWindow, Notification, type WebContents, app, session as electronSession, shell } from "electron";
+import { BrowserWindow, Notification, type WebContents, app, clipboard, session as electronSession, safeStorage, shell } from "electron";
 
 import { type AppInfo, BRIDGE_VERSION, type Capability, type InstanceInfo, type NativeEvent } from "../shared/bridge";
 import { capabilitiesFrom } from "../shared/capabilities";
@@ -17,6 +18,7 @@ import { registerBridgeIpc } from "./bridge";
 import { BrowserLogin, URL_SCHEME, callbackPath } from "./browser-login";
 import { type AppConfig, configStore } from "./config";
 import { GlobalDictation } from "./dictation";
+import { DictationHistory } from "./dictation-history";
 import { installDownloadHandler } from "./downloads";
 import { FnKeyController } from "./fn-key";
 import { HelperClient } from "./helper";
@@ -90,6 +92,8 @@ class KiraApp {
   private accessInWindowUntil = 0;
   /** Letzte Übergabe aus dem Browser (Schleifenwächter, `ACCESS_LOOP_MS`). */
   private accessHandoverAt = 0;
+  /** Diktat-Verlauf (nur dieser Mac, verschlüsselt; dictation-history.ts) – erst beim ersten Gebrauch. */
+  private historyStore: DictationHistory | null = null;
 
   async boot(): Promise<void> {
     if (!app.requestSingleInstanceLock()) {
@@ -142,6 +146,9 @@ class KiraApp {
       onQuit: () => app.quit(),
       isDictating: () => this.dictation.currentState !== "idle",
       hotkeys: () => this.config.hotkeys,
+      hasDictation: () => this.history.latest() !== null,
+      onCopyLastDictation: () => this.copyDictation(null),
+      onDictationHistory: () => this.showSettings("diktat"),
     });
     this.tray.create();
     this.rebuildMenu();
@@ -310,6 +317,59 @@ class KiraApp {
       this.tray.refresh();
       this.rebuildMenu();
     });
+    // Jedes Diktat in den Verlauf – auch wenn das Einsetzen scheiterte.
+    this.dictation.on("session", (s) => {
+      this.history.add({ at: s.startedAt, app: s.app, target: s.target, text: s.text, failed: s.failed });
+      this.broadcast({ type: "dictation-history" });
+      this.tray?.refresh();
+    });
+  }
+
+  /**
+   * Der Verlauf entsteht beim ersten Gebrauch. Verschlüsselt wird nur in der
+   * gepackten App: Unsignierte Entwickler-Electrons teilen sich den
+   * Schlüsselbund-Eintrag „Electron Safe Storage“ – dort fragte macOS beim Start
+   * nach dem Schlüsselbund und blockierte den Hauptprozess.
+   */
+  private get history(): DictationHistory {
+    this.historyStore ??= this.createHistory();
+    return this.historyStore;
+  }
+
+  private createHistory(): DictationHistory {
+    const file = join(app.getPath("userData"), "dictation-history.bin");
+    const log = scoped("dictation-history");
+    const codec =
+      app.isPackaged && safeStorage.isEncryptionAvailable()
+        ? { encrypt: (plain: string) => safeStorage.encryptString(plain), decrypt: (data: Buffer) => safeStorage.decryptString(data) }
+        : null;
+    if (!codec) log.warn("dictation_history_memory_only", { packaged: app.isPackaged });
+    const history = new DictationHistory({
+      codec,
+      fs: {
+        read: () => (existsSync(file) ? readFileSync(file) : null),
+        write: (data) => {
+          const tmp = `${file}.tmp`;
+          writeFileSync(tmp, data, { mode: 0o600 });
+          renameSync(tmp, file);
+        },
+        remove: () => rmSync(file, { force: true }),
+      },
+      onWarn: (event, data) => log.warn(event, data),
+    });
+    history.load();
+    return history;
+  }
+
+  private historyView(): { entries: ReturnType<DictationHistory["list"]>; persistent: boolean } {
+    return { entries: this.history.list(), persistent: this.history.persistent };
+  }
+
+  /** Text eines Verlaufseintrags (oder des letzten) in die Zwischenablage. */
+  private copyDictation(id: string | null): void {
+    const entry = id ? this.history.get(id) : this.history.latest();
+    if (!entry) return;
+    clipboard.writeText(entry.text);
   }
 
   /** Was das Diktat-Kürzel tut – auch fn-Tippen geht genau hierüber (gleiches Ziel). */
@@ -459,6 +519,19 @@ class KiraApp {
       openSettings: (section) => this.showSettings(section),
       openMain: () => this.mainWin.show(),
       openLink: (url) => this.openLink(url),
+      history: {
+        view: () => this.historyView(),
+        copy: (id) => this.copyDictation(id),
+        remove: (id) => {
+          if (this.history.remove(id)) this.tray.refresh();
+          return this.historyView();
+        },
+        clear: () => {
+          this.history.clear();
+          this.tray.refresh();
+          return this.historyView();
+        },
+      },
       accessLogin: async () => {
         const origin = this.accessWait?.origin ?? session.getOrigin();
         if (!origin) throw new Error("Keine Instanz verbunden.");

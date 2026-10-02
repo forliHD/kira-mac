@@ -4,7 +4,15 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 import { LOCAL_IPC } from "../shared/ipc-local";
-import { type KiraLocalApi, type LocalEvent, type LocalState, type ProbeResult, type QuickState, type UpdateState } from "../shared/local-api";
+import {
+  type DictationHistoryView,
+  type KiraLocalApi,
+  type LocalEvent,
+  type LocalState,
+  type ProbeResult,
+  type QuickState,
+  type UpdateState,
+} from "../shared/local-api";
 import { type PermissionsStatus } from "../shared/helper-types";
 
 const api: KiraLocalApi = {
@@ -27,6 +35,10 @@ const api: KiraLocalApi = {
   openLink: (url) => ipcRenderer.invoke(LOCAL_IPC.openLink, url) as Promise<void>,
   accessLogin: () => ipcRenderer.invoke(LOCAL_IPC.accessLogin) as Promise<void>,
   accessLoginInWindow: () => ipcRenderer.invoke(LOCAL_IPC.accessLoginInWindow) as Promise<void>,
+  dictationHistory: () => ipcRenderer.invoke(LOCAL_IPC.dictationHistory) as Promise<DictationHistoryView>,
+  copyDictation: (id) => ipcRenderer.invoke(LOCAL_IPC.copyDictation, id) as Promise<void>,
+  deleteDictation: (id) => ipcRenderer.invoke(LOCAL_IPC.deleteDictation, id) as Promise<DictationHistoryView>,
+  clearDictationHistory: () => ipcRenderer.invoke(LOCAL_IPC.clearDictationHistory) as Promise<DictationHistoryView>,
   quickGetState: () => ipcRenderer.invoke(LOCAL_IPC.quickGetState) as Promise<QuickState>,
   quickSend: (text) => ipcRenderer.invoke(LOCAL_IPC.quickSend, text) as Promise<void>,
   quickStop: () => ipcRenderer.invoke(LOCAL_IPC.quickStop) as Promise<void>,

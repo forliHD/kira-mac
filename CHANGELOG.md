@@ -6,6 +6,33 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-02
+
+### Hinzugefügt
+- **Diktat-Verlauf** (Owner-Wunsch): Jedes globale Diktat landet zusätzlich im
+  Verlauf – auch wenn das Einsetzen im fremden Programm scheitert. Einstellungen
+  → Diktat → Verlauf zeigt die letzten Diktate mit „Kopieren“ und Löschen, die
+  Menüleiste hat „Letztes Diktat kopieren“ und „Diktat-Verlauf…“. Bleibt nur auf
+  diesem Mac, verschlüsselt über den Schlüsselbund (`safeStorage`), höchstens
+  100 Diktate und 30 Tage; nichts davon geht an den Server oder ins Protokoll.
+- **Schnellfenster zeigt die Denkschritte**: eingeklappt wie im Dashboard
+  („Nachgedacht · 2 Schritte“ mit Vorschau), auf Klick aufgeklappt.
+
+### Geändert
+- **Schnellfenster: KIRA-Avatar mit „K“** auf Markenblau wie im Dashboard-Chat
+  statt einer lila Fläche.
+- **Einsetzen in Web- und Electron-Felder** (Chrome, Teams, Slack, VS Code …)
+  geht jetzt immer über die Zwischenablage. Dort meldete das Einsetzen über die
+  Bedienungshilfen Erfolg, obwohl nicht der ganze Text ankam. In anderen
+  Programmen prüft der Helfer nach (Wert bzw. Zeichenzahl).
+
+### Behoben
+- **Nur Punkte statt Text:** Antworten der Erkennung, die nur aus Satzzeichen
+  bestehen („..“), werden nicht mehr eingesetzt. Ein gesprochenes „Punkt“
+  bleibt ein Diktierbefehl.
+- **Schnellfenster scrollt mit:** Nach dem Senden springt der Verlauf
+  zuverlässig ans Ende, auch wenn das Fenster schon seine volle Höhe hat.
+
 ## [0.3.1] - 2026-10-02
 
 ### Behoben

@@ -144,6 +144,8 @@ export interface QuickMessage {
   tools: QuickTool[];
   /** Nur Assistent, solange er arbeitet: „Denkt nach…“, „Durchsucht das Postfach…“. */
   activity: string | null;
+  /** Nur Assistent: Denkschritte des Modells (Frames `thinking`, `inner_thought`) – im Fenster eingeklappt. */
+  reasoning: string[];
   /** Antwort kam vom Apple-Sprachmodell auf diesem Mac (ohne KIRA-Server). */
   local: boolean;
   error: string | null;
@@ -182,7 +184,28 @@ export type LocalEvent =
   /** Einstellungen (schon offen): zu diesem Bereich wechseln (`openSettings(section)`). */
   | { type: "settings-section"; section: string }
   /** Cloudflare-Access-Anmeldung im Browser ist gescheitert (Seite „Im Browser anmelden“). */
-  | { type: "access-login"; status: "error" | "expired"; message: string };
+  | { type: "access-login"; status: "error" | "expired"; message: string }
+  /** Der Diktat-Verlauf hat sich geändert (neues Diktat, gelöscht). */
+  | { type: "dictation-history" };
+
+/** Ein Eintrag im Diktat-Verlauf (nur auf diesem Mac, src/main/dictation-history.ts). */
+export interface DictationEntry {
+  id: string;
+  /** Beginn des Diktats (ms seit 1970). */
+  at: number;
+  /** Zielprogramm laut Helfer („Safari“) bzw. „KIRA“ beim Schnellfenster. */
+  app: string | null;
+  target: "insert" | "quick";
+  text: string;
+  /** Kam beim Einsetzen ein Fehler? (Dann steht der Text NUR hier.) */
+  failed: boolean;
+}
+
+export interface DictationHistoryView {
+  entries: DictationEntry[];
+  /** false = Schlüsselbund-Verschlüsselung fehlt, der Verlauf hält nur bis zum Beenden. */
+  persistent: boolean;
+}
 
 export interface KiraLocalApi {
   getState(): Promise<LocalState>;
@@ -210,6 +233,12 @@ export interface KiraLocalApi {
   accessLogin(): Promise<void>;
   /** Cloudflare Access: doch im App-Fenster anmelden (z. B. mit E-Mail-Code). */
   accessLoginInWindow(): Promise<void>;
+  // Diktat-Verlauf (nur lokal)
+  dictationHistory(): Promise<DictationHistoryView>;
+  /** Text eines Eintrags in die Zwischenablage. */
+  copyDictation(id: string): Promise<void>;
+  deleteDictation(id: string): Promise<DictationHistoryView>;
+  clearDictationHistory(): Promise<DictationHistoryView>;
   // Schnellfenster
   quickGetState(): Promise<QuickState>;
   quickSend(text: string): Promise<void>;

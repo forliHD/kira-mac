@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { type DictationHelper, GlobalDictation, buildContextualStrings, pieceToInsert, splitVocabulary } from "../src/main/dictation";
+import { type DictationHelper, type DictationSession, GlobalDictation, buildContextualStrings, isPunctuationOnly, pieceToInsert, splitVocabulary } from "../src/main/dictation";
 import { applyDictationCommands, joinDictation } from "../src/shared/dictationText.js";
 import { type HelperEvent, type HelperInfo } from "../src/shared/helper-types";
 import { type HudState } from "../src/shared/local-api";
@@ -176,6 +176,57 @@ describe("GlobalDictation", () => {
       { text: "Zweiter Satz", mode: "auto" },
     ]);
     expect(inserted).toEqual(["Hallo Welt.", "\n\n", "Zweiter Satz"]);
+  });
+
+  it("verwirft reine Satzzeichen („..“), ein gesprochenes „Punkt“ bleibt (Live-Befund 02.10.2026)", async () => {
+    const helper = new FakeHelper();
+    const { dictation } = build(helper);
+    await dictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: ".." } });
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: " ." } });
+    await tick();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Satz Punkt" } });
+    await tick();
+    const inserts = helper.calls.filter((c) => c.cmd === "text.insert").map((c) => c.params?.text);
+    expect(inserts).toEqual(["Satz."]);
+    expect(isPunctuationOnly("..")).toBe(true);
+    expect(isPunctuationOnly("…?!")).toBe(true);
+    expect(isPunctuationOnly("Punkt")).toBe(false);
+    expect(isPunctuationOnly("3.")).toBe(false);
+    expect(isPunctuationOnly("  ")).toBe(false);
+  });
+
+  it("meldet das fertige Diktat für den Verlauf – auch wenn das Einsetzen scheitert", async () => {
+    const helper = new FakeHelper();
+    const original = helper.request.bind(helper);
+    helper.request = (<T,>(cmd: string, params?: Record<string, unknown>): Promise<T> => {
+      if (cmd === "text.insert" && params?.text === " Zweiter Satz.") return Promise.reject(new Error("Element nimmt keinen Text an"));
+      return original<T>(cmd, params);
+    }) as typeof helper.request;
+    const { dictation } = build(helper);
+    const sessions: DictationSession[] = [];
+    dictation.on("session", (s) => sessions.push(s));
+    await dictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Erster Satz Punkt" } });
+    await tick();
+    helper.flushOnStop = ["Zweiter Satz Punkt"];
+    await dictation.stop();
+    await tick();
+    await tick();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({ app: "Mail", target: "insert", text: "Erster Satz. Zweiter Satz." });
+    expect(typeof sessions[0]?.startedAt).toBe("number");
+  });
+
+  it("meldet ein Diktat ohne Text nicht", async () => {
+    const helper = new FakeHelper();
+    const { dictation } = build(helper);
+    const sessions: DictationSession[] = [];
+    dictation.on("session", (s) => sessions.push(s));
+    await dictation.start();
+    await dictation.stop();
+    await tick();
+    expect(sessions).toEqual([]);
   });
 
   it("setzt zwischen zwei Äußerungen ein Leerzeichen", async () => {

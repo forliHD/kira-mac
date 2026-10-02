@@ -1,5 +1,6 @@
 // Einstellungen → Diktat: Stand der Apple-Spracherkennung (bereit bzw. Grund,
-// Sprache, Sprachpaket), Sprache, Diktierbefehle, Kürzel.
+// Sprache, Sprachpaket), Sprache, Diktierbefehle, Kürzel und der Verlauf der
+// letzten Diktate (DictationHistoryCard).
 
 import { type ReactNode, useState } from "react";
 
@@ -8,6 +9,7 @@ import { localeName, sortLocales } from "../lib/format";
 import { IconAlert, IconCheck, IconDownload, IconRefresh, IconWave } from "../lib/icons";
 import { errorText, localApi } from "../lib/useLocalState";
 import { Button, GlassCard, InfoNote, KbdCombo, SettingRow, StatusCard, Switch, type Tone } from "../lib/ui";
+import { DictationHistoryCard } from "./DictationHistoryCard";
 import { type SectionProps } from "./shared";
 
 interface SttView {
@@ -138,6 +140,8 @@ export function DictationSection({ state, setState, refresh, go }: SectionProps)
           {error}
         </InfoNote>
       ) : null}
+
+      <DictationHistoryCard />
 
       {accessibility === false ? (
         <InfoNote>
