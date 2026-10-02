@@ -27,6 +27,8 @@ export interface QuickWindowDeps {
   /** Darf das Fenster aufgehen? (sonst z. B. Einrichtung zeigen) */
   canShow: () => boolean;
   onShown?: () => void;
+  /** Nur Ende-zu-Ende-Tests: bei Fokusverlust stehen bleiben (sonst kein Bild). */
+  keepOnBlur?: boolean;
 }
 
 export class QuickWindowController {
@@ -139,6 +141,7 @@ export class QuickWindowController {
       openLocalLink(url);
     });
     win.on("blur", () => {
+      if (this.deps.keepOnBlur) return;
       if (!win.isDestroyed() && !win.webContents.isDevToolsOpened()) win.hide();
     });
     win.on("closed", () => {

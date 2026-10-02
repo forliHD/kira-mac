@@ -38,9 +38,15 @@ const check = (name, ok, detail = "") => {
 async function shot(target, file) {
   const page = await connect(target.webSocketDebuggerUrl);
   try {
-    const r = await page.send("Page.captureScreenshot", { format: "png" });
+    // Unsichtbare Fenster malen nicht – dann käme nie ein Bild. Zeitgrenze.
+    const r = await Promise.race([
+      page.send("Page.captureScreenshot", { format: "png" }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("kein Bild nach 15 s (Fenster unsichtbar?)")), 15_000)),
+    ]);
     writeFileSync(join(OUT, file), Buffer.from(r.data, "base64"));
     return join(OUT, file);
+  } catch (err) {
+    return `(${file}: ${err instanceof Error ? err.message : err})`;
   } finally {
     page.close();
   }

@@ -305,6 +305,7 @@ class KiraApp {
         return false;
       },
       onShown: () => this.quickChat.refresh(),
+      keepOnBlur: !app.isPackaged && process.env.KIRA_MAC_TEST_HOOKS === "1",
     });
   }
 
@@ -587,7 +588,10 @@ class KiraApp {
 
   private startNotifications(): void {
     if (this.notifications) {
-      this.notifications.reconnectNow();
+      // Die Verbindungsprüfung läuft jede Minute und ruft das hier jedes Mal –
+      // ein stehender Stream bleibt stehen (früher: Neuverbindung im
+      // Minutentakt, Mitteilungen genau in der Lücke gingen verloren).
+      if (!this.notifications.isConnected) this.notifications.reconnectNow();
       return;
     }
     this.notifications = new NotificationClient({
