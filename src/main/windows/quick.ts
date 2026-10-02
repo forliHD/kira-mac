@@ -12,7 +12,8 @@ import { type LocalEvent } from "../../shared/local-api";
 import { applyGlass } from "../glass";
 import { scoped } from "../log";
 import { localPageUrl } from "../paths";
-import { localWebPreferences } from "./common";
+import { localWebPreferences, openLocalLink } from "./common";
+import { guardLocalPage } from "./local-guard";
 
 const log = scoped("quick-window");
 
@@ -133,6 +134,10 @@ export class QuickWindowController {
     win.setAlwaysOnTop(true, "floating");
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     applyGlass(win, { cornerRadius: QUICK_RADIUS, fallback: "hud" });
+    guardLocalPage(win.webContents, (url) => {
+      this.hide();
+      openLocalLink(url);
+    });
     win.on("blur", () => {
       if (!win.isDestroyed() && !win.webContents.isDevToolsOpened()) win.hide();
     });

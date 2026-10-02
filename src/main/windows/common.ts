@@ -8,6 +8,18 @@ import { BrowserWindow, type BrowserWindowConstructorOptions, type WebPreference
 import { type LocalEvent } from "../../shared/local-api";
 import { LOCAL_IPC } from "../../shared/ipc-local";
 import { localPageUrl, preloadPath } from "../paths";
+import { guardLocalPage } from "./local-guard";
+
+/** Wohin Links aus lokalen Seiten gehen (index.ts setzt das beim Start). */
+let localLinkHandler: (url: string) => void = () => undefined;
+
+export function setLocalLinkHandler(handler: (url: string) => void): void {
+  localLinkHandler = handler;
+}
+
+export function openLocalLink(url: string): void {
+  localLinkHandler(url);
+}
 
 export function instanceWebPreferences(): WebPreferences {
   return {
@@ -61,6 +73,7 @@ export class LocalWindowController {
       webPreferences: { ...localWebPreferences(), ...(this.options.webPreferences ?? {}) },
     });
     win.setMenuBarVisibility(false);
+    guardLocalPage(win.webContents, (url) => localLinkHandler(url));
     win.once("ready-to-show", () => win.show());
     win.on("closed", () => {
       if (this.win === win) this.win = null;

@@ -9,7 +9,8 @@ import { LOCAL_IPC } from "../../shared/ipc-local";
 import { type HudState } from "../../shared/local-api";
 import { applyGlass } from "../glass";
 import { localPageUrl } from "../paths";
-import { localWebPreferences } from "./common";
+import { localWebPreferences, openLocalLink } from "./common";
+import { guardLocalPage } from "./local-guard";
 
 const WIDTH = 560;
 const HEIGHT = 76;
@@ -77,6 +78,7 @@ export class HudWindowController {
     win.setAlwaysOnTop(true, "screen-saver");
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     applyGlass(win, { cornerRadius: RADIUS, fallback: "hud" });
+    guardLocalPage(win.webContents, (url) => openLocalLink(url));
     win.webContents.on("did-finish-load", () => {
       this.ready = true;
       if (this.lastState) this.update(this.lastState);

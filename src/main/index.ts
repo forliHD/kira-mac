@@ -44,7 +44,7 @@ import { MainWindowController } from "./windows/main";
 import { onboardingWindow } from "./windows/onboarding";
 import { QuickWindowController } from "./windows/quick";
 import { settingsWindow } from "./windows/settings";
-import { instanceWebPreferences } from "./windows/common";
+import { instanceWebPreferences, setLocalLinkHandler } from "./windows/common";
 
 const ONLINE_POLL_MS = 60_000;
 const OFFLINE_POLL_MS = 15_000;
@@ -102,6 +102,7 @@ class KiraApp {
     this.setupQuickChat();
     this.setupDictation();
     this.setupWindows();
+    setLocalLinkHandler((url) => this.openLink(url));
     this.setupPermissions();
     installDownloadHandler(electronSession.defaultSession, () => this.mainWin.window);
     this.registerIpc();
@@ -404,8 +405,12 @@ class KiraApp {
     });
   }
 
-  /** Link aus einer lokalen Seite: Instanz → Hauptfenster (Pfad), sonst System-Browser. */
+  /** Link aus einer lokalen Seite: Instanz oder Pfad (/…) → Hauptfenster, sonst System-Browser. */
   private openLink(url: string): void {
+    if (url.startsWith("/") && !url.startsWith("//")) {
+      this.mainWin.navigate(session.getOrigin(), url);
+      return;
+    }
     if (isInstanceUrl(url, this.origins())) {
       try {
         const u = new URL(url);
@@ -432,7 +437,8 @@ class KiraApp {
         if (origin) void shell.openExternal(origin);
       },
       onShowLogs: () => shell.showItemInFolder(logFilePath()),
-      onNewWindow: () => this.openInstanceWindow("/"),
+      // ⌘N im Schnellfenster = neues Gespräch (das Menü fängt die Taste sonst ab).
+      onNewWindow: () => (this.quickWin.isFocused() ? this.quickChat.reset() : this.openInstanceWindow("/")),
       hotkeys: () => this.config.hotkeys,
       isDictating: () => this.dictation.currentState !== "idle",
     });

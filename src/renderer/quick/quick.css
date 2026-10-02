@@ -1,0 +1,995 @@
+/* Schnellfenster auf Liquid Glass.
+   Das Glas (Unschärfe, Brechung, Tönung) zeichnet das System hinter der
+   transparenten Seite – hier KEIN backdrop-filter und keine Vollfläche, nur
+   Lichtkante, Glanz, leicht abgedunkelte Innenflächen und Pillen.
+   Farben: dunkel ist primär (Design „Main.dc.html“), hell bleibt lesbar.
+   `light-dark()` folgt `color-scheme` aus tokens.css (prefers-color-scheme
+   bzw. html[data-theme]). */
+
+html.quick,
+html.quick body {
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+.qw {
+  --q-text: light-dark(#15171c, #e9eaee);
+  --q-text-strong: light-dark(#0b0c0f, #f3f4f6);
+  --q-text-2: light-dark(#3f4654, #a4a9b4);
+  --q-text-3: light-dark(#555c6b, #8e95a3);
+  --q-list: light-dark(#23272f, #d5d9e2);
+  --q-shadow: light-dark(rgba(255, 255, 255, 0.35), rgba(0, 0, 0, 0.32));
+
+  --q-accent: light-dark(#0284c7, #38bdf8);
+  --q-focus: light-dark(#0284c7, #38bdf8);
+  --q-link: light-dark(#0369a1, #bfe8ff);
+  --q-link-hover: light-dark(#0c4a6e, #ffffff);
+
+  --q-pill-bg: light-dark(rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.07));
+  --q-pill-hover: light-dark(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.12));
+  --q-pill-line: light-dark(rgba(21, 23, 28, 0.1), rgba(255, 255, 255, 0.12));
+  --q-pill-hi: light-dark(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.14));
+  --q-pill-text: light-dark(#2b303a, #c9cdd6);
+
+  --q-sunk: light-dark(rgba(255, 255, 255, 0.5), rgba(0, 0, 0, 0.28));
+  --q-sunk-line: light-dark(rgba(21, 23, 28, 0.1), rgba(255, 255, 255, 0.08));
+  --q-sunk-shade: light-dark(rgba(21, 23, 28, 0.06), rgba(0, 0, 0, 0.35));
+
+  --q-rule: light-dark(rgba(21, 23, 28, 0.1), rgba(255, 255, 255, 0.08));
+  --q-edge-ring: light-dark(rgba(21, 23, 28, 0.1), rgba(255, 255, 255, 0.13));
+  --q-edge-top: light-dark(rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.22));
+  --q-edge-bottom: light-dark(rgba(21, 23, 28, 0.06), rgba(0, 0, 0, 0.35));
+  --q-gloss: light-dark(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.1));
+  --q-gloss-2: light-dark(rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.04));
+
+  --q-kbd-text: light-dark(#3b4250, #c9cdd6);
+  --q-kbd-bg: light-dark(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.08));
+  --q-kbd-line: light-dark(rgba(21, 23, 28, 0.14), rgba(255, 255, 255, 0.14));
+  --q-kbd-line-b: light-dark(rgba(21, 23, 28, 0.24), rgba(255, 255, 255, 0.06));
+
+  --q-ok: light-dark(#059669, #34d399);
+  --q-warn: light-dark(#d97706, #fbbf24);
+  --q-err: light-dark(#dc2626, #f87171);
+  --q-err-text: light-dark(#9a3412, #fdbaa3);
+  --q-err-bg: light-dark(rgba(234, 88, 12, 0.1), rgba(251, 113, 79, 0.12));
+  --q-err-line: light-dark(rgba(234, 88, 12, 0.3), rgba(251, 113, 79, 0.3));
+
+  --q-code-bg: light-dark(rgba(255, 255, 255, 0.6), rgba(0, 0, 0, 0.3));
+  --q-code-line: light-dark(rgba(21, 23, 28, 0.1), rgba(255, 255, 255, 0.08));
+  --q-code-text: light-dark(#1f2430, #e2e8f0);
+  --q-icode-bg: light-dark(rgba(21, 23, 28, 0.06), rgba(255, 255, 255, 0.08));
+  --q-th-bg: light-dark(rgba(21, 23, 28, 0.04), rgba(255, 255, 255, 0.05));
+  --q-bubble-bg: light-dark(rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.08));
+  --q-quote-line: light-dark(rgba(2, 132, 199, 0.45), rgba(56, 189, 248, 0.5));
+  --q-scroll: light-dark(rgba(21, 23, 28, 0.22), rgba(255, 255, 255, 0.22));
+
+  position: relative;
+  isolation: isolate;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-height: 100vh;
+  padding: 16px 20px 12px;
+  border-radius: 26px;
+  overflow: hidden;
+  outline: none;
+  color: var(--q-text);
+  font-size: 14px;
+  line-height: 1.5;
+  text-shadow: 0 1px 2px var(--q-shadow);
+  /* Lichtkante wie das Glas (Radius 26 px): feiner Ring, heller Oberrand, dunkler Unterrand. */
+  box-shadow:
+    inset 0 0 0 1px var(--q-edge-ring),
+    inset 0 1px 0 var(--q-edge-top),
+    inset 0 -1px 0 var(--q-edge-bottom);
+}
+
+/* „Transparenz reduzieren“: das System zeichnet dann eine feste Fläche – zur
+   Sicherheit auch die Seite, damit Text nie auf dem Schreibtisch liegt. */
+@media (prefers-reduced-transparency: reduce) {
+  .qw {
+    background: var(--k-surface);
+  }
+}
+
+.q-specular {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(560px 220px at 16% -60px, var(--q-gloss), transparent 70%),
+    linear-gradient(180deg, var(--q-gloss-2), transparent 120px);
+}
+
+.qw ::selection {
+  background: color-mix(in srgb, var(--q-accent) 34%, transparent);
+}
+
+.qw :focus-visible {
+  outline: 2px solid var(--q-focus);
+  outline-offset: 2px;
+}
+
+.q-ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Kopfzeile (ganz Zieh-Bereich) ───────────────────────────────────── */
+
+.q-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+  -webkit-app-region: drag;
+}
+.q-head button,
+.q-head a {
+  -webkit-app-region: no-drag;
+}
+
+.q-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.q-logo {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  color: #04121b;
+  background: linear-gradient(145deg, #7dd3fc, #38bdf8 55%, #0369a1);
+  box-shadow:
+    0 6px 18px -6px rgba(14, 165, 233, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.q-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--q-text-strong);
+}
+
+.q-pill {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--q-pill-text);
+  background: var(--q-pill-bg);
+  border: 1px solid var(--q-pill-line);
+  box-shadow: inset 0 1px 0 var(--q-pill-hi);
+}
+
+.q-conn {
+  min-width: 0;
+  max-width: 330px;
+  --q-dot: var(--q-text-3);
+}
+.q-conn[data-tone="ok"] {
+  --q-dot: var(--q-ok);
+}
+.q-conn[data-tone="warn"] {
+  --q-dot: var(--q-warn);
+}
+.q-conn[data-tone="err"] {
+  --q-dot: var(--q-err);
+}
+
+.q-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--q-dot);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--q-dot) 85%, transparent);
+}
+
+.q-head-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.q-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--q-text-3);
+}
+.q-kbds {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.q-iconbtn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  color: var(--q-pill-text);
+  background: var(--q-pill-bg);
+  border: 1px solid var(--q-pill-line);
+  box-shadow: inset 0 1px 0 var(--q-pill-hi);
+  cursor: default;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+}
+.q-iconbtn:hover {
+  color: var(--q-text-strong);
+  background: var(--q-pill-hover);
+}
+
+.q-kbd {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  min-width: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  text-shadow: none;
+  color: var(--q-kbd-text);
+  background: var(--q-kbd-bg);
+  border: 1px solid var(--q-kbd-line);
+  border-bottom-color: var(--q-kbd-line-b);
+}
+/* ⌘ ⌥ ↩ ␣ sind in den Mono-Schriften winzig – in der Systemschrift (13 px)
+   stehen sie so groß wie „esc“ daneben. */
+.q-kbd.is-sym {
+  font: 400 13px/1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+/* ── Eingabe ─────────────────────────────────────────────────────────── */
+
+.q-composer {
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-height: 54px;
+  padding: 7px 7px 7px 16px;
+  border-radius: 16px;
+  background: var(--q-sunk);
+  border: 1px solid var(--q-sunk-line);
+  box-shadow: inset 0 2px 6px var(--q-sunk-shade);
+  cursor: text;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.q-composer:focus-within {
+  border-color: color-mix(in srgb, var(--q-focus) 42%, transparent);
+  box-shadow:
+    inset 0 2px 6px var(--q-sunk-shade),
+    0 0 0 3px color-mix(in srgb, var(--q-focus) 12%, transparent);
+}
+
+.q-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  justify-content: center;
+}
+
+.q-input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 38px;
+  /* Bis sechs Zeilen wächst das Feld mit, dann scrollt es. */
+  max-height: calc(6 * 22px + 16px);
+  field-sizing: content;
+  margin: 0;
+  padding: 8px 0;
+  resize: none;
+  overflow-y: auto;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  letter-spacing: -0.005em;
+  color: var(--q-text-strong);
+  caret-color: var(--q-accent);
+  text-shadow: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--q-scroll) transparent;
+}
+.q-input::placeholder {
+  color: var(--q-text-3);
+  opacity: 1;
+}
+.q-input.is-dictating::placeholder {
+  color: var(--q-text-2);
+  font-style: italic;
+}
+.qw .q-input:focus-visible {
+  outline: none;
+}
+
+.q-partial {
+  margin: -2px 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13.5px;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--q-text-3);
+}
+
+.q-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: var(--q-text);
+  cursor: default;
+  transition:
+    background-color 0.15s,
+    filter 0.15s,
+    opacity 0.15s;
+}
+.q-btn-pill {
+  background: var(--q-pill-bg);
+  border: 1px solid var(--q-pill-line);
+  box-shadow: inset 0 1px 0 var(--q-pill-hi);
+}
+.q-btn-pill:hover {
+  background: var(--q-pill-hover);
+}
+
+.q-send {
+  border: 0;
+  color: #04121b;
+  background: linear-gradient(180deg, #7dd3fc, #38bdf8);
+  box-shadow:
+    0 8px 20px -8px rgba(14, 165, 233, 0.95),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.q-send:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+.q-send:disabled {
+  color: var(--q-text-3);
+  background: var(--q-pill-bg);
+  box-shadow:
+    inset 0 0 0 1px var(--q-pill-line),
+    inset 0 1px 0 var(--q-pill-hi);
+}
+
+.q-stop {
+  color: var(--q-text-strong);
+}
+
+.q-mic {
+  position: relative;
+}
+.q-mic[aria-disabled="true"] {
+  opacity: 0.45;
+}
+.q-mic.is-active {
+  color: #04121b;
+  border-color: transparent;
+  background: linear-gradient(180deg, #7dd3fc, #0ea5e9);
+  box-shadow:
+    0 8px 22px -8px rgba(14, 165, 233, 0.95),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+/* Pegel: der Ring wächst mit der Lautstärke, dazu ein ruhiger Puls. */
+.q-mic.is-active::before,
+.q-mic.is-active::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 15px;
+  border: 2px solid #38bdf8;
+  pointer-events: none;
+}
+.q-mic.is-active::before {
+  opacity: calc(0.3 + var(--q-lvl, 0) * 0.6);
+  transform: scale(calc(1 + var(--q-lvl, 0) * 0.14));
+  transition:
+    transform 90ms linear,
+    opacity 90ms linear;
+}
+.q-mic.is-active::after {
+  animation: q-pulse 1.6s ease-out infinite;
+}
+
+.q-notice {
+  flex: none;
+  margin: -6px 4px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--q-err-text);
+}
+
+/* ── Unterhaltung ────────────────────────────────────────────────────── */
+
+.q-thread {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin: 0 -12px;
+  padding: 2px 12px 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--q-scroll) transparent;
+}
+.q-thread[hidden] {
+  display: none;
+}
+.q-thread[data-fade="top"] {
+  mask-image: linear-gradient(to bottom, transparent, #000 18px);
+}
+.q-thread[data-fade="bottom"] {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+}
+.q-thread[data-fade="both"] {
+  mask-image: linear-gradient(to bottom, transparent, #000 18px, #000 calc(100% - 18px), transparent);
+}
+
+.q-log {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  user-select: text;
+  cursor: auto;
+}
+
+.q-msg {
+  animation: q-rise 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.q-msg-user {
+  align-self: flex-end;
+  max-width: 82%;
+}
+.q-bubble {
+  padding: 8px 13px;
+  border-radius: 16px 16px 6px 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--q-text);
+  background: var(--q-bubble-bg);
+  border: 1px solid var(--q-pill-line);
+  box-shadow: inset 0 1px 0 var(--q-pill-hi);
+}
+
+.q-msg-kira {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.q-avatar {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  margin-top: 1px;
+  border-radius: 9px;
+  background: linear-gradient(145deg, #c4bcfd, #7c6cf0);
+  box-shadow:
+    0 4px 12px -6px rgba(124, 108, 240, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.q-avatar.is-busy {
+  animation: q-breathe 1.8s ease-in-out infinite;
+}
+.q-msg-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-top: 3px;
+}
+
+.q-activity {
+  margin: 0;
+  min-height: 21px;
+  font-size: 13.5px;
+  line-height: 21px;
+}
+.q-shimmer {
+  color: var(--q-text-2);
+  text-shadow: none;
+  background: linear-gradient(90deg, var(--q-text-3) 0%, var(--q-text-3) 38%, var(--q-text-strong) 50%, var(--q-text-3) 62%, var(--q-text-3) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: q-shimmer 1.9s linear infinite;
+}
+
+.q-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.q-tool {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--q-pill-text);
+  background: var(--q-pill-bg);
+  border: 1px solid var(--q-pill-line);
+  box-shadow: inset 0 1px 0 var(--q-pill-hi);
+}
+.q-tool[data-status="done"] .q-tool-icon {
+  color: var(--q-ok);
+}
+.q-tool[data-status="error"] {
+  color: var(--q-err-text);
+  border-color: var(--q-err-line);
+}
+.q-tool[data-status="running"] .q-tool-label {
+  color: var(--q-text-2);
+  text-shadow: none;
+  background: linear-gradient(90deg, var(--q-text-3) 0%, var(--q-text-3) 38%, var(--q-text-strong) 50%, var(--q-text-3) 62%, var(--q-text-3) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: q-shimmer 1.9s linear infinite;
+}
+.q-tool-count {
+  color: var(--q-text-3);
+  font-variant-numeric: tabular-nums;
+}
+.q-spinner {
+  flex: none;
+  box-sizing: border-box;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.6px solid color-mix(in srgb, var(--q-accent) 25%, transparent);
+  border-top-color: var(--q-accent);
+  animation: q-spin 0.8s linear infinite;
+}
+
+.q-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 11px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  text-shadow: none;
+  color: var(--q-err-text);
+  background: var(--q-err-bg);
+  border: 1px solid var(--q-err-line);
+}
+.q-error svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.q-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--q-text-3);
+}
+
+.q-local {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--q-text-3);
+}
+.q-local svg {
+  flex: none;
+  color: var(--q-warn);
+}
+
+/* Schreibmarke beim Streamen */
+.q-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.16em;
+  border-radius: 1px;
+  background: var(--q-accent);
+  animation: q-blink 1s steps(1) infinite;
+}
+
+/* ── Markdown ────────────────────────────────────────────────────────── */
+
+.q-md {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--q-text);
+  overflow-wrap: anywhere;
+}
+.q-md p,
+.q-md blockquote,
+.q-md ul,
+.q-md ol {
+  margin: 0;
+}
+.q-md strong {
+  font-weight: 600;
+  color: var(--q-text-strong);
+}
+.q-md em {
+  font-style: italic;
+}
+.q-md del {
+  opacity: 0.7;
+}
+.q-md ul,
+.q-md ol {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-left: 20px;
+  color: var(--q-list);
+}
+.q-md ul {
+  list-style: disc;
+}
+.q-md ul ul {
+  list-style: circle;
+}
+.q-md ol {
+  list-style: decimal;
+}
+.q-md li::marker {
+  color: var(--q-text-3);
+}
+.q-md li > ul,
+.q-md li > ol,
+.q-md li > p,
+.q-md li > .q-codeblock,
+.q-md li > blockquote {
+  margin-top: 5px;
+}
+.q-md .q-h {
+  margin: 4px 0 -2px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--q-text-strong);
+}
+.q-md .q-h1 {
+  font-size: 17px;
+}
+.q-md .q-h2 {
+  font-size: 15.5px;
+}
+.q-md .q-h3 {
+  font-size: 14px;
+}
+.q-md blockquote {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 1px 0 1px 12px;
+  border-left: 3px solid var(--q-quote-line);
+  color: var(--q-text-2);
+}
+.q-md hr {
+  height: 1px;
+  margin: 4px 0;
+  border: 0;
+  background: var(--q-rule);
+}
+
+.q-icode {
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  text-shadow: none;
+  background: var(--q-icode-bg);
+  border: 1px solid var(--q-code-line);
+  overflow-wrap: anywhere;
+}
+
+.q-codeblock {
+  position: relative;
+  min-width: 0;
+  border-radius: 10px;
+  background: var(--q-code-bg);
+  border: 1px solid var(--q-code-line);
+}
+.q-codelang {
+  display: block;
+  padding: 6px 12px 0;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: var(--q-text-3);
+  text-shadow: none;
+}
+.q-codeblock pre {
+  margin: 0;
+  padding: 9px 12px 10px;
+  overflow-x: auto;
+  border-radius: inherit;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre;
+  tab-size: 4;
+  overflow-wrap: normal;
+  color: var(--q-code-text);
+  text-shadow: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--q-scroll) transparent;
+}
+.q-codeblock pre:focus-visible {
+  outline-offset: -2px;
+}
+
+.q-table {
+  min-width: 0;
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--q-code-line);
+  scrollbar-width: thin;
+  scrollbar-color: var(--q-scroll) transparent;
+}
+.q-table:focus-visible {
+  outline-offset: -2px;
+}
+.q-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.45;
+}
+/* Lange Zellen umbrechen an Wortgrenzen; passt es trotzdem nicht, scrollt die Tabelle seitlich. */
+.q-table th,
+.q-table td {
+  min-width: 3em;
+  padding: 6px 11px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+  border-bottom: 1px solid var(--q-rule);
+}
+.q-table th {
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--q-text-strong);
+  background: var(--q-th-bg);
+}
+.q-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.q-link {
+  border-radius: 3px;
+  color: var(--q-link);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--q-link) 45%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.q-link:hover {
+  color: var(--q-link-hover);
+  text-decoration-color: currentColor;
+}
+.q-imglink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: bottom;
+}
+.q-imglink svg {
+  flex: none;
+}
+
+/* ── Leerer Zustand & Fußzeile ───────────────────────────────────────── */
+
+.q-suggest {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.q-sugg {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--q-pill-text);
+  background: var(--q-pill-bg);
+  border: 1px solid var(--q-pill-line);
+  box-shadow: inset 0 1px 0 var(--q-pill-hi);
+  cursor: default;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+}
+.q-sugg:hover {
+  color: var(--q-text-strong);
+  background: var(--q-pill-hover);
+}
+
+.q-offline {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--q-text-2);
+}
+.q-offline svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--q-err);
+}
+
+.q-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--q-rule);
+  font-size: 12px;
+  color: var(--q-text-3);
+}
+.q-keys {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  white-space: nowrap;
+}
+.q-keys > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.q-foot-pill {
+  min-width: 0;
+}
+.q-foot-pill svg {
+  flex: none;
+  color: var(--q-accent);
+}
+.q-foot-pill[data-icon="chip"] svg {
+  color: var(--q-warn);
+}
+.q-foot-pill[data-icon="off"] svg {
+  color: var(--q-err);
+}
+
+/* ── Bewegung ────────────────────────────────────────────────────────── */
+
+.q-rise {
+  animation: q-rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: var(--q-rise-delay, 0ms);
+}
+
+@keyframes q-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes q-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+@keyframes q-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes q-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes q-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+@keyframes q-pulse {
+  0% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qw *,
+  .qw *::before,
+  .qw *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .q-shimmer,
+  .q-tool[data-status="running"] .q-tool-label {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
