@@ -1,0 +1,892 @@
+/* Liquid-Glass-Design der lokalen Seiten (Einrichtung, Einstellungen,
+   Diktat-HUD, Offline) – nach dem Claude-Design „KIRA für Mac“ (10/2026).
+
+   Fenster mit nativer Vibrancy bzw. echtem Liquid Glass (Einrichtung,
+   Einstellungen, HUD) malen KEINEN deckenden Hintergrund, nur
+   halbtransparente Flächen und Lichtkanten (`inset 0 1px 0 …`). Die
+   Offline-Seite läuft im deckenden Hauptfenster und malt ihren eigenen.
+
+   Hell/Dunkel folgt prefers-color-scheme und zusätzlich html[data-theme]
+   (wie tokens.css). `body[data-glass]` und `body[data-reduced-transparency]`
+   setzt lib/useLocalState.ts aus `LocalState.ui`. Bausteine: lib/ui.tsx.
+   Einbinden NACH base.css; die Bausteine liegen in @layer components, damit
+   Tailwind-Utilities sie im Einzelfall überschreiben können. */
+
+:root {
+  --g-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --g-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Marke: Himmelblau wie das Dashboard (--kira-brand-*) */
+  --g-accent-300: #7dd3fc;
+  --g-accent-400: #38bdf8;
+  --g-accent-500: #0ea5e9;
+  --g-accent-700: #0369a1;
+  --g-violet: #a78bfa;
+  --g-on-accent: #04121b;
+  --g-accent-fill: linear-gradient(180deg, var(--g-accent-300), var(--g-accent-400));
+  --g-accent-tile: linear-gradient(145deg, var(--g-accent-300), var(--g-accent-400) 55%, var(--g-accent-700));
+  --g-accent-glow: 0 10px 24px -10px rgba(14, 165, 233, 0.95);
+  --g-accent-edge: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  --g-ring: 0 0 0 3px rgba(56, 189, 248, 0.22);
+  --g-ring-line: rgba(56, 189, 248, 0.6);
+
+  /* ── Dunkel (Standard) ── */
+  --g-text: #e9eaee;
+  --g-text-strong: #f3f4f6;
+  --g-text-2: #a4a9b4;
+  --g-text-3: #979dab; /* Design #8e95a3, leicht heller: ≥ 4,5:1 auch auf hellerer Vibrancy */
+  --g-label: #d5d9e2;
+  --g-nav: #c9cdd6;
+  --g-link: #bfe8ff;
+  --g-link-hover: #ffffff;
+  --g-focus: #38bdf8;
+
+  --g-card: rgba(255, 255, 255, 0.045);
+  --g-card-vibrancy: rgba(255, 255, 255, 0.06);
+  --g-card-solid: #262a32;
+  --g-line: rgba(255, 255, 255, 0.09);
+  --g-edge: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --g-divider: rgba(255, 255, 255, 0.07);
+  --g-sidebar: rgba(0, 0, 0, 0.22);
+  --g-sidebar-solid: rgba(0, 0, 0, 0.32);
+  --g-sidebar-line: rgba(255, 255, 255, 0.08);
+  --g-inset: rgba(0, 0, 0, 0.2);
+
+  --g-pill: rgba(255, 255, 255, 0.07);
+  --g-pill-hover: rgba(255, 255, 255, 0.11);
+  --g-pill-active: rgba(255, 255, 255, 0.05);
+  --g-pill-line: rgba(255, 255, 255, 0.12);
+  --g-pill-edge: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  --g-ghost-hover: rgba(255, 255, 255, 0.06);
+
+  --g-nav-hover: rgba(255, 255, 255, 0.05);
+  --g-nav-active: rgba(255, 255, 255, 0.1);
+  --g-nav-active-text: #ffffff;
+  --g-nav-active-edge: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+
+  --g-field: rgba(0, 0, 0, 0.3);
+  --g-field-solid: #15181e;
+  --g-field-line: rgba(255, 255, 255, 0.1);
+  --g-field-inset: inset 0 2px 6px rgba(0, 0, 0, 0.35);
+  --g-field-text: #f3f4f6;
+  --g-placeholder: #7b8291;
+
+  --g-kbd: rgba(255, 255, 255, 0.08);
+  --g-kbd-line: rgba(255, 255, 255, 0.16);
+  --g-kbd-bottom: rgba(255, 255, 255, 0.06);
+  --g-kbd-text: #e9eaee;
+
+  --g-switch-off: rgba(255, 255, 255, 0.16);
+  --g-knob-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+
+  /* Glanz und Kante auf Glasflächen (HUD, Offline-Karte) */
+  --g-specular: radial-gradient(120% 100% at 15% -20%, rgba(255, 255, 255, 0.18), transparent 55%);
+  --g-rim: inset 0 1px 0 rgba(255, 255, 255, 0.24), inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+  --g-rim-line: rgba(255, 255, 255, 0.14);
+
+  --g-ok: #34d399;
+  --g-ok-tint: rgba(52, 211, 153, 0.12);
+  --g-ok-line: rgba(52, 211, 153, 0.3);
+  --g-ok-glow: 0 0 10px rgba(52, 211, 153, 0.9);
+  --g-warn: #fbbf24;
+  --g-warn-dot: #f5b53f;
+  --g-warn-tint: rgba(245, 181, 63, 0.12);
+  --g-warn-line: rgba(245, 181, 63, 0.3);
+  --g-err: #fb8585;
+  --g-err-tint: rgba(248, 113, 113, 0.12);
+  --g-err-line: rgba(248, 113, 113, 0.3);
+  --g-info: #7dd3fc;
+  --g-info-tint: rgba(56, 189, 248, 0.08);
+  --g-info-line: rgba(56, 189, 248, 0.18);
+  --g-info-text: #d5d9e2;
+  --g-idle: #8e95a3;
+  --g-idle-tint: rgba(255, 255, 255, 0.06);
+  --g-idle-line: rgba(255, 255, 255, 0.12);
+
+  --g-chevrons: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='12' viewBox='0 0 8 12'%3E%3Cpath d='M1 4.5l3-3 3 3M1 7.5l3 3 3-3' fill='none' stroke='%23a4a9b4' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* ── Hell: dunkle Schrift auf hellem Glas ── */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --g-text: #15171c;
+    --g-text-strong: #0b0c0f;
+    --g-text-2: #4b5260;
+    --g-text-3: #545b68;
+    --g-label: #2a2f38;
+    --g-nav: #2f343d;
+    --g-link: #075985;
+    --g-link-hover: #0c4a6e;
+    --g-focus: #0284c7;
+
+    --g-card: rgba(255, 255, 255, 0.55);
+    --g-card-vibrancy: rgba(255, 255, 255, 0.62);
+    --g-card-solid: #ffffff;
+    --g-line: rgba(21, 23, 28, 0.08);
+    --g-edge: inset 0 1px 0 rgba(255, 255, 255, 0.85), 0 1px 2px rgba(21, 23, 28, 0.04);
+    --g-divider: rgba(21, 23, 28, 0.07);
+    --g-sidebar: rgba(21, 23, 28, 0.045);
+    --g-sidebar-solid: rgba(21, 23, 28, 0.07);
+    --g-sidebar-line: rgba(21, 23, 28, 0.08);
+    --g-inset: rgba(21, 23, 28, 0.04);
+
+    --g-pill: rgba(255, 255, 255, 0.72);
+    --g-pill-hover: rgba(255, 255, 255, 0.95);
+    --g-pill-active: rgba(255, 255, 255, 0.6);
+    --g-pill-line: rgba(21, 23, 28, 0.12);
+    --g-pill-edge: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(21, 23, 28, 0.06);
+    --g-ghost-hover: rgba(21, 23, 28, 0.05);
+
+    --g-nav-hover: rgba(21, 23, 28, 0.05);
+    --g-nav-active: rgba(255, 255, 255, 0.78);
+    --g-nav-active-text: #0b0c0f;
+    --g-nav-active-edge: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 1px 3px rgba(21, 23, 28, 0.1), 0 0 0 1px rgba(21, 23, 28, 0.05);
+
+    --g-field: rgba(255, 255, 255, 0.72);
+    --g-field-solid: #ffffff;
+    --g-field-line: rgba(21, 23, 28, 0.14);
+    --g-field-inset: inset 0 1px 2px rgba(21, 23, 28, 0.08);
+    --g-field-text: #15171c;
+    --g-placeholder: #6b7280;
+
+    --g-kbd: rgba(255, 255, 255, 0.85);
+    --g-kbd-line: rgba(21, 23, 28, 0.14);
+    --g-kbd-bottom: rgba(21, 23, 28, 0.26);
+    --g-kbd-text: #2a2f38;
+
+    --g-switch-off: rgba(21, 23, 28, 0.16);
+    --g-knob-shadow: 0 1px 3px rgba(21, 23, 28, 0.35);
+
+    --g-specular: radial-gradient(120% 100% at 15% -20%, rgba(255, 255, 255, 0.6), transparent 55%);
+    --g-rim: inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -1px 0 rgba(21, 23, 28, 0.08);
+    --g-rim-line: rgba(21, 23, 28, 0.1);
+
+    --g-ok: #065f46;
+    --g-ok-tint: rgba(4, 120, 87, 0.1);
+    --g-ok-line: rgba(4, 120, 87, 0.28);
+    --g-ok-glow: none;
+    --g-warn: #92400e;
+    --g-warn-dot: #d97706;
+    --g-warn-tint: rgba(217, 119, 6, 0.1);
+    --g-warn-line: rgba(217, 119, 6, 0.32);
+    --g-err: #b91c1c;
+    --g-err-tint: rgba(185, 28, 28, 0.08);
+    --g-err-line: rgba(185, 28, 28, 0.26);
+    --g-info: #0284c7;
+    --g-info-tint: rgba(14, 165, 233, 0.08);
+    --g-info-line: rgba(14, 165, 233, 0.24);
+    --g-info-text: #2a2f38;
+    --g-idle: #545b68;
+    --g-idle-tint: rgba(21, 23, 28, 0.05);
+    --g-idle-line: rgba(21, 23, 28, 0.12);
+
+    --g-chevrons: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='12' viewBox='0 0 8 12'%3E%3Cpath d='M1 4.5l3-3 3 3M1 7.5l3 3 3-3' fill='none' stroke='%234b5260' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+}
+html[data-theme="light"] {
+  --g-text: #15171c;
+  --g-text-strong: #0b0c0f;
+  --g-text-2: #4b5260;
+  --g-text-3: #545b68;
+  --g-label: #2a2f38;
+  --g-nav: #2f343d;
+  --g-link: #075985;
+  --g-link-hover: #0c4a6e;
+  --g-focus: #0284c7;
+
+  --g-card: rgba(255, 255, 255, 0.55);
+  --g-card-vibrancy: rgba(255, 255, 255, 0.62);
+  --g-card-solid: #ffffff;
+  --g-line: rgba(21, 23, 28, 0.08);
+  --g-edge: inset 0 1px 0 rgba(255, 255, 255, 0.85), 0 1px 2px rgba(21, 23, 28, 0.04);
+  --g-divider: rgba(21, 23, 28, 0.07);
+  --g-sidebar: rgba(21, 23, 28, 0.045);
+  --g-sidebar-solid: rgba(21, 23, 28, 0.07);
+  --g-sidebar-line: rgba(21, 23, 28, 0.08);
+  --g-inset: rgba(21, 23, 28, 0.04);
+
+  --g-pill: rgba(255, 255, 255, 0.72);
+  --g-pill-hover: rgba(255, 255, 255, 0.95);
+  --g-pill-active: rgba(255, 255, 255, 0.6);
+  --g-pill-line: rgba(21, 23, 28, 0.12);
+  --g-pill-edge: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(21, 23, 28, 0.06);
+  --g-ghost-hover: rgba(21, 23, 28, 0.05);
+
+  --g-nav-hover: rgba(21, 23, 28, 0.05);
+  --g-nav-active: rgba(255, 255, 255, 0.78);
+  --g-nav-active-text: #0b0c0f;
+  --g-nav-active-edge: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 1px 3px rgba(21, 23, 28, 0.1), 0 0 0 1px rgba(21, 23, 28, 0.05);
+
+  --g-field: rgba(255, 255, 255, 0.72);
+  --g-field-solid: #ffffff;
+  --g-field-line: rgba(21, 23, 28, 0.14);
+  --g-field-inset: inset 0 1px 2px rgba(21, 23, 28, 0.08);
+  --g-field-text: #15171c;
+  --g-placeholder: #6b7280;
+
+  --g-kbd: rgba(255, 255, 255, 0.85);
+  --g-kbd-line: rgba(21, 23, 28, 0.14);
+  --g-kbd-bottom: rgba(21, 23, 28, 0.26);
+  --g-kbd-text: #2a2f38;
+
+  --g-switch-off: rgba(21, 23, 28, 0.16);
+  --g-knob-shadow: 0 1px 3px rgba(21, 23, 28, 0.35);
+
+  --g-specular: radial-gradient(120% 100% at 15% -20%, rgba(255, 255, 255, 0.6), transparent 55%);
+  --g-rim: inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -1px 0 rgba(21, 23, 28, 0.08);
+  --g-rim-line: rgba(21, 23, 28, 0.1);
+
+  --g-ok: #065f46;
+  --g-ok-tint: rgba(4, 120, 87, 0.1);
+  --g-ok-line: rgba(4, 120, 87, 0.28);
+  --g-ok-glow: none;
+  --g-warn: #92400e;
+  --g-warn-dot: #d97706;
+  --g-warn-tint: rgba(217, 119, 6, 0.1);
+  --g-warn-line: rgba(217, 119, 6, 0.32);
+  --g-err: #b91c1c;
+  --g-err-tint: rgba(185, 28, 28, 0.08);
+  --g-err-line: rgba(185, 28, 28, 0.26);
+  --g-info: #0284c7;
+  --g-info-tint: rgba(14, 165, 233, 0.08);
+  --g-info-line: rgba(14, 165, 233, 0.24);
+  --g-info-text: #2a2f38;
+  --g-idle: #545b68;
+  --g-idle-tint: rgba(21, 23, 28, 0.05);
+  --g-idle-line: rgba(21, 23, 28, 0.12);
+
+  --g-chevrons: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='12' viewBox='0 0 8 12'%3E%3Cpath d='M1 4.5l3-3 3 3M1 7.5l3 3 3-3' fill='none' stroke='%234b5260' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* Vibrancy (kein echtes Glas): Karten etwas deckender, damit sie sich vom
+   gleichmäßigeren Material abheben. */
+body[data-glass="vibrancy"] {
+  --g-card: var(--g-card-vibrancy);
+}
+
+/* „Transparenz reduzieren“ (Bedienungshilfen): Flächen deckend. */
+body[data-reduced-transparency="true"] {
+  --g-card: var(--g-card-solid);
+  --g-sidebar: var(--g-sidebar-solid);
+  --g-field: var(--g-field-solid);
+}
+@media (prefers-reduced-transparency: reduce) {
+  body[data-page] {
+    --g-card: var(--g-card-solid);
+    --g-sidebar: var(--g-sidebar-solid);
+    --g-field: var(--g-field-solid);
+  }
+}
+
+/* ── Seiten-Grundlage (nur Seiten mit body[data-page]) ──
+   In @layer base, damit die Bausteine unten (components) z. B. den Fokusring
+   im Eingabefeld selbst zeichnen können. */
+
+@layer base {
+  body[data-page] {
+    font-family: var(--g-font);
+    color: var(--g-text);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body[data-page] :focus-visible {
+    outline: 2px solid var(--g-focus);
+    outline-offset: 2px;
+  }
+
+  body[data-page] ::selection {
+    background: rgba(56, 189, 248, 0.3);
+  }
+}
+
+@layer components {
+  /* Karte mit Lichtkante */
+  .g-card {
+    background: var(--g-card);
+    border: 1px solid var(--g-line);
+    box-shadow: var(--g-edge);
+    border-radius: 16px;
+  }
+
+  /* Zeile in einer Karte: Titel/Beschreibung links, Bedienelement rechts */
+  /* Wird es eng (schmales Fenster), rutscht das Bedienelement unter den Text. */
+  .g-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    padding: 13px 16px;
+    min-height: 60px;
+    box-sizing: border-box;
+  }
+  .g-row + .g-row {
+    border-top: 1px solid var(--g-divider);
+  }
+  .g-row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1 1 240px;
+  }
+  .g-row-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--g-text);
+  }
+  .g-row-desc {
+    font-size: 12px;
+    color: var(--g-text-3);
+    line-height: 1.45;
+  }
+  .g-row-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+
+  .g-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    color: var(--g-text);
+  }
+  .g-subtitle {
+    margin: 0;
+    font-size: 13px;
+    color: var(--g-text-2);
+  }
+  .g-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--g-label);
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .g-label-note {
+    font-weight: 400;
+    color: var(--g-text-3);
+  }
+  .g-meta {
+    margin: 0;
+    padding-left: 2px;
+    font-size: 12px;
+    color: var(--g-text-3);
+    min-height: 17px;
+  }
+  .g-meta.is-ok {
+    color: var(--g-text-3);
+  }
+  .g-meta.is-warn {
+    color: var(--g-warn);
+  }
+  .g-meta.is-err {
+    color: var(--g-err);
+  }
+
+  /* Knöpfe */
+  .g-btn {
+    -webkit-app-region: no-drag;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 10px;
+    font: 500 12.5px/1 var(--g-font);
+    white-space: nowrap;
+    cursor: default;
+    border: 1px solid transparent;
+    color: var(--g-text);
+    background: transparent;
+    transition:
+      background-color 0.12s ease,
+      filter 0.12s ease,
+      opacity 0.12s ease;
+  }
+  .g-btn:disabled,
+  .g-btn[aria-disabled="true"] {
+    opacity: 0.45;
+  }
+  .g-btn-md {
+    height: 40px;
+    padding: 0 18px;
+    border-radius: 13px;
+    font-size: 14px;
+  }
+  .g-btn-lg {
+    height: 42px;
+    padding: 0 22px;
+    border-radius: 13px;
+    font-size: 14px;
+  }
+  .g-btn-glass {
+    background: var(--g-pill);
+    border-color: var(--g-pill-line);
+    box-shadow: var(--g-pill-edge);
+  }
+  .g-btn-glass:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--g-pill-hover);
+  }
+  .g-btn-glass:active:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--g-pill-active);
+  }
+  .g-btn-primary {
+    font-weight: 600;
+    color: var(--g-on-accent);
+    background: var(--g-accent-fill);
+    box-shadow: var(--g-accent-glow), var(--g-accent-edge);
+  }
+  .g-btn-primary:hover:not(:disabled):not([aria-disabled="true"]) {
+    filter: brightness(1.06);
+  }
+  .g-btn-primary:active:not(:disabled):not([aria-disabled="true"]) {
+    filter: brightness(0.96);
+  }
+  .g-btn-primary:disabled,
+  .g-btn-primary[aria-disabled="true"] {
+    box-shadow: var(--g-accent-edge);
+  }
+  .g-btn-ghost {
+    color: var(--g-text-2);
+  }
+  .g-btn-ghost:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--g-ghost-hover);
+    color: var(--g-text);
+  }
+  .g-btn-icon {
+    width: 40px;
+    padding: 0;
+    border-radius: 14px;
+  }
+
+  /* Textverweis im Fließtext (sieht aus wie ein Link, ist ein Knopf) */
+  .g-link {
+    -webkit-app-region: no-drag;
+    display: inline;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-weight: 500;
+    color: var(--g-link);
+    cursor: default;
+    border-radius: 4px;
+  }
+  .g-link:hover {
+    color: var(--g-link-hover);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  /* Tastenkappen */
+  .g-kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    box-sizing: border-box;
+    font-family: var(--g-mono);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.3;
+    color: var(--g-kbd-text);
+    background: var(--g-kbd);
+    border: 1px solid var(--g-kbd-line);
+    border-bottom-color: var(--g-kbd-bottom);
+    border-radius: 7px;
+    padding: 3px 8px;
+  }
+  .g-kbd-sm {
+    min-width: 0;
+    font-size: 11px;
+    border-radius: 6px;
+    padding: 2px 6px;
+  }
+  /* ⌘ ⌥ ⇧ ⌃ ␣ … aus der Systemschrift: in Monospace geraten sie winzig. */
+  .g-kbd-glyph {
+    font-family: var(--g-font);
+    font-size: 1.12em;
+    font-weight: 500;
+    line-height: 1;
+  }
+  .g-kbd-combo {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Status: Punkt und Pille */
+  .g-dot {
+    display: inline-block;
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--g-idle);
+  }
+  .g-dot.is-ok {
+    background: var(--g-ok);
+  }
+  .g-dot.is-warn {
+    background: var(--g-warn-dot);
+  }
+  .g-dot.is-err {
+    background: var(--g-err);
+  }
+  .g-dot.is-info {
+    background: var(--g-accent-400);
+  }
+  .g-dot.is-glow.is-ok {
+    box-shadow: var(--g-ok-glow);
+  }
+  .g-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--g-nav);
+    background: var(--g-pill);
+    border: 1px solid var(--g-pill-line);
+    box-shadow: var(--g-pill-edge);
+  }
+
+  /* Schalter im iOS-Stil */
+  .g-switch {
+    -webkit-app-region: no-drag;
+    position: relative;
+    flex: 0 0 auto;
+    width: 38px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: var(--g-switch-off);
+    cursor: default;
+    transition: background-color 0.18s ease;
+  }
+  .g-switch[aria-checked="true"] {
+    background: var(--g-accent-fill);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+  .g-switch:disabled {
+    opacity: 0.45;
+  }
+  .g-switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: var(--g-knob-shadow);
+    transition: transform 0.18s ease;
+  }
+  .g-switch[aria-checked="true"] .g-switch-knob {
+    transform: translateX(16px);
+  }
+
+  /* Eingabefeld mit Symbol und Status rechts */
+  .g-field {
+    -webkit-app-region: no-drag;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 48px;
+    padding: 0 14px;
+    box-sizing: border-box;
+    border-radius: 14px;
+    background: var(--g-field);
+    border: 1px solid var(--g-field-line);
+    box-shadow: var(--g-field-inset);
+    color: var(--g-text-3);
+    transition:
+      border-color 0.12s ease,
+      box-shadow 0.12s ease;
+  }
+  .g-field:focus-within {
+    border-color: var(--g-ring-line);
+    box-shadow: var(--g-field-inset), var(--g-ring);
+  }
+  .g-field[data-invalid="true"]:not(:focus-within) {
+    border-color: var(--g-err-line);
+  }
+  .g-field-sm {
+    height: 40px;
+    border-radius: 12px;
+  }
+  .g-field input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    font: 500 14px/1.2 var(--g-mono);
+    color: var(--g-field-text);
+  }
+  .g-field input::placeholder {
+    color: var(--g-placeholder);
+    font-weight: 400;
+  }
+  .g-field input:focus-visible {
+    outline: none;
+  }
+  .g-field-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--g-text-3);
+    white-space: nowrap;
+  }
+  .g-field-status.is-ok {
+    color: var(--g-ok);
+  }
+  .g-field-status.is-warn {
+    color: var(--g-warn);
+  }
+  .g-field-status.is-err {
+    color: var(--g-err);
+  }
+
+  /* Auswahl als Glas-Pille (die Liste selbst bleibt nativ) */
+  .g-select {
+    -webkit-app-region: no-drag;
+    appearance: none;
+    height: 32px;
+    max-width: 260px;
+    padding: 0 30px 0 11px;
+    border-radius: 10px;
+    font: 500 13px/1 var(--g-font);
+    color: var(--g-text);
+    background: var(--g-pill) var(--g-chevrons) no-repeat right 11px center / 8px 12px;
+    border: 1px solid var(--g-pill-line);
+    box-shadow: var(--g-pill-edge);
+    text-overflow: ellipsis;
+  }
+  .g-select:hover:not(:disabled) {
+    background-color: var(--g-pill-hover);
+  }
+  .g-select:disabled {
+    opacity: 0.45;
+  }
+
+  /* Hinweiskasten */
+  .g-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--g-info-text);
+    background: var(--g-info-tint);
+    border: 1px solid var(--g-info-line);
+  }
+  .g-note > svg {
+    flex: 0 0 auto;
+    margin-top: 1px;
+    color: var(--g-info);
+  }
+  .g-note.is-warn {
+    background: var(--g-warn-tint);
+    border-color: var(--g-warn-line);
+  }
+  .g-note.is-warn > svg {
+    color: var(--g-warn);
+  }
+  .g-note.is-err {
+    background: var(--g-err-tint);
+    border-color: var(--g-err-line);
+  }
+  .g-note.is-err > svg {
+    color: var(--g-err);
+  }
+  .g-note.is-ok {
+    background: var(--g-ok-tint);
+    border-color: var(--g-ok-line);
+  }
+  .g-note.is-ok > svg {
+    color: var(--g-ok);
+  }
+
+  /* Symbol-Kachel (Statuskarten, Berechtigungen) */
+  .g-tile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    border: 1px solid var(--g-idle-line);
+    background: var(--g-idle-tint);
+    color: var(--g-text-2);
+  }
+  .g-tile-sm {
+    width: 34px;
+    height: 34px;
+    border-radius: 11px;
+  }
+  .g-tile.is-ok {
+    background: var(--g-ok-tint);
+    border-color: var(--g-ok-line);
+    color: var(--g-ok);
+  }
+  .g-tile.is-warn {
+    background: var(--g-warn-tint);
+    border-color: var(--g-warn-line);
+    color: var(--g-warn);
+  }
+  .g-tile.is-err {
+    background: var(--g-err-tint);
+    border-color: var(--g-err-line);
+    color: var(--g-err);
+  }
+  .g-tile.is-info {
+    background: var(--g-info-tint);
+    border-color: var(--g-info-line);
+    color: var(--g-info);
+  }
+
+  /* App-Kachel: Sprechblase auf Himmelblau */
+  .g-app-tile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    color: var(--g-on-accent);
+    background: var(--g-accent-tile);
+    box-shadow:
+      0 14px 30px -10px rgba(14, 165, 233, 0.9),
+      inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  }
+
+  /* Seitenleisten-Eintrag; aktiv als Glas-Pille */
+  .g-nav-item {
+    -webkit-app-region: no-drag;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 34px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    font: 400 13px/1 var(--g-font);
+    color: var(--g-nav);
+    text-align: left;
+    cursor: default;
+  }
+  .g-nav-item:hover {
+    background: var(--g-nav-hover);
+  }
+  .g-nav-item[aria-selected="true"] {
+    background: var(--g-nav-active);
+    color: var(--g-nav-active-text);
+    box-shadow: var(--g-nav-active-edge);
+    font-weight: 500;
+  }
+  .g-nav-item:focus-visible {
+    outline-offset: -2px;
+  }
+
+  .g-spinner {
+    display: inline-block;
+    flex: 0 0 auto;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    animation: g-spin 0.8s linear infinite;
+  }
+
+  .g-progress {
+    position: relative;
+    height: 4px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--g-switch-off);
+  }
+  .g-progress > span {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: inherit;
+    background: var(--g-accent-fill);
+  }
+
+  .g-drag {
+    -webkit-app-region: drag;
+  }
+  .g-nodrag {
+    -webkit-app-region: no-drag;
+  }
+
+  .g-selectable {
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+  }
+
+  .g-mono {
+    font-family: var(--g-mono);
+  }
+
+  /* Bildlaufbereich mit schmaler, eingeblendeter Leiste */
+  .g-scroll {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .g-scroll::-webkit-scrollbar {
+    width: 10px;
+  }
+  .g-scroll::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+    background-color: var(--g-switch-off);
+  }
+  .g-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@keyframes g-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .g-spinner {
+    animation: none;
+    border-right-color: currentColor;
+    opacity: 0.6;
+  }
+  .g-switch,
+  .g-switch-knob,
+  .g-btn,
+  .g-field {
+    transition: none;
+  }
+}

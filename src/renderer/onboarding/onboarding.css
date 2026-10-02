@@ -1,0 +1,127 @@
+/* Einrichtung: 760×560, titleBarStyle hiddenInset (Ampel bei ~20/20),
+   Vibrancy „under-window“. Kein deckender Hintergrund – nur zwei sehr
+   dezente, halbtransparente Aurora-Schimmer wie im Design. */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body[data-page="onboarding"] {
+  overflow: hidden;
+  --onb-aurora-a: rgba(56, 189, 248, 0.16);
+  --onb-aurora-b: rgba(167, 139, 250, 0.11);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) body[data-page="onboarding"] {
+    --onb-aurora-a: rgba(56, 189, 248, 0.14);
+    --onb-aurora-b: rgba(167, 139, 250, 0.09);
+  }
+}
+html[data-theme="light"] body[data-page="onboarding"] {
+  --onb-aurora-a: rgba(56, 189, 248, 0.14);
+  --onb-aurora-b: rgba(167, 139, 250, 0.09);
+}
+body[data-page="onboarding"][data-reduced-transparency="true"] {
+  --onb-aurora-a: transparent;
+  --onb-aurora-b: transparent;
+}
+
+.onb {
+  position: relative;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.onb-aurora {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(44px);
+}
+.onb-aurora.is-a {
+  left: -180px;
+  top: -220px;
+  width: 560px;
+  height: 560px;
+  background: radial-gradient(circle, var(--onb-aurora-a), transparent 62%);
+}
+.onb-aurora.is-b {
+  right: -220px;
+  bottom: -260px;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, var(--onb-aurora-b), transparent 62%);
+}
+
+/* Titelzeile: Zieh-Bereich, Ampel links (nativ), Schrittanzeige rechts */
+.onb-top {
+  position: relative;
+  flex: 0 0 auto;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 22px;
+}
+.onb-step {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--g-text-3);
+}
+.onb-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.onb-dots > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--g-switch-off);
+  transition: width 0.2s ease;
+}
+.onb-dots > span.is-on {
+  width: 16px;
+  background: var(--g-accent-400);
+}
+
+.onb-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 0 56px 32px;
+}
+
+.onb-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--g-text);
+}
+.onb-title:focus {
+  outline: none;
+}
+.onb-lead {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--g-text-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onb-dots > span {
+    transition: none;
+  }
+}

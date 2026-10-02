@@ -12,6 +12,8 @@ export const LOCAL_IPC = {
   setGeneral: "local:setGeneral",
   requestPermission: "local:requestPermission",
   checkUpdates: "local:checkUpdates",
+  installUpdate: "local:installUpdate",
+  setHotkeyRecording: "local:setHotkeyRecording",
   openLogs: "local:openLogs",
   hudStop: "local:hudStop",
   retry: "local:retry",

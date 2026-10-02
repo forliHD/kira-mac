@@ -62,7 +62,7 @@ class KiraApp {
   private readonly hud = new HudWindowController();
   private tray!: TrayController;
   private hotkeyConflicts: string[] = [];
-  private connection: ConnectionState = { online: false, origin: null, kind: null, serverVersion: null, serverHasBridge: false, lastError: null };
+  private connection: ConnectionState = { online: false, origin: null, kind: null, serverVersion: null, serverHasBridge: false, lastError: null, lastOnlineAt: null };
   private pollTimer: NodeJS.Timeout | null = null;
   private connecting: Promise<void> | null = null;
   private statusCache: { at: number; stt: HelperSttStatus | null; permissions: PermissionsStatus | null } | null = null;
@@ -368,8 +368,11 @@ class KiraApp {
         return this.hotkeyConflicts;
       },
       setDictation: async (dictation: DictationConfig) => {
+        const before = this.config.dictation.dashboardStt;
         this.config = configStore.update({ dictation });
         this.statusCache = null;
+        // Die Fähigkeit `stt` kommt beim Laden der Seite – neu laden, damit das Dashboard umschaltet.
+        if (before !== dictation.dashboardStt && this.mainWin.isDashboardLoaded()) this.mainWin.window?.webContents.reload();
       },
       setGeneral: async (general: GeneralConfig) => {
         const before = this.config.general;
@@ -382,6 +385,11 @@ class KiraApp {
       },
       requestPermission: (kind) => this.requestPermission(kind),
       checkForUpdates: () => updater.check(false),
+      installUpdate: () => updater.installNow(),
+      setHotkeyRecording: (active) => {
+        if (active) unregisterHotkeys();
+        else this.applyHotkeys();
+      },
       logPath: () => logFilePath(),
       hudStop: () => this.dictation.stop(),
       retry: () => this.connect(true),
@@ -486,7 +494,8 @@ class KiraApp {
   }
 
   private capabilities(sender?: WebContents): Capability[] {
-    const caps = capabilitiesFrom(this.helper.running ? this.helper.info?.features : null);
+    let caps = capabilitiesFrom(this.helper.running ? this.helper.info?.features : null);
+    if (!this.config.dictation.dashboardStt) caps = caps.filter((c) => c !== "stt");
     if (sender && this.mainWin?.usesInsetTitleBar(sender)) caps.push("inset-titlebar");
     return caps;
   }
@@ -521,7 +530,7 @@ class KiraApp {
       const hasBridge = result.resolved.serverHasBridge;
       const wasOnline = this.connection.online;
       session.setOrigin(origin);
-      this.connection = { online: true, origin, kind, serverVersion: version, serverHasBridge: hasBridge, lastError: null };
+      this.connection = { online: true, origin, kind, serverVersion: version, serverHasBridge: hasBridge, lastError: null, lastOnlineAt: Date.now() };
       const originChanged = previousOrigin !== origin;
       if (originChanged || force || !this.mainWin.isDashboardLoaded()) {
         this.mainWin.loadInstance(origin);
@@ -545,7 +554,7 @@ class KiraApp {
         // Dashboard bleibt stehen (es hat seinen eigenen Offline-Hinweis) – nur das Ereignis.
         this.mainWin.sendNative({ type: "connectivity", online: false });
       } else {
-        this.mainWin.showOffline(reason);
+        this.mainWin.showOffline(reason, this.connection.lastOnlineAt);
       }
       this.schedulePoll(OFFLINE_POLL_MS);
     }
@@ -571,7 +580,7 @@ class KiraApp {
   private onMainLoadFailed(reason: string): void {
     this.connection = { ...this.connection, online: false, lastError: `Instanz nicht erreichbar: ${reason}` };
     this.tray.setStatus(false, this.config.instance.label, reason);
-    this.mainWin.showOffline(`Instanz nicht erreichbar: ${reason}`);
+    this.mainWin.showOffline(`Instanz nicht erreichbar: ${reason}`, this.connection.lastOnlineAt);
     this.schedulePoll(OFFLINE_POLL_MS);
     this.broadcast({ type: "connection", connection: this.connection });
   }
@@ -661,12 +670,23 @@ class KiraApp {
       this.log.warn("permission_request_failed", { kind, error: err instanceof Error ? err.message : String(err) });
     });
     this.statusCache = null;
-    return (await this.helperStatus()).permissions;
+    const permissions = (await this.helperStatus()).permissions;
+    // Einmal abgelehnt, fragt macOS nicht erneut – dann die passende Seite der
+    // Systemeinstellungen öffnen (Bedienungshilfen/Bildschirm öffnet der Helfer selbst).
+    const pane =
+      kind === "microphone" && permissions?.microphone === "denied"
+        ? "Privacy_Microphone"
+        : kind === "speech" && permissions?.speech === "denied"
+          ? "Privacy_SpeechRecognition"
+          : null;
+    if (pane) void shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${pane}`);
+    return permissions;
   }
 
   private broadcast(event: LocalEvent): void {
     settingsWindow.send(event);
     onboardingWindow.send(event);
+    this.mainWin?.sendLocal(event);
   }
 
   private broadcastState(): void {

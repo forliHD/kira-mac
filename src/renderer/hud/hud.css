@@ -1,0 +1,254 @@
+/* Diktat-HUD: 560×76, Radius 24. Das Fenster ist transparent; das Glas
+   (Liquid Glass bzw. Vibrancy) liegt nativ dahinter. Hier nur Glanz,
+   Lichtkante, Inhalt. */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body[data-page="hud"] {
+  overflow: hidden;
+  --hud-line: rgba(255, 255, 255, 0.06);
+  --hud-tint: transparent;
+  --hud-solid: #1c1f26;
+}
+body[data-page="hud"][data-glass="vibrancy"] {
+  /* Ohne echtes Glas fehlt die native Kante – selbst zeichnen und leicht tönen. */
+  --hud-line: var(--g-rim-line);
+  --hud-tint: rgba(12, 14, 20, 0.16);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) body[data-page="hud"] {
+    --hud-line: rgba(21, 23, 28, 0.05);
+    --hud-solid: #f2f3f5;
+  }
+  :root:not([data-theme="dark"]) body[data-page="hud"][data-glass="vibrancy"] {
+    --hud-line: var(--g-rim-line);
+    --hud-tint: rgba(255, 255, 255, 0.22);
+  }
+}
+html[data-theme="light"] body[data-page="hud"] {
+  --hud-line: rgba(21, 23, 28, 0.05);
+  --hud-solid: #f2f3f5;
+}
+html[data-theme="light"] body[data-page="hud"][data-glass="vibrancy"] {
+  --hud-line: var(--g-rim-line);
+  --hud-tint: rgba(255, 255, 255, 0.22);
+}
+body[data-page="hud"][data-reduced-transparency="true"] {
+  --hud-tint: var(--hud-solid);
+  --hud-line: var(--g-rim-line);
+}
+@media (prefers-reduced-transparency: reduce) {
+  body[data-page="hud"] {
+    --hud-tint: var(--hud-solid);
+    --hud-line: var(--g-rim-line);
+  }
+}
+
+.hud {
+  -webkit-app-region: drag;
+  position: relative;
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 24px;
+  padding: 0 14px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  overflow: hidden;
+  background: var(--hud-tint);
+  cursor: default;
+}
+/* Glanz oben links */
+.hud::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--g-specular);
+}
+/* Lichtkante */
+.hud::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    var(--g-rim),
+    inset 0 0 0 1px var(--hud-line);
+}
+.hud > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Mikrofon-Kreis mit Markenverlauf und Puls */
+.hud-orb {
+  position: relative;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hud-orb-core {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--g-on-accent);
+  background: var(--g-accent-fill);
+  box-shadow:
+    0 8px 22px -8px rgba(14, 165, 233, 0.95),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  transition:
+    transform 0.12s ease-out,
+    opacity 0.2s ease;
+}
+.hud-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--g-accent-400);
+  animation: hud-pulse 1.6s ease-out infinite;
+}
+.hud[data-phase="starting"] .hud-orb-core,
+.hud[data-phase="stopping"] .hud-orb-core {
+  opacity: 0.72;
+}
+.hud[data-problem="true"] .hud-orb-core {
+  color: var(--g-text-3);
+  background: var(--g-idle-tint);
+  box-shadow: inset 0 0 0 1px var(--g-idle-line);
+}
+
+/* Pegel */
+.hud-bars {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 28px;
+}
+.hud-bar {
+  width: 4px;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--g-accent-300), var(--g-accent-500));
+  transition: height 0.1s ease-out;
+}
+.hud[data-phase="starting"] .hud-bars,
+.hud[data-phase="stopping"] .hud-bars {
+  opacity: 0.55;
+}
+.hud[data-problem="true"] .hud-bars {
+  opacity: 0.3;
+  filter: grayscale(1);
+}
+
+/* Zeile „Diktat in Mail“ + flüchtiger Text */
+.hud-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.hud-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--g-text-3);
+}
+.hud-label.is-unavailable > svg {
+  color: var(--g-warn);
+}
+.hud-label.is-error > svg {
+  color: var(--g-err);
+}
+.hud-dot {
+  width: 5px;
+  height: 5px;
+}
+.hud-ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hud-line {
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--g-text);
+}
+.hud-line.is-placeholder {
+  color: var(--g-text-2);
+}
+.hud-line.is-message {
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--g-text);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.hud-tail {
+  display: flex;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.hud-tail > span {
+  flex: 0 0 auto;
+}
+.hud-tail.is-overflow {
+  justify-content: flex-end;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 32px);
+  mask-image: linear-gradient(90deg, transparent, #000 32px);
+}
+
+.hud-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hud-stop {
+  color: var(--g-text-strong);
+}
+
+@keyframes hud-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-ring {
+    animation: none;
+    opacity: 0.35;
+  }
+  .hud-bar,
+  .hud-orb-core {
+    transition: none;
+  }
+}

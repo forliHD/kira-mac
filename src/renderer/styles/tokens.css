@@ -1,8 +1,8 @@
 /* Nocturne-Design-Token der KIRA-Oberfläche – Produkt-Layer (--k-*).
    Quelle: kira/dashboard/src/index.css (Stand 3.296.1), Blöcke `:root` (dunkel)
    und `html[data-theme="light"]` (hell). Hier NICHT von Hand pflegen, sondern
-   aus dem Dashboard nachziehen; das endgültige Design der lokalen Seiten
-   liefert der Owner später. Die Marken-Rampe (--kira-brand-*, --color-kira-400)
+   aus dem Dashboard nachziehen. Das Glas-Design der lokalen Seiten (eigene
+   Token --g-*) liegt in glass.css. Die Marken-Rampe (--kira-brand-*, --color-kira-400)
    steht im Dashboard im Tailwind-@theme bzw. in lib/branding.js und wird
    hier mit den Standardwerten mitgeführt, weil die Token darauf verweisen. */
 

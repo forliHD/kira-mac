@@ -176,6 +176,8 @@ export function installQuickMock(params: URLSearchParams): void {
     hudStop: notInPreview,
     retry: notInPreview,
     openSettings: notInPreview,
+    installUpdate: notInPreview,
+    setHotkeyRecording: notInPreview,
     openMain: notInPreview,
     openLink: async (url) => console.info("[Vorschau] openLink", url),
     quickGetState: async () => state,

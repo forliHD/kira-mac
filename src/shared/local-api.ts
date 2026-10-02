@@ -18,6 +18,8 @@ export interface HotkeyConfig {
 export interface DictationConfig {
   locale: string;
   commands: boolean;
+  /** Diktat im Dashboard über den Apple-Chip (Fähigkeit `stt`); aus = Server wie im Browser. */
+  dashboardStt: boolean;
 }
 
 export interface GeneralConfig {
@@ -41,6 +43,8 @@ export interface ConnectionState {
   serverVersion: string | null;
   serverHasBridge: boolean;
   lastError: string | null;
+  /** Letzter erfolgreicher Kontakt (ms seit 1970), für „Letzter Kontakt …“. */
+  lastOnlineAt: number | null;
 }
 
 export interface UpdateState {
@@ -167,6 +171,10 @@ export interface KiraLocalApi {
   setGeneral(general: GeneralConfig): Promise<LocalState>;
   requestPermission(kind: PermissionKind): Promise<PermissionsStatus | null>;
   checkForUpdates(): Promise<UpdateState>;
+  /** Geladenes Update jetzt installieren (App startet neu). */
+  installUpdate(): Promise<void>;
+  /** Während der Aufnahme eines Tastenkürzels die globalen Kürzel aussetzen. */
+  setHotkeyRecording(active: boolean): Promise<void>;
   openLogs(): Promise<void>;
   hudStop(): Promise<void>;
   retry(): Promise<void>;

@@ -79,7 +79,14 @@ export function applyLinkPolicy(contents: WebContents, deps: LinkPolicyDeps): vo
 
   contents.on("will-navigate", (event, url) => {
     const from = contents.getURL();
-    if (deps.isInstanceUrl(url) || isBlob(url) || url.startsWith("file:") || url.startsWith("about:")) return;
+    // file:-Ziele nie per Navigation: lokale Seiten lädt nur der Hauptprozess
+    // (loadURL löst kein will-navigate aus); eine heruntergeladene HTML-Datei
+    // darf nicht im App-Fenster landen.
+    if (url.startsWith("file:")) {
+      event.preventDefault();
+      return;
+    }
+    if (deps.isInstanceUrl(url) || isBlob(url) || url.startsWith("about:")) return;
     if (deps.isInstanceUrl(from) && !isAuthFlow(url)) {
       event.preventDefault();
       openExternalSafely(url);

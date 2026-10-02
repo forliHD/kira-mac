@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import "./tokens.css";
 
+/* Grundlage aller lokalen Seiten (auch Schnellfenster). Das Glas-Design der
+   Einrichtung, Einstellungen, des HUD und der Offline-Seite liegt in
+   glass.css, das diese Seiten zusätzlich einbinden. */
+
 /* Die Nocturne-Token als Tailwind-Farben (inline, damit die Utilities den
    Variablenwert direkt übernehmen und der Hell/Dunkel-Wechsel greift). */
 @theme inline {
@@ -50,7 +54,12 @@ textarea {
   user-select: text;
 }
 
-/* Rahmenlose Fenster (HUD): Hintergrund transparent, Vibrancy des Fensters sichtbar. */
+/* Fenster mit Vibrancy bzw. Liquid Glass (HUD, Schnellfenster, Einrichtung,
+   Einstellungen): Seite transparent, damit das Material des Fensters
+   sichtbar ist. Auch <html> – sonst malt dessen Hintergrund die ganze
+   Fläche deckend (der Seitenhintergrund wandert vom Wurzelelement auf die
+   Leinwand). */
+html:has(> body.transparent),
 body.transparent {
   background: transparent;
 }

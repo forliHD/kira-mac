@@ -9,6 +9,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import { IPC } from "../shared/ipc";
 import { type PreloadBootstrap, createKiraNative } from "./api";
 import { decodeToWav16k } from "./audio";
+import { createLocalSubset, isLocalAppPage } from "./local-subset";
 
 function bootstrap(): PreloadBootstrap | null {
   if (!/^https?:$/.test(location.protocol)) return null;
@@ -35,4 +36,20 @@ if (boot) {
     // (strukturiertes Klonen), deshalb reicht ein einfaches Objekt.
     window.dispatchEvent(new CustomEvent("kira:native", { detail }));
   });
+}
+
+// Lokale Seiten im Hauptfenster (Offline-Seite): Teil von window.KiraLocal.
+// Der Hauptprozess prüft jeden Aufruf ohnehin auf einen lokalen Absender.
+if (isLocalAppPage(location.href, process.env.ELECTRON_RENDERER_URL)) {
+  const api = createLocalSubset({
+    invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+    subscribe: (channel, handler) => {
+      const listener = (_event: unknown, payload: unknown): void => handler(payload);
+      ipcRenderer.on(channel, listener);
+      return () => {
+        ipcRenderer.removeListener(channel, listener);
+      };
+    },
+  });
+  contextBridge.exposeInMainWorld("KiraLocal", api);
 }

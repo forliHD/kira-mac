@@ -21,6 +21,8 @@ export interface LocalIpcContext {
   setGeneral: (general: GeneralConfig) => Promise<void>;
   requestPermission: (kind: PermissionKind) => Promise<PermissionsStatus | null>;
   checkForUpdates: () => Promise<UpdateState>;
+  installUpdate: () => void;
+  setHotkeyRecording: (active: boolean) => void;
   logPath: () => string;
   hudStop: () => Promise<void>;
   retry: () => Promise<void>;
@@ -84,7 +86,7 @@ export function registerLocalIpc(ctx: LocalIpcContext): void {
     LOCAL_IPC.setDictation,
     guard(async (value: unknown) => {
       const v = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
-      await ctx.setDictation({ locale: str(v.locale) || "de-DE", commands: bool(v.commands, true) });
+      await ctx.setDictation({ locale: str(v.locale) || "de-DE", commands: bool(v.commands, true), dashboardStt: bool(v.dashboardStt, true) });
       return ctx.getState();
     }),
   );
@@ -105,6 +107,11 @@ export function registerLocalIpc(ctx: LocalIpcContext): void {
     }),
   );
   ipcMain.handle(LOCAL_IPC.checkUpdates, guard(() => ctx.checkForUpdates()));
+  ipcMain.handle(LOCAL_IPC.installUpdate, guard(() => ctx.installUpdate()));
+  ipcMain.handle(
+    LOCAL_IPC.setHotkeyRecording,
+    guard((active: unknown) => ctx.setHotkeyRecording(active === true)),
+  );
   ipcMain.handle(
     LOCAL_IPC.openLogs,
     guard(() => {

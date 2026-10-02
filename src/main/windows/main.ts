@@ -6,6 +6,8 @@ import { BrowserWindow, type WebContents, screen } from "electron";
 
 import { type NativeEvent } from "../../shared/bridge";
 import { IPC } from "../../shared/ipc";
+import { LOCAL_IPC } from "../../shared/ipc-local";
+import { type LocalEvent } from "../../shared/local-api";
 import { type WindowBounds } from "../config";
 import { isInstanceUrl } from "../instance";
 import { applyLinkPolicy } from "../links";
@@ -139,11 +141,23 @@ export class MainWindowController {
     });
   }
 
-  showOffline(reason: string): void {
+  showOffline(reason: string, lastOnlineAt: number | null = null): void {
     const win = this.create();
     this.dashboardLoaded = false;
-    void win.loadURL(localPageUrl("offline", { reason })).catch(() => undefined);
+    const query: Record<string, string> = { reason };
+    if (lastOnlineAt) query.lastSeen = String(lastOnlineAt);
+    void win.loadURL(localPageUrl("offline", query)).catch(() => undefined);
     if (!win.isVisible()) win.once("ready-to-show", () => win.show());
+  }
+
+  /** Ereignis an eine lokale Seite im Hauptfenster (Offline-Seite). */
+  sendLocal(event: LocalEvent): void {
+    const win = this.window;
+    if (!win || this.dashboardLoaded) return;
+    const url = win.webContents.getURL();
+    if (url.startsWith("file:") || (process.env.ELECTRON_RENDERER_URL && url.startsWith(process.env.ELECTRON_RENDERER_URL))) {
+      win.webContents.send(LOCAL_IPC.event, event);
+    }
   }
 
   /** Ereignis an das Dashboard; false, wenn gerade keine Instanz-Seite geladen ist. */

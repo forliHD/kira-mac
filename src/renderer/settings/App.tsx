@@ -1,293 +1,193 @@
-// Einstellungen: Instanz-URLs, Tastenkürzel, Diktat (Engine-Status mit
-// Grund), Berechtigungen, Allgemein (Beim Anmelden starten), Updates.
+// Einstellungen (900×620, Ampel über der Seitenleiste, Vibrancy): links die
+// Bereiche als senkrechte Tab-Liste, rechts Titel + Karten. Die Auswahl ist
+// reiner Zustand (kein Router); `?section=` wählt den Startbereich.
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
-import { type PermissionKind, type PermissionState } from "../../shared/helper-types";
-import { type LocalState, type ProbeResult } from "../../shared/local-api";
-import { localApi, useLocalState } from "../lib/useLocalState";
-import { Dot, Field, Notice, Section, Toggle } from "../lib/ui";
+import { updateShort } from "../lib/format";
+import { IconGear, IconGlobe, IconInfo, IconKeyboard, IconMic, IconShield } from "../lib/icons";
+import { useLocalState } from "../lib/useLocalState";
+import { GlassCard, InfoNote, SectionHeader, Spinner, StatusDot, cx } from "../lib/ui";
+import { AboutSection } from "./AboutSection";
+import { DictationSection } from "./DictationSection";
+import { GeneralSection } from "./GeneralSection";
+import { HotkeySection } from "./HotkeySection";
+import { InstanceSection } from "./InstanceSection";
+import { PermissionsSection } from "./PermissionsSection";
+import { type HotkeyName, type SectionId, type SectionProps, sectionFromQuery } from "./shared";
 
-function permissionLabel(state: PermissionState | boolean | undefined): { text: string; tone: "ok" | "warn" | "err" | "idle" } {
-  if (state === true || state === "granted") return { text: "erteilt", tone: "ok" };
-  if (state === "notRequired") return { text: "nicht nötig", tone: "ok" };
-  if (state === false || state === "denied") return { text: "verweigert", tone: "err" };
-  if (state === "notDetermined") return { text: "noch nicht gefragt", tone: "warn" };
-  return { text: "unbekannt", tone: "idle" };
-}
+const SECTIONS: Array<{ id: SectionId; label: string; icon: ReactNode; title: string; subtitle: string }> = [
+  {
+    id: "instanz",
+    label: "Instanz",
+    icon: <IconGlobe size={16} />,
+    title: "Instanz",
+    subtitle: "Die Adresse deines KIRA-Servers. Im Heimnetz nutzt die App die interne Adresse, unterwegs die externe.",
+  },
+  {
+    id: "kuerzel",
+    label: "Tastenkürzel",
+    icon: <IconKeyboard size={16} />,
+    title: "Tastenkürzel",
+    subtitle: "Gelten in jedem Programm, auch wenn KIRA im Hintergrund läuft.",
+  },
+  {
+    id: "diktat",
+    label: "Diktat",
+    icon: <IconMic size={16} />,
+    title: "Diktat",
+    subtitle: "Spracherkennung auf diesem Mac. Der Ton verlässt das Gerät nicht.",
+  },
+  {
+    id: "berechtigungen",
+    label: "Berechtigungen",
+    icon: <IconShield size={16} />,
+    title: "Berechtigungen",
+    subtitle: "macOS fragt erst, wenn eine Funktion eine Freigabe braucht. Hier siehst du den Stand.",
+  },
+  {
+    id: "allgemein",
+    label: "Allgemein",
+    icon: <IconGear size={16} />,
+    title: "Allgemein",
+    subtitle: "Wie sich KIRA auf diesem Mac verhält.",
+  },
+  {
+    id: "ueber",
+    label: "Über",
+    icon: <IconInfo size={16} />,
+    title: "Über KIRA für Mac",
+    subtitle: "Version, Updates und Hilfe bei der Fehlersuche.",
+  },
+];
 
-function InstanceSection({ state, onSaved }: { state: LocalState; onSaved: (s: LocalState) => void }): ReactNode {
-  const [internalUrl, setInternalUrl] = useState(state.instance.internalUrl ?? "");
-  const [externalUrl, setExternalUrl] = useState(state.instance.externalUrl ?? "");
-  const [probes, setProbes] = useState<ProbeResult[] | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    setInternalUrl(state.instance.internalUrl ?? "");
-    setExternalUrl(state.instance.externalUrl ?? "");
-  }, [state.instance.internalUrl, state.instance.externalUrl]);
-
-  async function check(): Promise<void> {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const api = localApi();
-      const urls = [internalUrl, externalUrl].map((u) => u.trim()).filter(Boolean);
-      setProbes(await Promise.all(urls.map((u) => api.probe(u))));
-    } finally {
-      setBusy(false);
-    }
+function SectionBody({ id, props, focusHotkey }: { id: SectionId; props: SectionProps; focusHotkey: HotkeyName | null }): ReactNode {
+  switch (id) {
+    case "instanz":
+      return <InstanceSection {...props} />;
+    case "kuerzel":
+      return <HotkeySection {...props} focusHotkey={focusHotkey} />;
+    case "diktat":
+      return <DictationSection {...props} />;
+    case "berechtigungen":
+      return <PermissionsSection {...props} />;
+    case "allgemein":
+      return <GeneralSection {...props} />;
+    case "ueber":
+      return <AboutSection {...props} />;
+    default:
+      return null;
   }
-
-  async function save(): Promise<void> {
-    setBusy(true);
-    setMsg(null);
-    try {
-      onSaved(await localApi().saveInstance({ internalUrl: internalUrl.trim() || null, externalUrl: externalUrl.trim() || null }));
-      setMsg("Gespeichert – die Verbindung wird neu aufgebaut.");
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const c = state.connection;
-  return (
-    <Section title="Instanz" hint="Im Heimnetz wird die interne Adresse bevorzugt; sonst die externe.">
-      <div className="flex items-center gap-2 text-[12px]">
-        <Dot tone={c.online ? "ok" : "err"} />
-        {c.online ? (
-          <span>
-            Verbunden ({c.kind === "internal" ? "intern" : "extern"}) mit {c.origin}
-            {c.serverVersion ? ` – KIRA ${c.serverVersion}` : ""}
-            {c.serverHasBridge ? "" : " – ohne Brücke (Benachrichtigungen nur im Dashboard)"}
-          </span>
-        ) : (
-          <span className="text-err">{c.lastError ?? "Nicht verbunden."}</span>
-        )}
-      </div>
-      <Field label="Interne Adresse (Heimnetz)">
-        <input className="k-input" value={internalUrl} onChange={(e) => setInternalUrl(e.target.value)} placeholder="http://192.168.178.166" />
-      </Field>
-      <Field label="Externe Adresse">
-        <input className="k-input" value={externalUrl} onChange={(e) => setExternalUrl(e.target.value)} placeholder="https://kira.example.de" />
-      </Field>
-      {probes ? (
-        <ul className="flex flex-col gap-1 text-[12px]">
-          {probes.map((p) => (
-            <li key={p.url} className="flex items-center gap-2">
-              <Dot tone={p.ok ? "ok" : "err"} />
-              <span className="font-mono">{p.url}</span>
-              <span className={p.ok ? "text-text-2" : "text-err"}>{p.ok ? `erreichbar${p.version ? `, KIRA ${p.version}` : ""}` : p.error}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {msg ? <Notice tone="info">{msg}</Notice> : null}
-      <div className="flex gap-2">
-        <button className="k-btn" disabled={busy} onClick={() => void check()}>
-          Prüfen
-        </button>
-        <button className="k-btn k-btn-primary" disabled={busy} onClick={() => void save()}>
-          Speichern
-        </button>
-      </div>
-    </Section>
-  );
-}
-
-function HotkeySection({ state, onSaved }: { state: LocalState; onSaved: (s: LocalState) => void }): ReactNode {
-  const [quick, setQuick] = useState(state.hotkeys.quickWindow);
-  const [dict, setDict] = useState(state.hotkeys.dictation);
-  const [conflicts, setConflicts] = useState<string[]>(state.dictationStatus.hotkeyConflicts);
-  const [busy, setBusy] = useState(false);
-
-  async function save(): Promise<void> {
-    setBusy(true);
-    try {
-      const r = await localApi().setHotkeys({ quickWindow: quick.trim(), dictation: dict.trim() });
-      onSaved(r.state);
-      setConflicts(r.conflicts);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Section title="Tastenkürzel" hint="Electron-Schreibweise, z. B. Alt+Space, Alt+Command+D, Control+Shift+K.">
-      <Field label="Schnellfenster">
-        <input className="k-input font-mono" value={quick} onChange={(e) => setQuick(e.target.value)} />
-      </Field>
-      <Field label="Globales Diktat">
-        <input className="k-input font-mono" value={dict} onChange={(e) => setDict(e.target.value)} />
-      </Field>
-      {conflicts.length ? (
-        <Notice tone="warn">
-          {conflicts.map((c) => (
-            <div key={c}>{c}</div>
-          ))}
-        </Notice>
-      ) : null}
-      <div>
-        <button className="k-btn k-btn-primary" disabled={busy} onClick={() => void save()}>
-          Übernehmen
-        </button>
-      </div>
-    </Section>
-  );
-}
-
-function DictationSection({ state, onSaved }: { state: LocalState; onSaved: (s: LocalState) => void }): ReactNode {
-  const stt = state.dictationStatus.stt;
-  const helper = state.helper;
-  const locales = helper.info?.locales?.length ? helper.info.locales : ["de-DE", "en-US"];
-  const engine = !helper.running
-    ? { tone: "err" as const, text: helper.lastError ?? "Helfer läuft nicht." }
-    : stt?.available
-      ? { tone: "ok" as const, text: `Apple-Spracherkennung (${stt.engine === "analyzer" ? "SpeechAnalyzer" : "SFSpeechRecognizer"}), Modell ${stt.assets === "installed" ? "installiert" : stt.assets}` }
-      : { tone: "err" as const, text: stt?.reason ?? (stt?.assets === "missing" ? "Sprachmodell nicht installiert." : "Apple-Spracherkennung nicht verfügbar – kein Rückfall auf den Server.") };
-
-  async function update(patch: Partial<LocalState["dictation"]>): Promise<void> {
-    onSaved(await localApi().setDictation({ ...state.dictation, ...patch }));
-  }
-
-  return (
-    <Section title="Diktat" hint="Globales Diktat erkennt auf dem Apple-Chip und fügt den Text in das vorderste Programm ein.">
-      <div className="flex items-center gap-2 text-[12px]">
-        <Dot tone={engine.tone} />
-        <span className={engine.tone === "err" ? "text-err" : ""}>{engine.text}</span>
-      </div>
-      {helper.info ? (
-        <p className="text-[11px] text-text-3">
-          Helfer {helper.info.version} · macOS {helper.info.macos} · {helper.info.chip} · Apple-Sprachmodell {helper.info.features.llm ? "verfügbar" : "nicht verfügbar"} · Systemton{" "}
-          {helper.info.features.systemAudio ? "verfügbar" : "nicht verfügbar"}
-        </p>
-      ) : null}
-      <Field label="Sprache">
-        <select className="k-input" value={state.dictation.locale} onChange={(e) => void update({ locale: e.target.value })}>
-          {[...new Set([state.dictation.locale, ...locales])].map((l) => (
-            <option key={l} value={l}>
-              {l}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Toggle label="Diktierbefehle („Punkt“, „neuer Absatz“, …)" checked={state.dictation.commands} onChange={(v) => void update({ commands: v })} />
-    </Section>
-  );
-}
-
-function PermissionsSection({ state, onChanged }: { state: LocalState; onChanged: () => void }): ReactNode {
-  const p = state.dictationStatus.permissions;
-  const [busy, setBusy] = useState<PermissionKind | null>(null);
-  const rows: Array<{ kind: PermissionKind; label: string; value: PermissionState | boolean | undefined; why: string }> = [
-    { kind: "microphone", label: "Mikrofon", value: p?.microphone, why: "Diktat und Besprechungen" },
-    { kind: "speech", label: "Spracherkennung", value: p?.speech, why: "Erkennung auf dem Gerät" },
-    { kind: "accessibility", label: "Bedienungshilfen", value: p?.accessibility, why: "Text in andere Programme einfügen" },
-    { kind: "screenRecording", label: "Bildschirmaufnahme", value: p?.screenRecording, why: "Computer-Ton bei Besprechungen (nur Audio)" },
-  ];
-
-  async function request(kind: PermissionKind): Promise<void> {
-    setBusy(kind);
-    try {
-      await localApi().requestPermission(kind);
-      onChanged();
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  return (
-    <Section title="Berechtigungen" hint={state.helper.running ? undefined : "Der Helfer läuft nicht – Berechtigungen können nicht geprüft werden."}>
-      <ul className="flex flex-col divide-y divide-line">
-        {rows.map((r) => {
-          const l = permissionLabel(r.value);
-          const granted = l.tone === "ok";
-          return (
-            <li key={r.kind} className="flex items-center justify-between gap-3 py-2">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Dot tone={l.tone} />
-                  <span>{r.label}</span>
-                  <span className="text-[11px] text-text-3">{l.text}</span>
-                </div>
-                <div className="text-[11px] text-text-3">{r.why}</div>
-              </div>
-              <button className="k-btn" disabled={!state.helper.running || granted || busy !== null} onClick={() => void request(r.kind)}>
-                {busy === r.kind ? "…" : granted ? "Erteilt" : "Erteilen"}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </Section>
-  );
-}
-
-function GeneralSection({ state, onSaved }: { state: LocalState; onSaved: (s: LocalState) => void }): ReactNode {
-  async function update(patch: Partial<LocalState["general"]>): Promise<void> {
-    onSaved(await localApi().setGeneral({ ...state.general, ...patch }));
-  }
-  return (
-    <Section title="Allgemein">
-      <Toggle label="Beim Anmelden starten" checked={state.general.launchAtLogin} onChange={(v) => void update({ launchAtLogin: v })} />
-      <Toggle label="Benachrichtigungen vom Server empfangen" checked={state.general.notifications} onChange={(v) => void update({ notifications: v })} />
-    </Section>
-  );
-}
-
-function UpdateSection({ state }: { state: LocalState }): ReactNode {
-  const [busy, setBusy] = useState(false);
-  const u = state.update;
-  return (
-    <Section title="Updates" hint="Updates kommen über GitHub Releases; die Installation erfolgt beim Beenden.">
-      <div className="text-[12px] text-text-2">
-        Version {state.appVersion}
-        {u.message ? ` · ${u.message}` : ""}
-        {u.status === "downloading" && u.progress !== null ? ` (${u.progress} %)` : ""}
-      </div>
-      <div className="flex gap-2">
-        <button
-          className="k-btn"
-          disabled={busy || u.status === "unsupported"}
-          onClick={() => {
-            setBusy(true);
-            void localApi()
-              .checkForUpdates()
-              .finally(() => setBusy(false));
-          }}
-        >
-          {busy ? "Prüfe…" : "Nach Updates suchen"}
-        </button>
-        <button className="k-btn" onClick={() => void localApi().openLogs()}>
-          Protokolle anzeigen
-        </button>
-      </div>
-    </Section>
-  );
 }
 
 export function App(): ReactNode {
-  const { state, error, refresh, setState } = useLocalState();
-  if (error) {
-    return (
-      <main className="p-6">
-        <Notice tone="err">{error}</Notice>
-      </main>
-    );
+  const { state, error, refresh, setState } = useLocalState({ refreshOnFocus: true });
+  const [section, setSection] = useState<SectionId>(() => sectionFromQuery(window.location.search));
+  const [focusHotkey, setFocusHotkey] = useState<HotkeyName | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef(new Map<SectionId, HTMLButtonElement>());
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [section]);
+
+  function go(id: SectionId, focus?: HotkeyName): void {
+    setFocusHotkey(focus ?? null);
+    setSection(id);
   }
-  if (!state) return <main className="p-6 text-text-3">Lade…</main>;
+
+  function onTabKey(e: KeyboardEvent<HTMLDivElement>): void {
+    const index = SECTIONS.findIndex((s) => s.id === section);
+    let next = index;
+    if (e.key === "ArrowDown") next = (index + 1) % SECTIONS.length;
+    else if (e.key === "ArrowUp") next = (index - 1 + SECTIONS.length) % SECTIONS.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = SECTIONS.length - 1;
+    else return;
+    e.preventDefault();
+    const target = SECTIONS[next];
+    if (!target) return;
+    go(target.id);
+    tabRefs.current.get(target.id)?.focus();
+  }
+
+  const meta = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0]!;
+  const update = state ? updateShort(state.update) : null;
+
+  let body: ReactNode;
+  if (error) {
+    body = (
+      <InfoNote tone="err" role="alert">
+        {error}
+      </InfoNote>
+    );
+  } else if (!state) {
+    body = (
+      <GlassCard className="flex items-center gap-3 px-4 py-4 text-(--g-text-2)" role="status">
+        <Spinner /> Lade die Einstellungen…
+      </GlassCard>
+    );
+  } else {
+    body = <SectionBody id={section} props={{ state, setState, refresh, go }} focusHotkey={focusHotkey} />;
+  }
+
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-4 px-6 py-6">
-      <h1 className="text-[18px] font-semibold">Einstellungen</h1>
-      <InstanceSection state={state} onSaved={setState} />
-      <HotkeySection state={state} onSaved={setState} />
-      <DictationSection state={state} onSaved={setState} />
-      <PermissionsSection state={state} onChanged={() => void refresh()} />
-      <GeneralSection state={state} onSaved={setState} />
-      <UpdateSection state={state} />
-    </main>
+    <div className="settings">
+      <aside className="settings-sidebar">
+        <div className="settings-sidebar-top g-drag" aria-hidden="true" />
+        <nav aria-label="Einstellungen">
+          <div className="settings-nav" role="tablist" aria-orientation="vertical" aria-label="Bereiche" onKeyDown={onTabKey}>
+            {SECTIONS.map((s) => {
+              const active = s.id === section;
+              return (
+                <button
+                  key={s.id}
+                  ref={(el) => {
+                    if (el) tabRefs.current.set(s.id, el);
+                    else tabRefs.current.delete(s.id);
+                  }}
+                  id={`tab-${s.id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  aria-controls="settings-panel"
+                  tabIndex={active ? 0 : -1}
+                  className="g-nav-item"
+                  onClick={() => go(s.id)}
+                >
+                  {s.icon}
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+
+        <button
+          type="button"
+          className={cx("settings-version", section === "ueber" && "is-current")}
+          aria-label={`KIRA für Mac ${state?.appVersion ?? ""}${update ? `, ${update.text}` : ""} – Über öffnen`}
+          onClick={() => go("ueber")}
+        >
+          <span className="settings-version-name">KIRA für Mac {state?.appVersion ?? ""}</span>
+          {update ? (
+            <span className="flex items-center gap-[6px]">
+              <StatusDot tone={update.tone} />
+              {update.text}
+            </span>
+          ) : null}
+        </button>
+      </aside>
+
+      <div className="settings-main">
+        <div className="settings-titlebar g-drag" aria-hidden="true" />
+        <div ref={scrollRef} id="settings-panel" className="settings-scroll g-scroll" role="tabpanel" aria-labelledby="settings-title">
+          <div className="settings-content">
+            <SectionHeader id="settings-title" title={meta.title} subtitle={meta.subtitle} />
+            {body}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -45,7 +45,7 @@ export function defaultConfig(): AppConfig {
     deviceId: randomUUID(),
     instance: { internalUrl: null, externalUrl: null, label: "KIRA" },
     hotkeys: { ...DEFAULT_HOTKEYS },
-    dictation: { locale: "de-DE", commands: true },
+    dictation: { locale: "de-DE", commands: true, dashboardStt: true },
     general: { launchAtLogin: false, notifications: true },
     onboarded: false,
     mainWindow: null,
@@ -90,6 +90,7 @@ export function normalizeConfig(raw: unknown): AppConfig {
     dictation: {
       locale: str(dict.locale, base.dictation.locale) || base.dictation.locale,
       commands: bool(dict.commands, base.dictation.commands),
+      dashboardStt: bool(dict.dashboardStt, base.dictation.dashboardStt),
     },
     general: {
       launchAtLogin: bool(gen.launchAtLogin, base.general.launchAtLogin),
