@@ -389,7 +389,6 @@ export function App(): ReactNode {
   const pill = connectionPill(state);
   const note = footerNote(mode);
   const suggestions = suggestionsFor(mode);
-  const quickKeys = formatAccelerator(state?.hotkeys.quickWindow || "Alt+Space");
   const dictationKeys = state?.hotkeys.dictation ? formatAccelerator(state.hotkeys.dictation).join("") : null;
   const canSend = draft.trim() !== "" && state !== null && !busy;
   const shownNotice = notice ?? error;
@@ -457,16 +456,7 @@ export function App(): ReactNode {
                 </button>
               ) : null}
             </>
-          ) : (
-            <span className="q-hint">
-              Schnellfenster
-              <span className="q-kbds">
-                {quickKeys.map((k) => (
-                  <Kbd key={k}>{k}</Kbd>
-                ))}
-              </span>
-            </span>
-          )}
+          ) : null}
         </div>
       </header>
 

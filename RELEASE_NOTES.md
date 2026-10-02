@@ -1,20 +1,15 @@
-## KIRA für Mac 0.3.4
+## KIRA für Mac 0.3.5
 
-**Behoben**
+Ein kleines Update – und die erste Gelegenheit, die neuen Update-Hinweise aus
+0.3.4 zu sehen: Punkt am K in der Menüleiste, „Update installieren
+(Neustart)“ ganz oben im Menü und „Jetzt neu starten“ im Schnellfenster.
 
-- „Jetzt neu starten“ beim Update startet jetzt wirklich neu (vorher
-  verschwand nur das Fenster).
+**Geändert**
 
-**Neu: Updates sind sichtbar**
+- Der Kopf des Schnellfensters ist aufgeräumt (Umschalter Chat | Diktate
+  ohne zusätzlichen Hinweis daneben).
+- Verständlichere Meldung im Protokoll, wenn unterwegs die Cloudflare-
+  Anmeldung fehlt.
 
-- Ist ein Update geladen, bekommt das K in der Menüleiste einen **Punkt**,
-  ganz oben im Menü steht „**Update installieren (Neustart)**“, und unten im
-  Schnellfenster erscheint „KIRA x.y.z ist bereit – **Jetzt neu starten**“.
-- Die Mitteilung „KIRA x.y.z ist bereit“ hat einen Knopf „Neu starten“.
-- Während des Ladens zeigt das Menüleisten-Menü den Fortschritt;
-  „Nach Updates suchen“ zeigt ihn ebenfalls und fragt, sobald das Update
-  bereit ist.
-
-Hinweis zum Umstieg: Die Korrektur des Neustarts steckt in 0.3.4 selbst. Von
-einer älteren Version aus KIRA einmal über die Menüleiste → „KIRA beenden“
-schließen und neu öffnen – dann wird 0.3.4 installiert.
+Die App aktualisiert sich selbst; mit „Jetzt neu starten“ wird das Update
+sofort installiert.

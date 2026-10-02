@@ -146,6 +146,12 @@ export class Session {
       }
       throw new InstanceError(`Instanz antwortet mit HTTP ${res.status}${detail ? `: ${detail}` : "."}`, res.status);
     }
+    // Unterwegs vor der Cloudflare-Anmeldung kommt statt der Daten die
+    // Anmeldeseite (HTML, 200) – im Protokoll stand dann nur „Unexpected token '<'“.
+    const type = res.headers.get("content-type") ?? "";
+    if (type && !type.includes("json")) {
+      throw new InstanceError("Instanz antwortet mit einer Webseite statt mit Daten – vermutlich fehlt die Anmeldung (Cloudflare Access).", res.status);
+    }
     return (await res.json()) as T;
   }
 

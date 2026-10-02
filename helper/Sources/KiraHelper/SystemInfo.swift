@@ -3,7 +3,7 @@ import Foundation
 /// Versions- und Chip-Erkennung für `info`.
 enum SystemInfo {
     /// Version des Helfers (unabhängig von der App-Version der Hülle).
-    static let helperVersion = "0.3.4"
+    static let helperVersion = "0.3.5"
 
     /// macOS-Version als „27.0.1“.
     static var macOSVersion: String {

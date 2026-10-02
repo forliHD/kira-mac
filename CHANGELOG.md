@@ -6,6 +6,15 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-10-02
+
+### Geändert
+- Schnellfenster-Kopf aufgeräumt: der Hinweis „Schnellfenster ⌥␣“ neben dem
+  Umschalter Chat | Diktate entfällt, die Verbindungsanzeige hat wieder Platz.
+- Antwortet die Instanz mit einer Webseite statt mit Daten (unterwegs vor der
+  Cloudflare-Anmeldung), sagt das Protokoll das jetzt verständlich statt
+  „Unexpected token '<'“.
+
 ## [0.3.4] - 2026-10-02
 
 ### Behoben
