@@ -306,6 +306,11 @@ function createMockApi(page: MockPage, p: URLSearchParams): KiraLocalApi {
     setHotkeyRecording: async (active) => log(`Kürzel ${active ? "ausgesetzt" : "wieder aktiv"}`),
     openMain: async () => log("Hauptfenster öffnen"),
     openLink: async (url) => log(`Link öffnen: ${url}`),
+    accessLogin: async () => {
+      log("Cloudflare-Anmeldung im Browser");
+      await delay(600);
+    },
+    accessLoginInWindow: async () => log("Cloudflare-Anmeldung im App-Fenster"),
     quickGetState: async () => quick,
     quickSend: async () => undefined,
     quickStop: async () => undefined,

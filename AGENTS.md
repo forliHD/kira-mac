@@ -88,6 +88,8 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
 - **`will-navigate` nur VON einer Instanz-Seite weg blockieren.** Von der
   Cloudflare-Access-Anmeldung (oder einem Identitätsanbieter) aus muss das
   Fenster weiter navigieren dürfen, sonst bricht die Anmeldung (`links.ts`).
+  Ausnahme Hauptfenster: Die Umleitung ZUR Access-Anmeldung fängt
+  `windows/main.ts` ab (Anmeldung im Browser, siehe unten).
 - **Benachrichtigungen bei fokussiertem Hauptfenster** gehen als Ereignis
   `notification` ins Dashboard, NICHT als Banner (Regel aus
   `dashboard/public/sw.js`). Nicht beides senden.
@@ -141,9 +143,25 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   `electron-builder.yml` → `protocols`, `open-url` in `index.ts`, auch vor
   `ready`), die App löst ihn mit dem Verifier bei `/api/auth/app/token` ein und
   lädt `/auth/callback#…`. Der Verifier verlässt den Hauptprozess nie, Tokens
-  nie ins Protokoll. Nicht abgedeckt: Cloudflare-Access-Anmeldung der externen
-  URL (läuft weiter im Fenster). Prüfung: `tests/browser-login.test.ts`,
+  nie ins Protokoll. Prüfung: `tests/browser-login.test.ts`,
   `scripts/e2e/browser-login.mjs` (Test-Anbieter eingebaut).
+- **Cloudflare Access nie im App-Fenster** (seit 0.3.0, KIRA ≥ 3.300.0):
+  `windows/main.ts` fängt `will-redirect`/`will-navigate` des Hauptdokuments zu
+  `*.cloudflareaccess.com` ab, `index.ts::onAccessRedirect` zeigt die lokale
+  Seite `offline?mode=access` („Im Browser anmelden“, `AccessLogin.tsx`). Klick
+  → `src/main/access-login.ts` öffnet `/api/auth/app/access?state&key` (key =
+  Einmal-X25519-Schlüssel); KIRA prüft das Access-Token und schickt es
+  verschlüsselt an `de.kira.mac:/auth/callback?access=…` (beide Anmeldungen
+  teilen die Adresse, `state` entscheidet: `accessLogin.owns(url)`). Die App
+  setzt `CF_Authorization` (HttpOnly, Ablauf = `exp`) und lädt neu. Format und
+  fester Prüfvektor müssen zu `kira/core/utils/app_handover.py` passen
+  (`tests/access-login.test.ts`). Kein Einmalcode möglich: ohne Cookie hielte
+  Access das Einlösen auf. „Im App-Fenster anmelden“ erlaubt Access im Fenster
+  für 15 min. Prüfung: `scripts/e2e/access-login.mjs` (+ `--binding`).
+- **Minuten-Prüfung lädt nicht in eine laufende Anmeldung** (`accessHold` in
+  `connectInner`) und holt das Hauptfenster nur beim ersten Verbinden oder bei
+  `force` nach vorn – vorher setzte sie die Access-Anmeldung im Fenster jede
+  Minute zurück und zeigte ein geschlossenes Fenster wieder an.
 - **Diktat auf der 🌐 fn-Taste** (`hotkeys.dictation = "Fn"`, seit 0.2.0): kein
   `globalShortcut`, sondern ein Event-Tap im Helfer (`fn.watch`, Ereignisse
   `fn.down`/`fn.chord`/`fn.up` NUR als Wahrheitswerte – nie Tastencodes, nie

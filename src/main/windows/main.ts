@@ -1,6 +1,8 @@
 // Hauptfenster: lädt das Dashboard vom Server. Schließen = Ausblenden (die
 // Hülle hält das Fenster am Leben, damit `session-request` beantwortet werden
 // kann). Scheitert das Laden, zeigt es die lokale Offline-Seite mit Grund.
+// Leitet Cloudflare Access auf seine Anmeldung um, fragt es den Hauptprozess,
+// ob die im Fenster laufen darf – sonst zeigt es „Im Browser anmelden“.
 
 import { BrowserWindow, type WebContents, screen } from "electron";
 
@@ -8,6 +10,7 @@ import { type NativeEvent } from "../../shared/bridge";
 import { IPC } from "../../shared/ipc";
 import { LOCAL_IPC } from "../../shared/ipc-local";
 import { type LocalEvent } from "../../shared/local-api";
+import { isAccessLoginUrl } from "../access-login";
 import { type WindowBounds } from "../config";
 import { isInstanceUrl } from "../instance";
 import { applyLinkPolicy } from "../links";
@@ -27,6 +30,11 @@ export interface MainWindowDeps {
   onDashboardLoaded: () => void;
   /** Eingelassene Titelleiste (Ampel im Dashboard-Kopf)? Nur, wenn der Server sie kennt. */
   insetTitleBar: () => boolean;
+  /**
+   * Das Fenster soll zur Cloudflare-Access-Anmeldung. true = nicht im Fenster
+   * (der Hauptprozess zeigt stattdessen „Im Browser anmelden“).
+   */
+  onAccessRedirect: (url: string) => boolean;
 }
 
 export class MainWindowController {
@@ -89,6 +97,15 @@ export class MainWindowController {
     win.on("resize", remember);
     win.on("move", remember);
 
+    // Serverseitige Umleitung (Instanz → Access) ist `will-redirect`, ein Klick
+    // oder eine Skript-Navigation `will-navigate`. Nur das Hauptdokument zählt.
+    const interceptAccess = (event: { preventDefault: () => void; url: string; isMainFrame: boolean }): void => {
+      if (!event.isMainFrame || !isAccessLoginUrl(event.url)) return;
+      if (this.deps.onAccessRedirect(event.url)) event.preventDefault();
+    };
+    win.webContents.on("will-redirect", interceptAccess);
+    win.webContents.on("will-navigate", interceptAccess);
+
     win.webContents.on("did-finish-load", () => {
       const url = win.webContents.getURL();
       this.dashboardLoaded = isInstanceUrl(url, this.deps.origins());
@@ -148,6 +165,19 @@ export class MainWindowController {
     if (lastOnlineAt) query.lastSeen = String(lastOnlineAt);
     void win.loadURL(localPageUrl("offline", query)).catch(() => undefined);
     if (!win.isVisible()) win.once("ready-to-show", () => win.show());
+  }
+
+  /** „Im Browser anmelden“ (Cloudflare Access) statt der Access-Seite im Fenster. */
+  showAccessLogin(origin: string, error: string | null = null): void {
+    const win = this.create();
+    this.dashboardLoaded = false;
+    const query: Record<string, string> = { mode: "access", origin };
+    if (error) query.error = error;
+    // Nicht mitten in will-redirect neu laden – erst nach dem Abbruch.
+    setTimeout(() => {
+      if (win.isDestroyed()) return;
+      void win.loadURL(localPageUrl("offline", query)).catch(() => undefined);
+    }, 0);
   }
 
   /** Ereignis an eine lokale Seite im Hauptfenster (Offline-Seite). */

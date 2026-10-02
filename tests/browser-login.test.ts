@@ -82,7 +82,7 @@ describe("Bausteine", () => {
   });
 
   it("erkennt nur die eigene Rücksprung-Adresse", () => {
-    expect(parseCallback("de.kira.mac:/auth/callback?code=abc&state=xyz")).toEqual({ state: "xyz", code: "abc", error: "", message: "" });
+    expect(parseCallback("de.kira.mac:/auth/callback?code=abc&state=xyz")).toEqual({ state: "xyz", code: "abc", access: "", error: "", message: "" });
     expect(parseCallback("de.kira.mac://auth/callback?code=abc&state=xyz")?.code).toBe("abc");
     expect(parseCallback("de.kira.mac:/auth/callback/?error=access_denied&error_description=Nein&state=s")).toMatchObject({
       error: "access_denied",

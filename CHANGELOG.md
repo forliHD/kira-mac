@@ -6,6 +6,33 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-02
+
+### Hinzugefügt
+- **Cloudflare-Access-Anmeldung im Browser** (braucht KIRA 3.300.0): Über die
+  externe Adresse hing die Access-Anmeldung im App-Fenster an derselben
+  Passkey-Abfrage wie früher Microsoft. Leitet Access das Hauptfenster auf
+  seine Anmeldung um, zeigt die App jetzt „Im Browser anmelden“ (sie öffnet den
+  Browser nie ungefragt). Die Anmeldung läuft in Safari, KIRA reicht das
+  Access-Token über `de.kira.mac:/auth/callback` zurück – verschlüsselt für
+  einen Einmal-Schlüssel, den nur diese App kennt (X25519 → HKDF → AES-GCM,
+  `src/main/access-login.ts`). Die App setzt es als ihr Access-Cookie und lädt
+  die Instanz; nach einem Neustart bleibt sie angemeldet, bis die
+  Access-Sitzung abläuft. „Im App-Fenster anmelden“ bleibt als Ausweg (etwa
+  für einen E-Mail-Code). Ist in Access das „Binding Cookie“ an, erkennt die
+  App die Schleife und erklärt sie, statt endlos umzuleiten.
+- Ende-zu-Ende-Prüfung `scripts/e2e/access-login.mjs` mit nachgebautem
+  Access-Rand vor dem echten KIRA-Endpunkt (`scripts/e2e/access-edge.py`).
+
+### Behoben
+- **Access-Anmeldung im Fenster wurde jede Minute zurückgesetzt:** Die
+  Verbindungsprüfung lud die Instanz neu, solange das Dashboard nicht geladen
+  war – also auch mitten in der Anmeldung. Sie wartet jetzt, solange eine
+  Anmeldung läuft.
+- **Geschlossenes Hauptfenster kam nach spätestens einer Minute zurück:** Die
+  Verbindungsprüfung holte es bei jedem Durchlauf nach vorn. Jetzt nur noch
+  beim ersten Verbinden und auf Wunsch (Erneut versuchen, neue Adresse).
+
 ## [0.2.0] - 2026-10-02
 
 ### Hinzugefügt

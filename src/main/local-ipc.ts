@@ -30,6 +30,8 @@ export interface LocalIpcContext {
   openSettings: (section: string | null) => void;
   openMain: () => void;
   openLink: (url: string) => void;
+  accessLogin: () => Promise<void>;
+  accessLoginInWindow: () => void;
   quick: {
     getState: () => QuickState;
     send: (text: string) => Promise<void>;
@@ -134,6 +136,8 @@ export function registerLocalIpc(ctx: LocalIpcContext): void {
     LOCAL_IPC.openLink,
     guard((url: unknown) => ctx.openLink(str(url))),
   );
+  ipcMain.handle(LOCAL_IPC.accessLogin, guard(() => ctx.accessLogin()));
+  ipcMain.handle(LOCAL_IPC.accessLoginInWindow, guard(() => ctx.accessLoginInWindow()));
   ipcMain.handle(LOCAL_IPC.quickGetState, guard(() => ctx.quick.getState()));
   ipcMain.handle(
     LOCAL_IPC.quickSend,

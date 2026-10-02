@@ -180,6 +180,8 @@ export function installQuickMock(params: URLSearchParams): void {
     setHotkeyRecording: notInPreview,
     openMain: notInPreview,
     openLink: async (url) => console.info("[Vorschau] openLink", url),
+    accessLogin: notInPreview,
+    accessLoginInWindow: notInPreview,
     quickGetState: async () => state,
     quickSend: async (text) => {
       if (state.busy) return;

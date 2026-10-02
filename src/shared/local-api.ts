@@ -180,7 +180,9 @@ export type LocalEvent =
   /** Schnellfenster wurde gezeigt: Eingabefeld fokussieren. */
   | { type: "quick-shown" }
   /** Einstellungen (schon offen): zu diesem Bereich wechseln (`openSettings(section)`). */
-  | { type: "settings-section"; section: string };
+  | { type: "settings-section"; section: string }
+  /** Cloudflare-Access-Anmeldung im Browser ist gescheitert (Seite „Im Browser anmelden“). */
+  | { type: "access-login"; status: "error" | "expired"; message: string };
 
 export interface KiraLocalApi {
   getState(): Promise<LocalState>;
@@ -204,6 +206,10 @@ export interface KiraLocalApi {
   openMain(): Promise<void>;
   /** Link aus einer lokalen Seite: Instanz-Adresse → Hauptfenster, sonst System-Browser. */
   openLink(url: string): Promise<void>;
+  /** Cloudflare Access: Anmeldung im System-Browser starten (access-login.ts). */
+  accessLogin(): Promise<void>;
+  /** Cloudflare Access: doch im App-Fenster anmelden (z. B. mit E-Mail-Code). */
+  accessLoginInWindow(): Promise<void>;
   // Schnellfenster
   quickGetState(): Promise<QuickState>;
   quickSend(text: string): Promise<void>;

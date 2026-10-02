@@ -1,11 +1,13 @@
 // Ehrlicher Offline-Zustand des Hauptfensters: welche Adresse warum nicht
 // antwortet, „Erneut versuchen“, „Instanz ändern…“. Diktat und Schnellfenster
-// laufen unabhängig davon weiter. Läuft im deckenden Hauptfenster und malt
+// laufen unabhängig davon weiter. Mit `?mode=access` stattdessen „Im Browser
+// anmelden“ für Cloudflare Access (AccessLogin.tsx). Läuft im deckenden Hauptfenster und malt
 // deshalb ihren eigenen Hintergrund (offline.css).
 
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { type LocalState } from "../../shared/local-api";
+import { AccessLogin } from "./AccessLogin";
 import { formatLastSeen, hostOf, parseOfflineReason, parseTimestamp, type OfflineReason } from "../lib/format";
 import { IconAlert, IconCloudOff, IconGlobe, IconHome, IconMic, IconRefresh } from "../lib/icons";
 import { errorText, localApi, useLocalState } from "../lib/useLocalState";
@@ -80,6 +82,12 @@ function StillWorking({ state }: { state: LocalState | null }): ReactNode {
 }
 
 export function App(): ReactNode {
+  const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  if (params.get("mode") === "access") return <AccessLogin origin={params.get("origin")} initialError={params.get("error")} />;
+  return <Offline />;
+}
+
+function Offline(): ReactNode {
   const { state } = useLocalState();
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const [busy, setBusy] = useState(false);

@@ -60,6 +60,8 @@ interface Pending {
 export interface ParsedCallback {
   state: string;
   code: string;
+  /** Verschlüsseltes Cloudflare-Access-Token (access-login.ts), sonst leer. */
+  access: string;
   error: string;
   message: string;
 }
@@ -97,7 +99,7 @@ export function parseCallback(raw: string): ParsedCallback | null {
   const path = `${url.host ? `/${url.host}` : ""}${url.pathname}`.replace(/\/{2,}/g, "/").replace(/\/$/, "");
   if (path !== "/auth/callback") return null;
   const get = (key: string): string => (url.searchParams.get(key) ?? "").trim();
-  return { state: get("state"), code: get("code"), error: get("error"), message: get("error_description").slice(0, 300) };
+  return { state: get("state"), code: get("code"), access: get("access"), error: get("error"), message: get("error_description").slice(0, 300) };
 }
 
 function detailOf(body: unknown): string {

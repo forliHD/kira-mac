@@ -82,7 +82,9 @@ Beim ersten Start fragt die App die Instanz-Adresse(n) ab: intern (Heimnetz,
 z. B. `http://192.168.178.166`) und optional extern (Cloudflare Access). Im
 Heimnetz wird die interne Adresse bevorzugt; die Wahl läuft über
 `GET /api/health`. Konfiguration: `~/Library/Application Support/KIRA/config.json`
-(keine Tokens darin – die hält die App nur im Speicher).
+(keine Tokens darin – die hält die App nur im Speicher). Die Anmeldung bei
+Cloudflare Access läuft im Standard-Browser (ab KIRA 3.300.0); die App bekommt
+danach die Access-Sitzung als Cookie, wie es die Anmeldung im Fenster täte.
 
 ### Helfer bauen
 

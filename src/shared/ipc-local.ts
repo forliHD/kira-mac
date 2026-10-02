@@ -20,6 +20,8 @@ export const LOCAL_IPC = {
   openSettings: "local:openSettings",
   openMain: "local:openMain",
   openLink: "local:openLink",
+  accessLogin: "local:accessLogin",
+  accessLoginInWindow: "local:accessLoginInWindow",
   quickGetState: "local:quickGetState",
   quickSend: "local:quickSend",
   quickStop: "local:quickStop",

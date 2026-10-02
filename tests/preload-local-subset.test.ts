@@ -12,6 +12,8 @@ describe("Offline-Teil von KiraLocal", () => {
     expect(SUBSET_CHANNELS.openSettings).toBe(LOCAL_IPC.openSettings);
     expect(SUBSET_CHANNELS.openMain).toBe(LOCAL_IPC.openMain);
     expect(SUBSET_CHANNELS.openLink).toBe(LOCAL_IPC.openLink);
+    expect(SUBSET_CHANNELS.accessLogin).toBe(LOCAL_IPC.accessLogin);
+    expect(SUBSET_CHANNELS.accessLoginInWindow).toBe(LOCAL_IPC.accessLoginInWindow);
     expect(SUBSET_CHANNELS.event).toBe(LOCAL_IPC.event);
   });
 

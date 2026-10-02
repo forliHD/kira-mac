@@ -16,10 +16,15 @@ export const SUBSET_CHANNELS = {
   openSettings: "local:openSettings",
   openMain: "local:openMain",
   openLink: "local:openLink",
+  accessLogin: "local:accessLogin",
+  accessLoginInWindow: "local:accessLoginInWindow",
   event: "local:event",
 } as const;
 
-export type OfflinePageApi = Pick<KiraLocalApi, "getState" | "retry" | "openSettings" | "openMain" | "openLink" | "on">;
+export type OfflinePageApi = Pick<
+  KiraLocalApi,
+  "getState" | "retry" | "openSettings" | "openMain" | "openLink" | "accessLogin" | "accessLoginInWindow" | "on"
+>;
 
 export interface SubsetIo {
   invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
@@ -33,6 +38,8 @@ export function createLocalSubset(io: SubsetIo): OfflinePageApi {
     openSettings: () => io.invoke(SUBSET_CHANNELS.openSettings) as Promise<void>,
     openMain: () => io.invoke(SUBSET_CHANNELS.openMain) as Promise<void>,
     openLink: (url: string) => io.invoke(SUBSET_CHANNELS.openLink, url) as Promise<void>,
+    accessLogin: () => io.invoke(SUBSET_CHANNELS.accessLogin) as Promise<void>,
+    accessLoginInWindow: () => io.invoke(SUBSET_CHANNELS.accessLoginInWindow) as Promise<void>,
     on: (listener: (event: LocalEvent) => void) =>
       io.subscribe(SUBSET_CHANNELS.event, (payload) => {
         if (payload && typeof payload === "object" && typeof (payload as LocalEvent).type === "string") listener(payload as LocalEvent);

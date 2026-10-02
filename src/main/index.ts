@@ -12,6 +12,7 @@ import { capabilitiesFrom } from "../shared/capabilities";
 import { isAllowedSettingsUrl, isFnHotkey } from "../shared/hotkey";
 import { type HelperEvent, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
 import { type ConnectionState, type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalEvent, type LocalState, type ProbeResult } from "../shared/local-api";
+import { ACCESS_COOKIE, AccessLogin } from "./access-login";
 import { registerBridgeIpc } from "./bridge";
 import { BrowserLogin, URL_SCHEME, callbackPath } from "./browser-login";
 import { type AppConfig, configStore } from "./config";
@@ -26,6 +27,7 @@ import {
   instanceOrigins,
   isInstanceUrl,
   normalizeInstanceUrl,
+  originOf,
   probeHealth,
   resolveInstance,
   serverHasBridge,
@@ -51,6 +53,10 @@ import { instanceWebPreferences, setLocalLinkHandler } from "./windows/common";
 
 const ONLINE_POLL_MS = 60_000;
 const OFFLINE_POLL_MS = 15_000;
+/** „Im App-Fenster anmelden“ gilt so lange (die Minuten-Prüfung lädt solange nicht neu). */
+const ACCESS_IN_WINDOW_MS = 15 * 60 * 1000;
+/** Kommt Access so kurz nach einer Übergabe wieder, nimmt es das Token nicht an. */
+const ACCESS_LOOP_MS = 2 * 60 * 1000;
 
 class KiraApp {
   private config!: AppConfig;
@@ -76,6 +82,14 @@ class KiraApp {
   readonly testOpened: string[] = [];
   /** `open-url`, bevor die Anmeldung bereitsteht (macOS startet die App dafür). */
   private openUrlQueue: string[] = [];
+  /** Cloudflare Access im System-Browser (öffentlich für Ende-zu-Ende-Tests). */
+  accessLogin!: AccessLogin;
+  /** Access will anmelden; das Hauptfenster zeigt „Im Browser anmelden“ für diese Origin. */
+  private accessWait: { origin: string } | null = null;
+  /** Bis dahin darf die Access-Anmeldung im Fenster laufen (Nutzerwahl). */
+  private accessInWindowUntil = 0;
+  /** Letzte Übergabe aus dem Browser (Schleifenwächter, `ACCESS_LOOP_MS`). */
+  private accessHandoverAt = 0;
 
   async boot(): Promise<void> {
     if (!app.requestSingleInstanceLock()) {
@@ -113,6 +127,7 @@ class KiraApp {
     this.setupDictation();
     this.setupFnKey();
     this.setupWindows();
+    this.setupAccessLogin();
     this.setupBrowserLogin();
     setLocalLinkHandler((url) => this.openLink(url));
     this.setupPermissions();
@@ -330,12 +345,16 @@ class KiraApp {
       onChildWindow: () => undefined,
       onLoadFailed: (reason) => this.onMainLoadFailed(reason),
       onDashboardLoaded: () => {
+        // Angekommen – eine Access-Anmeldung (Browser oder Fenster) ist erledigt.
+        this.accessWait = null;
+        this.accessInWindowUntil = 0;
         this.mainWin.sendNative({ type: "connectivity", online: this.connection.online });
         // Nach einer Cloudflare-Anmeldung gibt es keine Tokens, nur das Cookie –
         // der wartende Mitteilungs-Stream versucht es dann einmal neu.
         if (this.notifications?.isWaitingForLogin) this.notifications.loginChanged();
       },
       insetTitleBar: () => serverSupportsInsetTitlebar(this.config.lastServerVersion),
+      onAccessRedirect: (url) => this.onAccessRedirect(url),
     });
     this.quickWin = new QuickWindowController({
       canShow: () => {
@@ -440,6 +459,21 @@ class KiraApp {
       openSettings: (section) => this.showSettings(section),
       openMain: () => this.mainWin.show(),
       openLink: (url) => this.openLink(url),
+      accessLogin: async () => {
+        const origin = this.accessWait?.origin ?? session.getOrigin();
+        if (!origin) throw new Error("Keine Instanz verbunden.");
+        const result = await this.accessLogin.start(origin);
+        if (!result.started) throw new Error(result.error ?? "Der Browser ließ sich nicht öffnen.");
+      },
+      accessLoginInWindow: () => {
+        const origin = this.accessWait?.origin ?? session.getOrigin();
+        if (!origin) return;
+        this.log.info("access_login_in_window");
+        this.accessLogin.cancel();
+        this.accessWait = null;
+        this.accessInWindowUntil = Date.now() + ACCESS_IN_WINDOW_MS;
+        this.mainWin.loadInstance(origin);
+      },
       quick: {
         getState: () => this.quickChat.getState(),
         send: (text) => this.quickChat.send(text),
@@ -586,12 +620,18 @@ class KiraApp {
       session.setOrigin(origin);
       this.connection = { online: true, origin, kind, serverVersion: version, serverHasBridge: hasBridge, lastError: null, lastOnlineAt: Date.now() };
       const originChanged = previousOrigin !== origin;
-      if (originChanged || force || !this.mainWin.isDashboardLoaded()) {
+      // Wartet eine Cloudflare-Anmeldung (Seite „Im Browser anmelden“ oder Access
+      // im Fenster), lädt die Minuten-Prüfung NICHT neu – sonst setzte sie eine
+      // angefangene Anmeldung jede Minute zurück.
+      const accessHold = this.accessWait !== null || Date.now() < this.accessInWindowUntil;
+      if (originChanged || force || (!this.mainWin.isDashboardLoaded() && !accessHold)) {
         this.mainWin.loadInstance(origin);
       }
       if (originChanged && previousOrigin) this.quickChat.reset();
       this.rememberServerVersion(version);
-      this.mainWin.show();
+      // Nur beim ersten Verbinden oder auf Wunsch nach vorn – die Minuten-Prüfung
+      // holte ein geschlossenes (ausgeblendetes) Fenster sonst jedes Mal zurück.
+      if (force || previousOrigin === null) this.mainWin.show();
       this.tray.setStatus(true, this.labelFor(origin));
       if (!wasOnline) this.mainWin.sendNative({ type: "connectivity", online: true });
       if (originChanged) await this.stopNotifications(false);
@@ -752,6 +792,69 @@ class KiraApp {
 
   // ── Anmeldung im System-Browser (browser-login.ts) ──────────────────────
 
+  /**
+   * Cloudflare Access leitet das Hauptfenster auf seine Anmeldung um. Dort gehen
+   * keine Passkeys, deshalb zeigt das Fenster „Im Browser anmelden“ – außer
+   * der Nutzer hat ausdrücklich „Im App-Fenster anmelden“ gewählt.
+   */
+  private onAccessRedirect(url: string): boolean {
+    if (Date.now() < this.accessInWindowUntil) return false;
+    const origin = session.getOrigin();
+    if (!origin) return false;
+    const loop = Date.now() - this.accessHandoverAt < ACCESS_LOOP_MS;
+    this.accessWait = { origin };
+    this.log.info("access_login_needed", { at: originOf(url), loop });
+    this.mainWin.showAccessLogin(
+      origin,
+      loop
+        ? "Cloudflare Access hat die Anmeldung aus dem Browser nicht übernommen. Vermutlich ist für die Anwendung das „Binding Cookie“ eingeschaltet – dann gilt die Sitzung nur im Browser. Melde dich hier im App-Fenster an."
+        : null,
+    );
+    return true;
+  }
+
+  private setupAccessLogin(): void {
+    const testHooks = !app.isPackaged && process.env.KIRA_MAC_TEST_HOOKS === "1";
+    this.accessLogin = new AccessLogin({
+      log: scoped("access-login"),
+      openExternal: async (url) => {
+        if (testHooks) {
+          this.testOpened.push(url);
+          return;
+        }
+        await shell.openExternal(url);
+      },
+      setCookie: async (origin, token, expiresAt) => {
+        const cookies = electronSession.defaultSession.cookies;
+        const url = `${origin}/`;
+        // Ein abgelaufenes Access-Cookie aus einer früheren Anmeldung zuerst weg.
+        await cookies.remove(url, ACCESS_COOKIE);
+        await cookies.set({
+          url,
+          name: ACCESS_COOKIE,
+          value: token,
+          path: "/",
+          secure: url.startsWith("https:"),
+          httpOnly: true,
+          sameSite: "lax",
+          expirationDate: expiresAt,
+        });
+        await cookies.flushStore();
+      },
+      complete: (origin) => {
+        this.accessWait = null;
+        this.accessHandoverAt = Date.now();
+        this.mainWin.loadInstance(origin);
+        this.mainWin.show();
+        app.focus({ steal: true });
+      },
+      report: (status, message) => {
+        this.mainWin.show();
+        this.mainWin.sendLocal({ type: "access-login", status, message });
+      },
+    });
+  }
+
   private setupBrowserLogin(): void {
     const testHooks = !app.isPackaged && process.env.KIRA_MAC_TEST_HOOKS === "1";
     // Gepackt: diese App ist der Empfänger für de.kira.mac: (Info.plist meldet
@@ -793,16 +896,18 @@ class KiraApp {
       },
       onStray: () => this.mainWin.show(),
     });
-    for (const url of this.openUrlQueue.splice(0)) void this.browserLogin.handleCallback(url);
+    for (const url of this.openUrlQueue.splice(0)) this.handleOpenUrl(url);
   }
 
   /** `open-url` von macOS (de.kira.mac:/auth/callback?…); vor dem Start gepuffert. */
   handleOpenUrl(url: string): void {
-    if (!this.browserLogin) {
+    if (!this.browserLogin || !this.accessLogin) {
       this.openUrlQueue.push(url);
       return;
     }
-    void this.browserLogin.handleCallback(url);
+    // Beide Anmeldungen kehren über dieselbe Adresse zurück; `state` entscheidet.
+    if (this.accessLogin.owns(url)) void this.accessLogin.handleCallback(url);
+    else void this.browserLogin.handleCallback(url);
   }
 
   /** Nur Ende-zu-Ende-Tests: hat die Hülle Tokens vom Dashboard? */
