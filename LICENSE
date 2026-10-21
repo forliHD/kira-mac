@@ -1,0 +1,72 @@
+kira-mac — Proprietäre Lizenz / Proprietary License
+
+Copyright (c) 2026 forliHD
+Alle Rechte vorbehalten. / All rights reserved.
+
+── Deutsch ────────────────────────────────────────────────────────────
+
+Dieser Quellcode und alle zugehörigen Dateien (der „Code") sind
+urheberrechtlich geschützt. Der Code wird ausschließlich zur Ansicht
+veröffentlicht (Source-Available). Es werden keine Nutzungsrechte
+eingeräumt, soweit unten nicht ausdrücklich anders bestimmt.
+
+OHNE VORHERIGE SCHRIFTLICHE GENEHMIGUNG des Rechteinhabers ist
+insbesondere untersagt:
+
+ 1. das Kopieren, Verändern oder Weiterverbreiten des Codes oder
+    wesentlicher Teile davon;
+ 2. die Veröffentlichung des Codes oder abgeleiteter Werke — insbesondere
+    in GitHub Releases (DMG, ZIP u. a.), Paketregistern oder anderen
+    Vertriebskanälen;
+ 3. die kommerzielle Nutzung des Codes oder abgeleiteter Werke;
+ 4. das Ausgeben des Codes oder von Teilen davon als eigenes Werk.
+
+ERLAUBT ist:
+
+ 1. das Ansehen und Studieren des Codes auf GitHub (einschließlich der
+    von GitHub-Nutzungsbedingungen gedeckten Funktionen wie Forks
+    innerhalb von GitHub);
+ 2. die private, unveränderte Installation der App kira-mac aus diesem
+    Repository zu Test- und Lernzwecken;
+ 3. die Nutzung der offiziell veröffentlichten App kira-mac aus den
+    GitHub Releases dieses Repositorys (forliHD/kira-mac, DMG/ZIP)
+    gemäß den dortigen Bedingungen.
+
+Der Name „kira-mac" und die zugehörige Aufmachung dürfen nicht zur
+Kennzeichnung fremder Software verwendet werden.
+
+DER CODE WIRD OHNE JEDE GEWÄHRLEISTUNG BEREITGESTELLT („AS IS").
+
+── English ────────────────────────────────────────────────────────────
+
+This source code and all accompanying files (the "Code") are protected
+by copyright. The Code is published for viewing only (source-available).
+No rights of use are granted except as expressly stated below.
+
+WITHOUT PRIOR WRITTEN PERMISSION of the copyright holder, the following
+is prohibited in particular:
+
+ 1. copying, modifying, or redistributing the Code or substantial
+    parts of it;
+ 2. publishing the Code or derivative works — in particular in GitHub
+    Releases (DMG, ZIP, etc.), package registries, or other
+    distribution channels;
+ 3. commercial use of the Code or derivative works;
+ 4. presenting the Code or parts of it as your own work.
+
+PERMITTED:
+
+ 1. viewing and studying the Code on GitHub (including features covered
+    by the GitHub Terms of Service, such as forks within GitHub);
+ 2. private, unmodified installation of the kira-mac app from this
+    repository for testing and learning purposes;
+ 3. using the kira-mac app as officially published in the GitHub
+    Releases of this repository (forliHD/kira-mac, DMG/ZIP), subject
+    to the terms of those releases.
+
+The name "kira-mac" and its distinctive appearance may not be used
+to brand third-party software.
+
+THE CODE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+Kontakt / Contact: https://github.com/forliHD
