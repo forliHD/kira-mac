@@ -21,6 +21,7 @@ import {
   type HelperSttStatus,
   type PermissionsStatus,
   type SttEnded,
+  type SttStartResult,
 } from "../shared/helper-types";
 import { type HudState } from "../shared/local-api";
 import { type Logger, silentLogger } from "../shared/logger";
@@ -30,6 +31,8 @@ export const DICTATION_STREAM_ID = "dictation";
 /** Wörterbuch-Antworten des Helfers (`text.knownWords`) bleiben so lange im Speicher. */
 export const KNOWN_WORDS_CACHE_MAX = 2_000;
 const KNOWN_WORDS_TIMEOUT_MS = 1_500;
+/** Wie lange „Eingefügt · n Zeichen“ in der Pille steht. */
+export const INSERTED_LINGER_MS = 900;
 export const VOCABULARY_TTL_MS = 60 * 60 * 1000; // stündlich erneuern
 export const ASSISTANT_NAME = "KIRA";
 
@@ -91,6 +94,8 @@ export interface DictationOptions {
   getCommandsEnabled: () => boolean;
   /** Nachkorrektur gegen den Wortschatz (Standard an). */
   getCorrectionEnabled?: () => boolean;
+  /** Mikrofon (UID oder null = Systemstandard) und Apples Sprachfilter für `stt.start` (Helfer ≥ 0.6.0). */
+  getInput?: () => { device: string | null; voiceProcessing: boolean };
   vocabularyStore?: VocabularyStore;
   /**
    * Lädt ein fehlendes Diktat-Modell (geteilt mit Einstellungen und Dashboard).
@@ -185,6 +190,9 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
   private readonly getLocale: () => string;
   private readonly getCommandsEnabled: () => boolean;
   private readonly getCorrectionEnabled: (() => boolean) | undefined;
+  private readonly getInput: (() => { device: string | null; voiceProcessing: boolean }) | undefined;
+  /** Was die Aufnahme laut Helfer nutzt (Sprachfilter, Gerät) – fürs Protokoll. */
+  private microphone: { voiceProcessing: boolean; device: string | null } | null = null;
   private readonly vocabularyStore: VocabularyStore | undefined;
   private readonly log: Logger;
   private readonly now: () => number;
@@ -216,7 +224,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
   private session: DictationSession | null = null;
   /** Zeitpunkt des `stt.stop` – bis `stt.ended` spült der Helfer noch (Messwert). */
   private stopAt: number | null = null;
-  private hudState: HudState = { phase: "starting", level: 0, partial: "", app: null, message: null };
+  private hudState: HudState = { phase: "starting", level: 0, partial: "", app: null, appIcon: null, message: null, progress: null };
   private readonly onHelperEvent = (ev: HelperEvent): void => this.handleHelperEvent(ev);
   private hideTimer: NodeJS.Timeout | null = null;
   /**
@@ -234,6 +242,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     this.getLocale = options.getLocale;
     this.getCommandsEnabled = options.getCommandsEnabled;
     this.getCorrectionEnabled = options.getCorrectionEnabled;
+    this.getInput = options.getInput;
     this.vocabularyStore = options.vocabularyStore;
     this.log = options.log ?? silentLogger;
     this.now = options.now ?? (() => Date.now());
@@ -301,7 +310,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     this.previousTail = "";
     this.stopAt = null;
     this.session = { startedAt: this.now(), app: null, target: this.target, text: "", failed: false, finals: 0, replacements: 0 };
-    this.setHud({ phase: "starting", level: 0, partial: "", app: null, message: null });
+    this.setHud({ phase: "starting", level: 0, partial: "", app: null, appIcon: null, message: null, progress: null });
     if (this.target === "insert") this.hud.show();
 
     // Nach jedem Warten: wurde inzwischen gestoppt/abgebrochen (z. B. fn
@@ -313,7 +322,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       // `stt.prepare` früher nie aufgerufen, der Knopf in den Einstellungen
       // hat nur neu gelesen.
       const locale = this.getLocale();
-      this.setHud({ phase: "starting", message: "Diktat-Modell wird geladen…" });
+      this.setHud({ phase: "starting", message: "Diktat-Modell wird geladen…", progress: 0 });
       try {
         const ensure =
           this.ensureAssets ??
@@ -333,14 +342,16 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
         await ensure(locale, (fraction) => {
           if (generation !== this.generation) return;
           const pct = Math.max(0, Math.min(100, Math.round(fraction * 100)));
-          this.setHud({ message: `Diktat-Modell wird geladen… ${pct} %` });
+          this.setHud({ message: `Diktat-Modell wird geladen… ${pct} %`, progress: Math.max(0, Math.min(1, fraction)) });
         });
       } catch (err) {
         if (generation !== this.generation) return;
+        this.setHud({ progress: null });
         this.failStart(err instanceof Error ? err.message : String(err));
         return;
       }
       if (generation !== this.generation) return;
+      this.setHud({ message: null, progress: null });
       avail = await this.availability();
       if (generation !== this.generation) return;
     }
@@ -363,18 +374,28 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     this.terms = contextualStrings;
     this.index = null;
     const app = this.target === "quick" ? "KIRA" : this.target === "test" ? "Diktat-Test" : (front?.name ?? null);
-    this.setHud({ app });
+    this.setHud({ app, appIcon: this.target === "insert" && typeof front?.icon === "string" ? front.icon : null });
     if (this.session) this.session.app = app;
 
     this.sttStarting = true;
     try {
-      const res = await this.helper.request<{ started?: boolean; engine?: unknown }>("stt.start", {
+      const params: Record<string, unknown> = {
         stream: DICTATION_STREAM_ID,
         locale: this.getLocale(),
         contextualStrings,
         source: "microphone",
-      });
+      };
+      const input = this.getInput?.();
+      if (input) {
+        params.voiceProcessing = input.voiceProcessing;
+        if (input.device) params.device = input.device;
+      }
+      const res = await this.helper.request<SttStartResult>("stt.start", params);
       this.engine = typeof res?.engine === "string" ? res.engine : null;
+      this.microphone =
+        res?.microphone && typeof res.microphone === "object"
+          ? { voiceProcessing: res.microphone.voiceProcessing === true, device: typeof res.microphone.device === "string" ? res.microphone.device : null }
+          : null;
     } catch (err) {
       this.sttStarting = false;
       // Wer schon gestoppt hat, will keine Fehlermeldung mehr sehen.
@@ -725,6 +746,8 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
         chars: session.text.length,
         replacements: session.replacements,
         failed: session.failed,
+        voiceProcessing: this.microphone?.voiceProcessing ?? null,
+        device: this.microphone?.device ?? null,
       });
     }
     if (session && session.text.trim()) this.emit("session", session);
@@ -734,11 +757,26 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       sink.update({ active: false, level: 0, partial: "", reason: linger ? this.hudState.message : null });
       return;
     }
-    if (linger) this.scheduleHide(this.errorLingerMs);
-    else {
-      this.clearHideTimer();
-      this.hud.hide();
+    if (linger) {
+      this.scheduleHide(this.errorLingerMs);
+      return;
     }
+    // Rückmeldung in der Pille (Phase 2): „Eingefügt · n Zeichen“ kurz, ein
+    // gescheitertes Einsetzen bleibt lesbar stehen – vorher verschwand die Pille
+    // sofort, und man wusste nicht, ob der Satz angekommen war.
+    const text = session?.text.trim() ?? "";
+    if (session && text && session.failed) {
+      this.setHud({ phase: "error", level: 0, partial: "", message: "Nicht eingefügt – der Text steht im Diktat-Verlauf (⌥␣, dann ⌘2)." });
+      this.scheduleHide(this.errorLingerMs);
+      return;
+    }
+    if (session && text) {
+      this.setHud({ phase: "inserted", level: 0, partial: "", message: `Eingefügt · ${text.length} ${text.length === 1 ? "Zeichen" : "Zeichen"}` });
+      this.scheduleHide(INSERTED_LINGER_MS);
+      return;
+    }
+    this.clearHideTimer();
+    this.hud.hide();
   }
 
   private scheduleHide(ms: number): void {

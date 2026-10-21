@@ -17,14 +17,43 @@ final class TextInserter {
 
     nonisolated init() {}
 
+    /// Programm-Symbole als PNG (Base64), je Bundle einmal gerendert.
+    private var iconCache: [String: String] = [:]
+
     func frontmost() -> JSONValue {
         guard let app = NSWorkspace.shared.frontmostApplication else {
-            return ["bundleId": .null, "name": .null]
+            return ["bundleId": .null, "name": .null, "icon": .null]
         }
         return [
             "bundleId": .optionalString(app.bundleIdentifier),
             "name": .optionalString(app.localizedName),
+            "icon": .optionalString(icon(for: app)),
         ]
+    }
+
+    /// Symbol des Programms, 64 × 64 px (32 pt @2x), für die Diktat-Pille.
+    private func icon(for app: NSRunningApplication) -> String? {
+        let key = app.bundleIdentifier ?? app.localizedName ?? ""
+        if let cached = iconCache[key] { return cached }
+        guard let image = app.icon, let png = Self.pngBase64(image, pixels: 64) else { return nil }
+        if !key.isEmpty { iconCache[key] = png }
+        return png
+    }
+
+    static func pngBase64(_ image: NSImage, pixels: Int) -> String? {
+        guard
+            let rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels, bitsPerSample: 8, samplesPerPixel: 4,
+                hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+        else { return nil }
+        rep.size = NSSize(width: pixels, height: pixels)
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        guard let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        NSGraphicsContext.current = context
+        context.imageInterpolation = .high
+        image.draw(in: NSRect(x: 0, y: 0, width: pixels, height: pixels), from: .zero, operation: .copy, fraction: 1)
+        return rep.representation(using: .png, properties: [:])?.base64EncodedString()
     }
 
     func insert(text: String, mode: Mode) async throws -> JSONValue {

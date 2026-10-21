@@ -68,6 +68,8 @@ final class DownloadFractionBox: @unchecked Sendable {
 /// Ein laufender Erkennungs-Stream (eine Kennung, eine Mikrofonquelle).
 protocol SpeechStream: AnyObject, Sendable {
     var id: String { get }
+    /// Gerät und Sprachfilter, mit denen die Aufnahme läuft.
+    var microphone: MicrophoneReport { get }
     /// Spült die Erkennung, sendet ausstehende `stt.final`, dann `stt.ended(stopped)`.
     func stop() async
     /// Bricht sofort ab und sendet `stt.ended` mit dem genannten Grund.
@@ -617,9 +619,10 @@ actor SpeechService {
 
     // MARK: stt.start / stt.stop
 
-    func start(stream id: String, locale localeId: String, contextualStrings: [String], source: String)
-        async throws -> JSONValue
-    {
+    func start(
+        stream id: String, locale localeId: String, contextualStrings: [String], source: String,
+        input: MicrophoneOptions = MicrophoneOptions()
+    ) async throws -> JSONValue {
         guard source == "microphone" else {
             throw HelperError.badParams("Unbekannte Quelle „\(source)“ (erlaubt: microphone).")
         }
@@ -646,11 +649,11 @@ actor SpeechService {
             }
             let locale = try await Self.resolveAnalyzerLocale(localeId)
             stream = try await AnalyzerStream.start(
-                id: id, locale: locale, contextualStrings: contextualStrings, writer: writer, onEnded: onEnded)
+                id: id, locale: locale, contextualStrings: contextualStrings, input: input, writer: writer, onEnded: onEnded)
         case .legacy:
             try await permissions.ensureSpeechAuthorization()
             stream = try LegacyStream.start(
-                id: id, locale: Locale(identifier: localeId), contextualStrings: contextualStrings,
+                id: id, locale: Locale(identifier: localeId), contextualStrings: contextualStrings, input: input,
                 writer: writer, onEnded: onEnded)
         }
 
@@ -660,7 +663,9 @@ actor SpeechService {
             await raced.cancel(reason: "replaced")
         }
         streams[id] = stream
-        return ["started": true, "engine": .string(engine.rawValue)]
+        var result: [String: JSONValue] = ["started": true, "engine": .string(engine.rawValue)]
+        result["microphone"] = stream.microphone.json
+        return .object(result)
     }
 
     func stop(stream id: String) async throws -> JSONValue {
@@ -738,6 +743,8 @@ final class AnalyzerStream: SpeechStream, @unchecked Sendable {
     private var resultsTask: Task<Void, Never>?
     private var levelTask: Task<Void, Never>?
 
+    var microphone: MicrophoneReport { mic.report }
+
     private init(
         id: String, writer: OutputWriter, transcriber: SpeechTranscriber, analyzer: SpeechAnalyzer,
         continuation: AsyncStream<AnalyzerInput>.Continuation,
@@ -752,7 +759,7 @@ final class AnalyzerStream: SpeechStream, @unchecked Sendable {
     }
 
     static func start(
-        id: String, locale: Locale, contextualStrings: [String], writer: OutputWriter,
+        id: String, locale: Locale, contextualStrings: [String], input: MicrophoneOptions, writer: OutputWriter,
         onEnded: @escaping @Sendable (String, ObjectIdentifier) -> Void
     ) async throws -> AnalyzerStream {
         let transcriber = AnalyzerModels.stream(locale: locale)
@@ -797,6 +804,8 @@ final class AnalyzerStream: SpeechStream, @unchecked Sendable {
 
         let mic = stream.mic
         let meter = stream.meter
+        // Gerät und Sprachfilter VOR dem Konverter: der Sprachfilter ändert das Eingabeformat.
+        mic.prepare(options: input)
         let converter: BufferConverter
         do {
             converter = try BufferConverter(from: mic.inputFormat, to: analyzerFormat)
@@ -906,6 +915,8 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
     private var stopping = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
+    var microphone: MicrophoneReport { mic.report }
+
     private init(
         id: String, writer: OutputWriter, recognizer: SFSpeechRecognizer,
         request: SFSpeechAudioBufferRecognitionRequest,
@@ -920,7 +931,7 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
     }
 
     static func start(
-        id: String, locale: Locale, contextualStrings: [String], writer: OutputWriter,
+        id: String, locale: Locale, contextualStrings: [String], input: MicrophoneOptions, writer: OutputWriter,
         onEnded: @escaping @Sendable (String, ObjectIdentifier) -> Void
     ) throws -> LegacyStream {
         guard let recognizer = SFSpeechRecognizer(locale: locale) else {
@@ -953,6 +964,7 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
         stream.lock.unlock()
 
         let meter = stream.meter
+        stream.mic.prepare(options: input)
         do {
             try stream.mic.start { buffer in
                 meter.update(buffer)
@@ -1079,8 +1091,15 @@ enum SpeechCommands {
             let locale = try request.params.optionalString("locale") ?? defaultLocale()
             let contextual = try request.params.stringArray("contextualStrings")
             let source = try request.params.optionalString("source") ?? "microphone"
+            let input = MicrophoneOptions(
+                deviceUID: try request.params.optionalString("device"),
+                voiceProcessing: try request.params.optionalBool("voiceProcessing") ?? false)
             return try await services.speech.start(
-                stream: stream, locale: locale, contextualStrings: contextual, source: source)
+                stream: stream, locale: locale, contextualStrings: contextual, source: source, input: input)
+        }
+        // Mikrofone dieses Macs (Einstellungen → Diktat → Mikrofon).
+        table["audio.inputs"] = { _ in
+            ["devices": .array(AudioInputDevices.list().map(\.json))]
         }
         table["stt.stop"] = { request in
             let stream = try request.params.string("stream")

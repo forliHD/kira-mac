@@ -159,7 +159,7 @@ function initialState(page: MockPage, p: URLSearchParams): LocalState {
             label: "kira.example.de",
           },
     hotkeys: { quickWindow: "Alt+Space", dictation: p.get("fn") ? FN_HOTKEY : "Control+Alt+D" },
-    dictation: { locale: "de-DE", commands: true, dashboardStt: true, correctVocabulary: true },
+    dictation: { locale: "de-DE", commands: true, dashboardStt: true, correctVocabulary: true, voiceProcessing: true, inputDevice: null },
     quick: { position: "top", chatHeightShare: 0.6, rememberHeight: true, heights: { d1: 700 }, textSize: "m", sendKey: "enter", afterSend: "stay", resetAfterMin: 30, suggestions: true, dictationButton: true },
     general: { launchAtLogin: true, notifications: true },
     connection: offline
@@ -187,6 +187,10 @@ function initialState(page: MockPage, p: URLSearchParams): LocalState {
           ? { phase: "downloading", progress: 40, error: null, locale: "de-DE" }
           : { ...IDLE_MODEL_DOWNLOAD },
       vocabulary: { count: 4, fetchedAt: Date.now() - 5 * 60_000 },
+      inputDevices: [
+        { uid: "BuiltInMicrophoneDevice", name: "MacBook Pro-Mikrofon", default: true },
+        { uid: "AirPodsPro-UID", name: "AirPods Pro", default: false },
+      ],
     },
     onboarded: !onboarding,
     logPath: "/Users/kira/Library/Logs/KIRA/main.log",
@@ -204,7 +208,20 @@ function hudScript(p: URLSearchParams, emit: (hud: HudState) => void): () => voi
       : phase === "error"
         ? "Spracherkennung abgebrochen: Das Mikrofon ist nicht mehr verfügbar."
         : null);
-  const base: HudState = { phase, level: 0, partial: phase === "listening" || phase === "stopping" ? partial : "", app, message };
+  // Phase 2: Fortschritt (?progress=0.4) und Symbol (?icon=1, graue Kachel) nachstellbar.
+  const progressParam = Number(p.get("progress"));
+  const base: HudState = {
+    phase,
+    level: 0,
+    partial: phase === "listening" || phase === "stopping" ? partial : "",
+    app,
+    appIcon:
+      p.get("icon") === "1"
+        ? "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        : null,
+    message,
+    progress: Number.isFinite(progressParam) && p.has("progress") ? Math.max(0, Math.min(1, progressParam)) : null,
+  };
   const timers: Array<ReturnType<typeof setTimeout>> = [];
   if (p.get("live") === "1" && phase === "listening") {
     const words = partial.split(" ");

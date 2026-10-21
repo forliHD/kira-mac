@@ -6,6 +6,37 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-21
+
+Phase 2 des Plans „Schnellfenster & Diktat“ (KIRA-Repo,
+`docs/mac-app-schnellfenster-diktat-plan.md`): das Mikrofon wird wählbar
+und sauberer, die Pille sagt, was passiert ist.
+
+### Hinzugefügt
+- **Apple-Sprachfilter** (Einstellungen → Diktat, Standard an): Echo-
+  Unterdrückung, Rauschfilter und Pegelregelung von macOS (Voice Processing)
+  für die Aufnahme des Diktats; anderer Ton wird dabei nur leicht gedämpft.
+  Geht es auf einem Mac nicht (bekannt: Aggregat-Gerät, Fehler -10876), läuft
+  die Aufnahme ohne weiter – die Antwort auf `stt.start` sagt, was gilt.
+- **Mikrofon wählen** (Einstellungen → Diktat): Liste der Mikrofone dieses
+  Macs, Standard folgt dem System. Neues Helfer-Kommando `audio.inputs`,
+  `stt.start` nimmt `device`/`voiceProcessing` (Protokoll 1, additiv).
+- **Pille:** Symbol des Zielprogramms neben „Diktat in Mail“ (`text.frontmost`
+  liefert `icon`), Fortschrittsbalken beim Modell-Download, am Ende kurz
+  **„Eingefügt · 42 Zeichen“** (900 ms) – und ein gescheitertes Einsetzen
+  bleibt vier Sekunden lesbar stehen („Nicht eingefügt – der Text steht im
+  Diktat-Verlauf“) statt dass die Pille sofort verschwindet.
+- Protokoll: `dictation_session` nennt Sprachfilter und Gerät der Aufnahme.
+
+### Geändert
+- Die Mikrofon-Aufnahme stellt Gerät und Sprachfilter VOR dem Aufbau des
+  Konverters ein (`MicrophoneCapture.prepare`): der Sprachfilter ändert das
+  Eingabeformat.
+
+### Nicht gemacht (bewusst)
+- M14 (einen Analyzer für `stt.file` warmhalten) entfällt zugunsten von
+  Phase 5 (Streaming ins Dashboard).
+
 ## [0.5.0] - 2026-10-21
 
 Phase 3 des Plans „Schnellfenster & Diktat“ (KIRA-Repo,

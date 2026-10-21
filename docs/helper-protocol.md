@@ -77,7 +77,7 @@ version allein.
 | `stt.status` | `{"locale": "de-DE"}` | `{"available": true/false, "engine": "analyzer" \| "legacy" \| null, "assets": "installed" \| "downloading" \| "missing", "reason": "…", "code": "ok" \| "unsupported_os" \| "unsupported_locale" \| "assets_missing" \| "downloading" \| "unavailable" \| "unknown", "downloadable": true/false, "locale": "de-DE", "progress": 0…1 \| null, "diagnostics": {…}}`. `diagnostics` trägt `macos`, `arch` (`arm64`/`x86_64`), `chip`, `locale`, `preferred` (bevorzugte Sprachen), `assetState` (Rohzustand, bei zwei Modulen `stream=…,file=…`), `speech`, `microphone`, `downloadable`. Alles außer `available`/`engine`/`assets`/`reason` ist additiv (Protokoll 1). |
 | `stt.prepare` | `{"locale": "de-DE"}` | lädt fehlende Modell-Assets herunter (`AssetInventory`), blockiert bis fertig: `{"assets": "installed"}`. Währenddessen Ereignisse `stt.progress` (ohne `stream`): `{"locale", "fraction": 0…1}`. Scheitert der Download, ist `error.message` die deutsche Ursache (Netz, Freigabe, Sprache, Geräteverwaltung) und `error.reason` einer von `network`, `permission`, `cancelled`, `no_request`, `not_installed`, `failed`. |
 | `stt.file` | `{"path", "locale", "contextualStrings": ["Musterfirma", …]}` | `{"text", "durationMs", "engine"}`. Liest alles, was `AVAudioFile` öffnen kann (WAV, AIFF, CAF, M4A/MP4). Electron liefert immer WAV 16 kHz Mono 16 Bit: WebM/Opus aus der WebView wird im Preload per Web Audio (`OfflineAudioContext`) dekodiert, bevor es den Hauptprozess erreicht |
-| `stt.start` | `{"stream": "s1", "locale": "de-DE", "contextualStrings": [...], "source": "microphone"}` | `{"started": true}`; danach Ereignisse `stt.level` (`{"rms": 0.0…1.0}`, ~10/s), `stt.partial` (`{"text"}`, flüchtig), `stt.final` (`{"text"}`, abgeschlossener Satz/Abschnitt), `stt.ended` (`{"reason": "stopped" \| "error" \| "silence", "message"?}`) |
+| `stt.start` | `{"stream": "s1", "locale": "de-DE", "contextualStrings": [...], "source": "microphone", "device"?: "<UID>", "voiceProcessing"?: true}` | `{"started": true, "engine": "analyzer" \| "legacy", "microphone": {"voiceProcessing": bool, "device": "<Name>" \| null}}`; danach Ereignisse `stt.level` (`{"rms": 0.0…1.0}`, ~10/s), `stt.partial` (`{"text"}`, flüchtig), `stt.final` (`{"text"}`, abgeschlossener Satz/Abschnitt), `stt.ended` (`{"reason": "stopped" \| "error" \| "silence", "message"?}`). Seit Helfer 0.6.0: `device` wählt ein Mikrofon aus `audio.inputs` (sonst Systemstandard), `voiceProcessing` schaltet Apples Sprachfilter ein (Echo-Unterdrückung, Rauschfilter, Pegelregelung; anderer Ton wird leicht gedämpft). Scheitert eines, läuft die Aufnahme ohne – `microphone` sagt, was gilt |
 | `stt.stop` | `{"stream": "s1"}` | `{"stopped": true}`; der Helfer spült die Erkennung und sendet noch ausstehende `stt.final`, dann `stt.ended` |
 | `stt.progress` | – (Ereignis) | `{"locale", "fraction"}` während `stt.prepare`. Kein `stream`. |
 
@@ -104,13 +104,14 @@ Eingaben vorher zu; der Helfer meldet Überlänge als `context_too_long`.
 |---|---|---|
 | `audio.system.start` | `{"stream": "a1", "path": "/tmp/kira-sys.wav", "excludeSelf": true}` | `{"started": true}`; schreibt den Systemton (ScreenCaptureKit, nur Audio, kein Bild) als WAV 48 kHz, Ereignis `audio.level` ~5/s |
 | `audio.system.stop` | `{"stream": "a1"}` | `{"path", "durationMs", "bytes"}` |
+| `audio.inputs` | – | `{"devices": [{"uid", "name", "default": bool}]}` – Mikrofone dieses Macs (Geräte mit Eingabekanälen), `default` = Systemstandard. Seit Helfer 0.6.0 |
 
 ### Text einfügen
 
 | `cmd` | `params` | `result` |
 |---|---|---|
 | `text.insert` | `{"text", "mode": "auto" \| "ax" \| "paste"}` | `{"method": "ax" \| "paste"}`. `auto`: erst Accessibility (`kAXSelectedTextAttribute` des fokussierten Elements), bei Fehlschlag Einsetzen über die Zwischenablage mit ⌘V per `CGEvent`; der vorherige Inhalt der Zwischenablage wird danach wiederhergestellt |
-| `text.frontmost` | – | `{"bundleId", "name"}` des vordersten Programms (für den HUD-Hinweis „Diktat in Mail“) |
+| `text.frontmost` | – | `{"bundleId", "name", "icon"}` des vordersten Programms (für den HUD-Hinweis „Diktat in Mail“); `icon` = PNG 64 × 64 px als Base64 oder null (seit Helfer 0.6.0, je Programm einmal gerendert) |
 | `text.knownWords` | `{"locale": "de-DE", "words": ["Tira", "Kita"]}` | `{"known": ["Kita"], "language": "de"}` – welche der Wörter das Systemwörterbuch der Sprache kennt (`NSSpellChecker`), höchstens 200 je Anfrage; `language` ist die gewählte Prüfsprache (null = Automatik). Seit Helfer 0.4.0 für die Nachkorrektur der Hülle: ein bekanntes Wort wird bei bloßer Buchstabenähnlichkeit nicht zu einem Begriff. Die Wörter werden nicht protokolliert |
 
 ### fn-Taste (🌐) als Diktat-Auslöser

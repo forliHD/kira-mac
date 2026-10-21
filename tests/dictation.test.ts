@@ -87,6 +87,8 @@ class FakeHelper extends EventEmitter implements DictationHelper {
   flushOnStop: string[] = [];
   /** Antwort auf `text.knownWords` (Wörter, die das Wörterbuch kennt). */
   knownWords: string[] = [];
+  /** Symbol des vordersten Programms (`text.frontmost`, Helfer ≥ 0.6.0). */
+  frontmostIcon: string | null = null;
   /** Hält `text.knownWords` auf (die Wörterbuch-Frage dauert). */
   knownWordsGate: Promise<void> | null = null;
 
@@ -121,9 +123,9 @@ class FakeHelper extends EventEmitter implements DictationHelper {
       case "permissions.status":
         return Promise.resolve({ ...this.permissions } as unknown as T);
       case "text.frontmost":
-        return Promise.resolve({ bundleId: "com.apple.mail", name: "Mail" } as unknown as T);
+        return Promise.resolve({ bundleId: "com.apple.mail", name: "Mail", icon: this.frontmostIcon } as unknown as T);
       case "stt.start":
-        return Promise.resolve({ started: true } as unknown as T);
+        return Promise.resolve({ started: true, engine: "analyzer", microphone: { voiceProcessing: params?.voiceProcessing === true, device: null } } as unknown as T);
       case "stt.stop":
         queueMicrotask(() => this.emit("event", { event: "stt.ended", stream: "dictation", data: { reason: "stopped" } }));
         return Promise.resolve({ stopped: true } as unknown as T);
@@ -158,6 +160,7 @@ function build(
     test?: DictationSink;
     vocabularyStore?: VocabularyStore;
     log?: Logger;
+    input?: { device: string | null; voiceProcessing: boolean };
   } = {},
 ) {
   const hud = { show: vi.fn(), hide: vi.fn(), update: vi.fn<(s: HudState) => void>() };
@@ -176,6 +179,7 @@ function build(
     getLocale: () => "de-DE",
     getCommandsEnabled: () => opts.commands ?? true,
     getCorrectionEnabled: () => opts.correction ?? true,
+    getInput: opts.input ? () => opts.input! : undefined,
     log: opts.log,
     errorLingerMs: 5,
   });
@@ -655,5 +659,80 @@ describe("Nachkorrektur, Diktat-Test und Wortschatz-Speicher (Phase 1, 0.4.0)", 
     expect(entry?.[1]).toMatchObject({ target: "insert", app: "Mail", locale: "de-DE", finals: 1, replacements: 1, failed: false, chars: 11 });
     expect(JSON.stringify(entry?.[1])).not.toContain("Hallo");
     expect(typeof (entry?.[1] as { flushMs: unknown }).flushMs).toBe("number");
+  });
+});
+
+describe("Mikrofon und Pille (Phase 2, 0.6.0)", () => {
+  it("gibt Mikrofon und Sprachfilter an stt.start weiter – nur wenn konfiguriert", async () => {
+    const helper = new FakeHelper();
+    const { dictation } = build(helper, { input: { device: "AirPods-UID", voiceProcessing: true } });
+    await dictation.start();
+    const start = helper.calls.find((c) => c.cmd === "stt.start");
+    expect(start?.params).toMatchObject({ device: "AirPods-UID", voiceProcessing: true });
+    const plain = new FakeHelper();
+    await build(plain, { input: { device: null, voiceProcessing: false } }).dictation.start();
+    const p = plain.calls.find((c) => c.cmd === "stt.start")?.params ?? {};
+    expect(p).toMatchObject({ voiceProcessing: false });
+    expect("device" in p).toBe(false);
+  });
+
+  it("zeigt das Programm-Symbol in der Pille und bestätigt am Ende „Eingefügt · n Zeichen“", async () => {
+    const helper = new FakeHelper();
+    helper.frontmostIcon = "iVBORw0KGgo=";
+    const { dictation, hud } = build(helper);
+    await dictation.start();
+    expect(hud.update.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "listening", app: "Mail", appIcon: "iVBORw0KGgo=" });
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Hallo Welt Punkt" } });
+    await tick();
+    await tick();
+    await dictation.stop();
+    await tick();
+    await tick();
+    const last = hud.update.mock.calls.at(-1)?.[0];
+    expect(last).toMatchObject({ phase: "inserted", message: "Eingefügt · 11 Zeichen" });
+    expect(hud.hide).not.toHaveBeenCalled();
+    await new Promise((r) => setTimeout(r, 950));
+    expect(hud.hide).toHaveBeenCalled();
+  });
+
+  it("ein gescheitertes Einsetzen bleibt als Fehler in der Pille stehen", async () => {
+    const helper = new FakeHelper();
+    const original = helper.request.bind(helper);
+    helper.request = (<T,>(cmd: string, params?: Record<string, unknown>): Promise<T> => {
+      if (cmd === "text.insert") return Promise.reject(new Error("Element nimmt keinen Text an"));
+      return original<T>(cmd, params);
+    }) as typeof helper.request;
+    const { dictation, hud } = build(helper);
+    await dictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Hallo" } });
+    await tick();
+    await tick();
+    await dictation.stop();
+    await tick();
+    await tick();
+    expect(hud.update.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "error" });
+    expect(String(hud.update.mock.calls.at(-1)?.[0].message)).toContain("Diktat-Verlauf");
+    expect(hud.hide).not.toHaveBeenCalled();
+  });
+
+  it("ohne Text verschwindet die Pille sofort; der Modell-Download zeigt einen Fortschritt", async () => {
+    const helper = new FakeHelper();
+    const { dictation, hud } = build(helper);
+    await dictation.start();
+    await dictation.stop();
+    await tick();
+    expect(hud.hide).toHaveBeenCalled();
+
+    const loading = new FakeHelper();
+    loading.sttStatus = { available: false, engine: "analyzer", assets: "missing", downloadable: true };
+    loading.prepareImpl = () => {
+      loading.emitEvent({ event: "stt.progress", stream: "", data: { locale: "de-DE", fraction: 0.4 } });
+      loading.sttStatus = { available: true, engine: "analyzer", assets: "installed" };
+    };
+    const built = build(loading);
+    await built.dictation.start();
+    const progress = built.hud.update.mock.calls.map((c) => c[0].progress).filter((p): p is number => typeof p === "number");
+    expect(progress).toContain(0.4);
+    expect(built.hud.update.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "listening", progress: null });
   });
 });
