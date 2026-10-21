@@ -244,3 +244,9 @@ docs/                helper-protocol.md
   `tests/bridge.test.ts` prüft den Preload Feld für Feld dagegen.
 - **Electron ↔ Swift-Helfer:** `docs/helper-protocol.md` (Version 1).
   `tests/helper.test.ts` prüft den Rahmen mit einem gefälschten Prozess.
+
+## Lizenz
+
+KIRA für Mac steht unter der [MIT-Lizenz](LICENSE)
+(Copyright (c) 2026 forliHD). Schwachstellen bitte privat melden, siehe
+[SECURITY.md](SECURITY.md).
