@@ -6,8 +6,8 @@
 
 Electron-Hülle (TypeScript strict, `electron-vite`) um das KIRA-Dashboard
 plus Swift-Helfer `helper/` für Apple-Schnittstellen. Owner: Lucas (einziger
-Entwickler). Kein App Store. CI ist `.github/workflows/ci.yml` auf `macos-26`
-(Apple Silicon, macOS-SDK 26): Typen, Lint, Tests, Swift-Helfer, Paket.
+Entwickler). Kein App Store. CI ist `.github/workflows/ci.yml` auf `xcode-27`
+(Apple Silicon, macOS-SDK 27): Typen, Lint, Tests, Swift-Helfer, Paket.
 Ein Push auf `main` veröffentlicht `v` + Version aus `package.json`, wenn
 dieser Release noch fehlt. Signatur nur mit `MACOS_CERT_P12_BASE64` und
 `MACOS_CERT_PASSWORD` (Developer ID Application), Notarisierung zusätzlich
@@ -105,7 +105,7 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
 - **`npm run dist` nicht in Agenten-Läufen**: braucht Developer-ID-Zertifikat
   und Notarisierungs-Umgebung; ohne diese scheitert es oder erzeugt ein
   unsigniertes Paket, das Gatekeeper ablehnt. Das Produktionspaket baut
-  `.github/workflows/ci.yml` auf `macos-26`.
+  `.github/workflows/ci.yml` auf `xcode-27`.
 - **`electron-updater` nur gepackt**: in `dev` meldet `updater.ts` den Status
   `unsupported`. Nicht „reparieren“.
 - **`src/shared/dictationText.js` nie von Hand ändern** – Kopie aus dem

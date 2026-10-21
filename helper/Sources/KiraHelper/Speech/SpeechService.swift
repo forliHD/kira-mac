@@ -1007,9 +1007,11 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
     }
 
     func stop() async {
+        // self.task: der lokale Name würde die Eigenschaft verdecken (Swift 6.3
+        // bricht dann mit „cannot reference invalid declaration“ ab).
         let task = lock.withLock {
             stopping = true
-            return task
+            return self.task
         }
         mic.stop()
         levelTask?.cancel()
@@ -1026,7 +1028,7 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
     func cancel(reason: String) async {
         let task = lock.withLock {
             stopping = true
-            return task
+            return self.task
         }
         mic.stop()
         levelTask?.cancel()

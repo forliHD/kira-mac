@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Wählt ein Xcode, dessen macOS-SDK mindestens 26 ist.
-# SpeechAnalyzer/SpeechTranscriber gibt es erst ab diesem SDK; macos-15 hat es
-# nicht. macos-26 liefert Xcode 26 von Haus aus – ein neueres Preview (Xcode 27)
-# nehmen wir nur, wenn kein SDK 26 da ist.
+# Wählt ein Xcode mit macOS-SDK 27.
+# SpeechAnalyzer braucht mindestens SDK 26. Der Helfer nennt außerdem Typen aus
+# dem macOS-27-SDK (LanguageModelError, LanguageModelSession.Error); die prüft
+# der Compiler auch in „#available(macOS 27)“. Das Standard-Image macos-26 hat
+# nur Xcode 26.6 (SDK 26.5) und kann den Helfer nicht übersetzen. Der Runner
+# xcode-27 bringt das passende SDK.
 set -euo pipefail
 
-need_major=26
+need_major=27
 
 sdk_version() {
   DEVELOPER_DIR="$1" xcrun --sdk macosx --show-sdk-version 2>/dev/null || true
@@ -43,13 +45,6 @@ print("yes" if parse(sys.argv[1]) > parse(sys.argv[2]) else "no")
 PY
 }
 
-current="$(xcode-select -p)"
-current_sdk="$(sdk_version "$current")"
-if [[ -n "$current_sdk" ]] && [[ "$(sdk_major "$current_sdk")" -ge "$need_major" ]]; then
-  use_developer_dir "$current" "$current_sdk"
-  exit 0
-fi
-
 best_dev=""
 best_sdk=""
 shopt -s nullglob
@@ -68,7 +63,7 @@ done
 
 if [[ -z "$best_dev" ]]; then
   echo "Fehler: kein Xcode mit macOS-SDK $need_major oder neuer." >&2
-  echo "SpeechAnalyzer/SpeechTranscriber lässt sich so nicht übersetzen." >&2
+  echo "Der Helfer braucht das macOS-27-SDK (Runner xcode-27). SpeechAnalyzer liegt darin; das macOS-26-SDK von Xcode 26.6 reicht nicht, weil LanguageModelError dort fehlt." >&2
   xcodebuild -version >&2 || true
   xcodebuild -showsdks >&2 || true
   exit 1

@@ -7,7 +7,7 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 ## [Unreleased]
 
 ### Hinzugefügt
-- GitHub Actions auf `macos-26` (Apple Silicon, macOS-SDK 26): Abhängigkeiten,
+- GitHub Actions auf `xcode-27` (Apple Silicon, macOS-SDK 27): Abhängigkeiten,
   Typprüfung, Lint, Tests, Swift-Helfer inklusive der Fehlerzuordnung beim
   Diktat-Download, Produktionspaket. Ein Push auf `main` legt den
   GitHub-Release `v<Version>` an (DMG, ZIP, `latest-mac.yml`), wenn es ihn

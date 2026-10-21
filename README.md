@@ -154,8 +154,10 @@ veröffentlicht.
 
 ### CI
 
-`.github/workflows/ci.yml` läuft auf `macos-26` (Apple Silicon, Xcode mit
-macOS-SDK 26 – SpeechAnalyzer gibt es darunter nicht). Bei jedem Pull Request
+`.github/workflows/ci.yml` läuft auf `xcode-27` (Apple Silicon, Xcode 27,
+macOS-SDK 27). SpeechAnalyzer braucht mindestens SDK 26; der Helfer zusätzlich
+das SDK 27 (`LanguageModelError`). `macos-26` hat nur Xcode 26.6 und kann den
+Helfer nicht bauen. Bei jedem Pull Request
 und jedem Push auf `main`: Abhängigkeiten, Typprüfung, Lint, JavaScript-Tests,
 `swift test` (darunter die Fehlerzuordnung des Diktat-Downloads), Release-Build
 des Helfers, `electron-builder`.

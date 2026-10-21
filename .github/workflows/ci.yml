@@ -1,7 +1,8 @@
 # CI und Release für „KIRA für Mac“.
-# Runner macos-26: Apple Silicon und Xcode 26 mit dem macOS-26-SDK.
-# macos-15 (und macos-latest, das heute noch darauf zeigt) hat dieses SDK
-# nicht – SpeechAnalyzer/SpeechTranscriber ließe sich dort nicht übersetzen.
+# Runner xcode-27: Apple Silicon, Xcode 27, macOS-SDK 27.
+# macos-26 hat nur das SDK 26.5. SpeechAnalyzer liegt darin, LanguageModelError
+# (macOS 27) aber nicht – der Helfer lässt sich damit nicht übersetzen.
+# macos-latest zeigt noch auf macos-15 und hat keines von beiden.
 #
 # Release: nur Push auf main (und workflow_dispatch dort), nach grünem Build.
 # Tag v<Version aus package.json>. Existiert der Release schon, passiert nichts.
@@ -33,7 +34,7 @@ permissions:
 jobs:
   build:
     name: Prüfen und bauen
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 90
     outputs:
       signed: ${{ steps.signing.outputs.signed }}
@@ -42,7 +43,7 @@ jobs:
       - name: Quelltext
         uses: actions/checkout@v4
 
-      - name: Xcode mit macOS-SDK 26
+      - name: Xcode mit macOS-SDK 27
         run: bash scripts/ci-select-xcode.sh
 
       - name: Node 22
