@@ -86,6 +86,24 @@ export interface SttEnded {
 export interface FrontmostApp {
   bundleId: string;
   name: string;
+  /** PNG 64 × 64 px als Base64 (Helfer ≥ 0.6.0), sonst fehlt es. */
+  icon?: string | null;
+}
+
+/** Ein Mikrofon dieses Macs (`audio.inputs`, Helfer ≥ 0.6.0). */
+export interface AudioInputDevice {
+  uid: string;
+  name: string;
+  /** Systemstandard-Eingabe. */
+  default: boolean;
+}
+
+/** Antwort auf `stt.start`. */
+export interface SttStartResult {
+  started: boolean;
+  engine?: string;
+  /** Helfer ≥ 0.6.0: was die Aufnahme tatsächlich nutzt. */
+  microphone?: { voiceProcessing: boolean; device: string | null };
 }
 
 export interface HelperErrorShape {

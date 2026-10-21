@@ -13,7 +13,7 @@ import { capabilitiesFrom } from "../shared/capabilities";
 import { IDLE_MODEL_DOWNLOAD } from "../shared/dictation-model";
 import { type DictationTestKind } from "../shared/dictation-test";
 import { isAllowedSettingsUrl, isFnHotkey } from "../shared/hotkey";
-import { type HelperEvent, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
+import { type AudioInputDevice, type HelperEvent, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
 import { type ConnectionState, type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalEvent, type LocalState, type ProbeResult, type QuickSettings } from "../shared/local-api";
 import { ACCESS_COOKIE, AccessLogin } from "./access-login";
 import { registerBridgeIpc } from "./bridge";
@@ -84,7 +84,7 @@ class KiraApp {
   private connection: ConnectionState = { online: false, origin: null, kind: null, serverVersion: null, serverHasBridge: false, lastError: null, lastOnlineAt: null };
   private pollTimer: NodeJS.Timeout | null = null;
   private connecting: Promise<void> | null = null;
-  private statusCache: { at: number; stt: HelperSttStatus | null; permissions: PermissionsStatus | null } | null = null;
+  private statusCache: { at: number; stt: HelperSttStatus | null; permissions: PermissionsStatus | null; inputDevices: AudioInputDevice[] } | null = null;
   /** SSO im System-Browser (öffentlich für scripts/e2e/browser-login.mjs). */
   browserLogin!: BrowserLogin;
   /** Nur Ende-zu-Ende-Tests: abgefangene Browser-Starts statt echtem Browser. */
@@ -351,6 +351,7 @@ class KiraApp {
       },
       test: this.dictationTest.sink,
       getCorrectionEnabled: () => this.config.dictation.correctVocabulary,
+      getInput: () => ({ device: this.config.dictation.inputDevice, voiceProcessing: this.config.dictation.voiceProcessing }),
       vocabularyStore: this.createVocabularyStore(),
       server: {
         fetchVocabulary: async () => {
@@ -1016,20 +1017,29 @@ class KiraApp {
 
   // ── Zustand für lokale Seiten ─────────────────────────────────────────
 
-  private async helperStatus(): Promise<{ stt: HelperSttStatus | null; permissions: PermissionsStatus | null }> {
+  private async helperStatus(): Promise<{ stt: HelperSttStatus | null; permissions: PermissionsStatus | null; inputDevices: AudioInputDevice[] }> {
     const cached = this.statusCache;
     if (cached && Date.now() - cached.at < 5_000) return cached;
     let stt: HelperSttStatus | null = null;
     let permissions: PermissionsStatus | null = null;
+    let inputDevices: AudioInputDevice[] = [];
     if (this.helper.running) {
-      const [s, p] = await Promise.all([
+      const [s, p, d] = await Promise.all([
         this.helper.request<HelperSttStatus>("stt.status", { locale: this.config.dictation.locale }, 5_000).catch(() => null),
         this.helper.request<PermissionsStatus>("permissions.status", undefined, 5_000).catch(() => null),
+        // Ältere Helfer kennen `audio.inputs` nicht – dann bleibt die Liste leer.
+        this.helper.request<{ devices?: unknown }>("audio.inputs", undefined, 5_000).catch(() => null),
       ]);
       stt = s;
       permissions = p;
+      inputDevices = Array.isArray(d?.devices)
+        ? d.devices.filter(
+            (x): x is AudioInputDevice =>
+              Boolean(x) && typeof (x as AudioInputDevice).uid === "string" && typeof (x as AudioInputDevice).name === "string" && typeof (x as AudioInputDevice).default === "boolean",
+          )
+        : [];
     }
-    this.statusCache = { at: Date.now(), stt, permissions };
+    this.statusCache = { at: Date.now(), stt, permissions, inputDevices };
     return this.statusCache;
   }
 
@@ -1054,6 +1064,7 @@ class KiraApp {
         fnKey: await this.fnKey.refresh(),
         modelDownload: this.sttAssets?.snapshot() ?? IDLE_MODEL_DOWNLOAD,
         vocabulary: this.dictation?.vocabularyInfo() ?? null,
+        inputDevices: status.inputDevices,
       },
       onboarded: this.config.onboarded,
       logPath: logFilePath(),

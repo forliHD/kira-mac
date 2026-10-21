@@ -46,6 +46,7 @@ export function DictationSection({ state, setState, refresh, go }: SectionProps)
     arch: state.dictationStatus.stt?.diagnostics?.arch ?? null,
   });
   const accessibility = state.dictationStatus.permissions?.accessibility;
+  const defaultDevice = state.dictationStatus.inputDevices.find((d) => d.default) ?? null;
   const vocabulary = state.dictationStatus.vocabulary;
   const vocabularyNote = vocabulary
     ? `${vocabulary.count} ${vocabulary.count === 1 ? "Begriff" : "Begriffe"} (KIRA, dein Name, eigene Begriffe), Stand ${formatLastSeen(new Date(vocabulary.fetchedAt)).replace(/^um /, "heute um ")} – bleibt verschlüsselt auf diesem Mac, auch offline.`
@@ -121,6 +122,35 @@ export function DictationSection({ state, setState, refresh, go }: SectionProps)
                 </option>
               ))}
             </select>
+          )}
+        </SettingRow>
+        <SettingRow title="Mikrofon" description="Welches Mikrofon das Diktat öffnet. Systemstandard folgt den Systemeinstellungen → Ton.">
+          {(ids) => (
+            <select
+              className="g-select"
+              aria-labelledby={ids.titleId}
+              aria-describedby={ids.descId}
+              value={dictation.inputDevice ?? ""}
+              onChange={(e) => void update({ inputDevice: e.target.value || null })}
+            >
+              <option value="">Systemstandard{defaultDevice ? ` (${defaultDevice.name})` : ""}</option>
+              {state.dictationStatus.inputDevices.map((d) => (
+                <option key={d.uid} value={d.uid}>
+                  {d.name}
+                </option>
+              ))}
+              {dictation.inputDevice && !state.dictationStatus.inputDevices.some((d) => d.uid === dictation.inputDevice) ? (
+                <option value={dictation.inputDevice}>Nicht angeschlossen ({dictation.inputDevice.slice(0, 24)}…)</option>
+              ) : null}
+            </select>
+          )}
+        </SettingRow>
+        <SettingRow
+          title="Apple-Sprachfilter"
+          description="Echo-Unterdrückung, Rauschfilter und Pegelregelung wie bei FaceTime. Anderer Ton wird dabei leicht gedämpft. Geht es auf diesem Mac nicht, läuft das Diktat ohne."
+        >
+          {(ids) => (
+            <Switch checked={dictation.voiceProcessing} labelledBy={ids.titleId} describedBy={ids.descId} onChange={(v) => void update({ voiceProcessing: v })} />
           )}
         </SettingRow>
         <SettingRow

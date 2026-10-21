@@ -4,15 +4,18 @@
 // Zustand kommt ausschließlich per `local:event` (type "hud"); Kürzel und
 // Glasart einmal über getState (und bei späteren "state"-Ereignissen).
 // Das ganze Panel ist Zieh-Bereich – bis auf den Stopp-Knopf.
+// Phase 2 (0.6.0): Symbol des Zielprogramms, Fortschrittsbalken beim
+// Modell-Download, Bestätigung „Eingefügt · n Zeichen“ und ein lesbarer
+// Fehler, wenn das Einsetzen scheiterte.
 
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { type HudPhase, type HudState } from "../../shared/local-api";
-import { IconAlert, IconClose, IconMic, IconStop } from "../lib/icons";
+import { IconAlert, IconCheck, IconClose, IconMic, IconStop } from "../lib/icons";
 import { applyUiAttributes, localApi } from "../lib/useLocalState";
 import { KbdCombo, Spinner, cx } from "../lib/ui";
 
-const INITIAL: HudState = { phase: "starting", level: 0, partial: "", app: null, message: null };
+const INITIAL: HudState = { phase: "starting", level: 0, partial: "", app: null, appIcon: null, message: null, progress: null };
 const BARS = 7;
 /** Hüllkurve: die äußeren Balken etwas kürzer, wie eine Welle. */
 const ENVELOPE = [0.62, 0.8, 0.94, 1, 0.94, 0.8, 0.62];
@@ -36,6 +39,8 @@ function label(state: HudState): string {
       return state.app ? `Diktat in ${state.app}` : "Diktat läuft";
     case "stopping":
       return "Diktat endet";
+    case "inserted":
+      return state.app ? `Eingefügt in ${state.app}` : "Eingefügt";
     case "unavailable":
       return "Diktat nicht verfügbar";
     case "error":
@@ -138,10 +143,11 @@ export function App(): ReactNode {
 
   const bars = useLevelHistory(state);
   const problem = isProblem(state.phase);
-  const busy = !problem && (state.phase === "stopping" || stopping);
+  const done = state.phase === "inserted";
+  const busy = !problem && !done && (state.phase === "stopping" || stopping);
 
   function stop(): void {
-    if (!problem) setStopping(true);
+    if (!problem && !done) setStopping(true);
     try {
       void localApi()
         .hudStop()
@@ -154,6 +160,8 @@ export function App(): ReactNode {
   let line: ReactNode;
   if (problem) {
     line = <span className="hud-line is-message">{state.message ?? "Die Spracherkennung ist gerade nicht verfügbar."}</span>;
+  } else if (done) {
+    line = <span className="hud-line is-done hud-ellipsis">{state.message ?? "Eingefügt."}</span>;
   } else if (state.partial) {
     line = <TailText text={state.partial} className="hud-line" />;
   } else {
@@ -161,13 +169,14 @@ export function App(): ReactNode {
   }
 
   const newest = bars[BARS - 1] ?? 0;
+  const progress = state.progress !== null && !problem ? Math.max(0, Math.min(1, state.progress)) : null;
 
   return (
     <main className="hud" data-phase={state.phase} data-problem={problem ? "true" : undefined} aria-label="Diktat">
       <div className="hud-orb" aria-hidden="true">
         {state.phase === "listening" ? <span className="hud-ring" /> : null}
-        <span className="hud-orb-core" style={problem ? undefined : { transform: `scale(${(1 + newest * 0.06).toFixed(3)})` }}>
-          <IconMic size={18} strokeWidth={2.3} />
+        <span className={cx("hud-orb-core", done && "is-done")} style={problem || done ? undefined : { transform: `scale(${(1 + newest * 0.06).toFixed(3)})` }}>
+          {done ? <IconCheck size={18} strokeWidth={2.6} /> : <IconMic size={18} strokeWidth={2.3} />}
         </span>
       </div>
 
@@ -180,11 +189,17 @@ export function App(): ReactNode {
       <div className="hud-text" role="status">
         <span className={cx("hud-label", problem && `is-${state.phase}`)}>
           {problem ? <IconAlert size={13} strokeWidth={2.4} /> : null}
+          {!problem && state.appIcon ? <img className="hud-appicon" src={`data:image/png;base64,${state.appIcon}`} alt="" aria-hidden="true" /> : null}
           <span className="hud-ellipsis">{label(state)}</span>
           {state.phase === "listening" ? <span className="g-dot is-ok is-glow hud-dot" aria-hidden="true" /> : null}
           {state.phase === "starting" || state.phase === "stopping" ? <span className="g-dot is-warn hud-dot" aria-hidden="true" /> : null}
         </span>
         {line}
+        {progress !== null ? (
+          <span className="hud-progress" aria-hidden="true">
+            <span style={{ width: `${Math.round(progress * 100)}%` }} />
+          </span>
+        ) : null}
       </div>
 
       <div className="hud-actions">
@@ -192,12 +207,12 @@ export function App(): ReactNode {
         <button
           type="button"
           className="g-btn g-btn-glass g-btn-icon hud-stop"
-          aria-label={problem ? "Schließen" : "Diktat beenden"}
-          title={problem ? "Schließen" : "Diktat beenden"}
+          aria-label={problem || done ? "Schließen" : "Diktat beenden"}
+          title={problem || done ? "Schließen" : "Diktat beenden"}
           disabled={busy}
           onClick={stop}
         >
-          {problem ? <IconClose size={16} strokeWidth={2.4} /> : busy ? <Spinner /> : <IconStop size={16} />}
+          {problem || done ? <IconClose size={16} strokeWidth={2.4} /> : busy ? <Spinner /> : <IconStop size={16} />}
         </button>
       </div>
     </main>

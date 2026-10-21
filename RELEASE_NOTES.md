@@ -1,16 +1,16 @@
-## KIRA für Mac 0.5.0
+## KIRA für Mac 0.6.0
 
-**Schnellfenster in zwei Stufen**
+**Mikrofon**
 
-- Leer eine schmale Leiste; mit der ersten Nachricht nimmt das Fenster einmal
-  die Gesprächshöhe an – Verlauf oben, Eingabe unten, nichts springt mehr. Der
-  untere Rand lässt sich ziehen, die Höhe wird je Bildschirm gemerkt.
-- Keine Kopfzeile mehr: Status als Punkt auf dem K, Chat | Diktate und die
-  Aktionen in der Fußleiste, dazu ein Zahnrad.
-- Neuer Bereich Einstellungen → Schnellfenster: Lage, Höhe, Textgröße,
-  Sendetaste, Verhalten nach dem Senden, Gespräch fortsetzen, Vorschläge,
-  Mikrofon-Knopf.
-- Diktate: Tagesgruppen, „Erneut einsetzen“, „Verlauf leeren“.
+- Apple-Sprachfilter fürs Diktat (Echo, Rauschen, Pegel), Standard an,
+  abschaltbar unter Einstellungen → Diktat.
+- Mikrofon wählen – oder dem System folgen.
+
+**Pille**
+
+- Symbol des Zielprogramms, Fortschrittsbalken beim Modell-Download,
+  Bestätigung „Eingefügt · n Zeichen“, und ein gescheitertes Einsetzen bleibt
+  lesbar stehen.
 
 Die App aktualisiert sich selbst; mit „Jetzt neu starten“ wird das Update
 sofort installiert.
