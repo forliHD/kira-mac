@@ -32,6 +32,40 @@ export interface GeneralConfig {
   notifications: boolean;
 }
 
+// ── Schnellfenster-Einstellungen (Phase 3, 0.5.0) ─────────────────────
+export type QuickPosition = "top" | "center";
+export type QuickTextSize = "s" | "m" | "l";
+/** ↩ sendet (⇧↩ Zeile) oder ⌘↩ sendet (↩ Zeile; „Im Hauptfenster“ wird dann ⌘⇧↩). */
+export type QuickSendKey = "enter" | "cmd-enter";
+export type QuickAfterSend = "stay" | "hide";
+
+export interface QuickConfig {
+  position: QuickPosition;
+  /** Anteil der Arbeitsfläche für die Gesprächshöhe (Stufe B), 0,4 … 0,9. */
+  chatHeightShare: number;
+  /** Zuletzt gezogene Höhe je Bildschirm merken. */
+  rememberHeight: boolean;
+  /** Gemerkte Gesprächshöhen je Bildschirm-Kennung (pt). */
+  heights: Record<string, number>;
+  textSize: QuickTextSize;
+  sendKey: QuickSendKey;
+  /** Nach dem Senden offen lassen oder schließen (Antwort kommt als Mitteilung). */
+  afterSend: QuickAfterSend;
+  /** Nach so vielen Minuten Ruhe beginnt das nächste Öffnen ein neues Gespräch; 0 = nie. */
+  resetAfterMin: number;
+  suggestions: boolean;
+  /** Mikrofon-Knopf im Eingabefeld zeigen. */
+  dictationButton: boolean;
+}
+
+/** Was die Einstellungen schreiben – die gemerkten Höhen verwaltet die Hülle selbst. */
+export type QuickSettings = Omit<QuickConfig, "heights">;
+
+/** Was die Schnellfenster-Seite von den Einstellungen braucht. */
+export type QuickPrefs = Pick<QuickConfig, "textSize" | "sendKey" | "suggestions" | "dictationButton">;
+
+export const QUICK_RESET_CHOICES: readonly number[] = [0, 10, 30, 60];
+
 export interface ProbeResult {
   url: string;
   ok: boolean;
@@ -109,6 +143,7 @@ export interface LocalState {
   hotkeys: HotkeyConfig;
   dictation: DictationConfig;
   general: GeneralConfig;
+  quick: QuickConfig;
   connection: ConnectionState;
   update: UpdateState;
   helper: HelperState;
@@ -177,6 +212,7 @@ export interface QuickState {
   connection: { online: boolean; label: string };
   dictation: QuickDictation;
   hotkeys: HotkeyConfig;
+  prefs: QuickPrefs;
 }
 
 export type LocalEvent =
@@ -240,6 +276,9 @@ export interface KiraLocalApi {
   dictationTestStop(): Promise<void>;
   dictationTestCancel(): Promise<void>;
   setGeneral(general: GeneralConfig): Promise<LocalState>;
+  setQuick(quick: QuickSettings): Promise<LocalState>;
+  /** Gemerkte Gesprächshöhen vergessen (zurück zum eingestellten Anteil). */
+  resetQuickHeights(): Promise<LocalState>;
   requestPermission(kind: PermissionKind): Promise<PermissionsStatus | null>;
   checkForUpdates(): Promise<UpdateState>;
   /** Geladenes Update jetzt installieren (App startet neu). */
@@ -274,6 +313,10 @@ export interface KiraLocalApi {
   /** Gewünschte Höhe des Inhalts in CSS-Pixeln; der Hauptprozess begrenzt sie auf den Bildschirm. */
   quickResize(height: number): Promise<void>;
   quickToggleDictation(): Promise<void>;
+  /** Stufe B (Gespräch, Diktate): das Fenster nimmt die Gesprächshöhe an und lässt sich unten ziehen; false = Leiste folgt dem Inhalt. */
+  quickSetTall(tall: boolean): Promise<void>;
+  /** Diktat aus dem Verlauf in das Programm einsetzen, das vor dem Schnellfenster vorn war (blendet das Fenster aus). */
+  quickReinsertDictation(id: string): Promise<void>;
   on(listener: (event: LocalEvent) => void): () => void;
 }
 

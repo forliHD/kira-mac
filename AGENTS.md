@@ -254,6 +254,31 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   offline) – auch wenn er älter als eine Stunde ist. Nie Klartext auf die
   Platte; ohne Codec (unverpackt) nur im Speicher.
 
+- **Schnellfenster in zwei Stufen** (seit 0.5.0): `quickStage()` in
+  `quick/logic.ts` entscheidet (leer = Leiste, Nachrichten/Diktate = hoch);
+  die Seite meldet es mit `quickSetTall`, `windows/quick.ts` setzt EINMAL die
+  Gesprächshöhe (`quickTallHeight`: Anteil oder gemerkte Höhe des Bildschirms)
+  und ignoriert `quickResize` in Stufe B. Ziehen nur am unteren Rand:
+  `will-resize` lehnt alle anderen Kanten ab, `resized` meldet die Höhe – aber
+  nicht während der eigenen `setBounds`-Animation (`settingBounds`, 400 ms).
+  Reihenfolge Verlauf/Eingabe/Fußleiste über CSS `order` an `.qw.is-tall`,
+  NICHT über die DOM-Reihenfolge – sonst baut React die Eingabe neu und der
+  Fokus geht beim Stufenwechsel verloren. Höhenmessung (`useReportHeight`) nur
+  in der Leiste (`enabled`). Keine Kopfzeile: `.q-foot` ist der Zieh-Bereich
+  (`-webkit-app-region: drag`, Knöpfe `no-drag`). Tests:
+  `tests/quick-window.test.ts`, `tests/quick-geometry.test.ts`,
+  `tests/quick-logic.test.ts`.
+- **Einstellungen `config.quick`** (`src/shared/quick-settings.ts` prüft, kein
+  Electron): `sendKey` ändert auch, was ⌘↩ bedeutet (`keyAction`/`isSubmitKey`
+  nehmen die Einstellung). `afterSend: "hide"` blendet sofort aus und meldet
+  die fertige Antwort als Mitteilung (`quickSend` in index.ts). `resetAfterMin`
+  greift beim Öffnen (`onShown`) über `QuickChat.lastActivityAt`. Das
+  Erscheinungsbild folgt dem System (nativeTheme gilt für alle Fenster, auch das
+  Dashboard) – keine eigene Wahl anbieten.
+- **„Erneut einsetzen“** (`reinsertDictation`): Fenster ausblenden, 250 ms
+  warten, dann `text.insert` – vorher hätte das Panel den Fokus; der Text
+  landet im Programm, das vor dem Schnellfenster vorn war.
+
 ## Offene Punkte (Stand 0.1.0)
 
 - `share`-Ereignis (Teilen aus Finder/Dock) braucht eine Share-Extension – noch

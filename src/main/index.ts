@@ -14,7 +14,7 @@ import { IDLE_MODEL_DOWNLOAD } from "../shared/dictation-model";
 import { type DictationTestKind } from "../shared/dictation-test";
 import { isAllowedSettingsUrl, isFnHotkey } from "../shared/hotkey";
 import { type HelperEvent, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
-import { type ConnectionState, type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalEvent, type LocalState, type ProbeResult } from "../shared/local-api";
+import { type ConnectionState, type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalEvent, type LocalState, type ProbeResult, type QuickSettings } from "../shared/local-api";
 import { ACCESS_COOKIE, AccessLogin } from "./access-login";
 import { registerBridgeIpc } from "./bridge";
 import { BrowserLogin, URL_SCHEME, callbackPath } from "./browser-login";
@@ -268,6 +268,12 @@ class KiraApp {
       },
       connection: () => ({ online: this.connection.online, label: this.labelFor(session.getOrigin() ?? this.origins()[0]) }),
       hotkeys: () => this.config.hotkeys,
+      prefs: () => ({
+        textSize: this.config.quick.textSize,
+        sendKey: this.config.quick.sendKey,
+        suggestions: this.config.quick.suggestions,
+        dictationButton: this.config.quick.dictationButton,
+      }),
       onNetworkError: () => void this.connect(),
       log: scoped("quick-chat"),
     });
@@ -538,8 +544,19 @@ class KiraApp {
         onboardingWindow.show();
         return false;
       },
-      onShown: () => this.quickChat.refresh(),
+      onShown: () => {
+        // „Neu nach n Minuten Ruhe“: ein altes Gespräch nicht weiterführen.
+        const minutes = this.config.quick.resetAfterMin;
+        const last = this.quickChat.lastActivityAt;
+        if (minutes > 0 && last !== null && !this.quickChat.busy && Date.now() - last > minutes * 60_000) this.quickChat.reset();
+        this.quickChat.refresh();
+      },
       keepOnBlur: !app.isPackaged && process.env.KIRA_MAC_TEST_HOOKS === "1",
+      quick: () => this.config.quick,
+      onHeightDragged: (display, height) => {
+        if (!this.config.quick.rememberHeight) return;
+        this.config = configStore.update({ quick: { ...this.config.quick, heights: { ...this.config.quick.heights, [display]: height } } });
+      },
     });
   }
 
@@ -632,6 +649,13 @@ class KiraApp {
           else await this.stopNotifications(true);
         }
       },
+      setQuick: async (quick: QuickSettings) => {
+        this.config = configStore.update({ quick: { ...quick, heights: this.config.quick.heights } });
+        this.quickChat.refresh();
+      },
+      resetQuickHeights: async () => {
+        this.config = configStore.update({ quick: { ...this.config.quick, heights: {} } });
+      },
       requestPermission: (kind) => this.requestPermission(kind),
       checkForUpdates: () => updater.check(false),
       installUpdate: () => updater.installNow(),
@@ -698,7 +722,7 @@ class KiraApp {
       },
       quick: {
         getState: () => this.quickChat.getState(),
-        send: (text) => this.quickChat.send(text),
+        send: (text) => this.quickSend(text),
         stop: () => this.quickChat.stop(),
         reset: () => this.quickChat.reset(),
         openInMain: () => {
@@ -709,8 +733,51 @@ class KiraApp {
         hide: () => this.quickWin.hide(),
         resize: (height) => this.quickWin.resize(height),
         toggleDictation: () => this.dictation.toggle("quick"),
+        setTall: (tall) => this.quickWin.setTall(tall),
+        reinsertDictation: (id) => this.reinsertDictation(id),
       },
     });
+  }
+
+  /**
+   * Frage aus dem Schnellfenster. „Nach dem Senden schließen“: das Fenster
+   * geht sofort zu, die fertige Antwort kommt als Mitteilung (Klick öffnet
+   * das Schnellfenster wieder); der Server speichert sie ohnehin im Chat.
+   */
+  private async quickSend(text: string): Promise<void> {
+    const hide = this.config.quick.afterSend === "hide";
+    const turn = this.quickChat.send(text);
+    if (!hide) return turn;
+    this.quickWin.hide();
+    await turn;
+    if (this.quickWin.isVisible() || !Notification.isSupported()) return;
+    const answer = this.quickChat.lastAnswer();
+    if (!answer) return;
+    const body = answer.status === "error" ? (answer.error ?? "Die Antwort ist fehlgeschlagen.") : answer.text.replace(/\s+/g, " ").trim().slice(0, 240) || "Antwort da.";
+    const note = new Notification({ title: "KIRA", body, silent: true });
+    note.on("click", () => this.quickWin.show());
+    note.show();
+  }
+
+  /**
+   * „Erneut einsetzen“ aus der Diktate-Ansicht: Fenster ausblenden, kurz
+   * warten, bis das vorherige Programm den Fokus zurückhat, dann wie beim
+   * Diktat über den Helfer einsetzen (Bedienungshilfen nötig).
+   */
+  private async reinsertDictation(id: string): Promise<void> {
+    const entry = this.history.get(id);
+    if (!entry) throw new Error("Dieses Diktat gibt es nicht mehr.");
+    if (!this.helper.running) throw new Error("Der Helfer läuft nicht – Einsetzen nicht möglich.");
+    this.quickWin.hide();
+    await new Promise((r) => setTimeout(r, 250));
+    try {
+      const res = await this.helper.request<{ method: string }>("text.insert", { text: entry.text, mode: "auto" }, 10_000);
+      this.log.info("dictation_reinserted", { method: res?.method ?? "?", chars: entry.text.length });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.log.warn("dictation_reinsert_failed", { error: message });
+      throw new Error(`Einsetzen fehlgeschlagen: ${message}`);
+    }
   }
 
   /** Link aus einer lokalen Seite: Instanz oder Pfad (/…) → Hauptfenster, sonst System-Browser. */
@@ -976,6 +1043,7 @@ class KiraApp {
       hotkeys: this.config.hotkeys,
       dictation: this.config.dictation,
       general: this.config.general,
+      quick: this.config.quick,
       connection: this.connection,
       update: updater.state,
       helper: { running: this.helper.running, info: this.helper.info, lastError: missing },

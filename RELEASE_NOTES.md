@@ -1,21 +1,16 @@
-## KIRA für Mac 0.4.0
+## KIRA für Mac 0.5.0
 
-**Hinzugefügt**
+**Schnellfenster in zwei Stufen**
 
-- Nachkorrektur gegen den Wortschatz: Verhörte Namen und Begriffe („Tira“ →
-  KIRA, „Lukas“ → Lucas) werden beim Diktat zum richtigen Begriff – vorsichtig,
-  Wörter aus dem macOS-Wörterbuch bleiben. Schalter unter Einstellungen →
-  Diktat.
-- Diktat-Test unter Einstellungen → Diktat: einen festen Text vorlesen, die
-  App zeigt die Wortfehlerrate und wie viele deiner Begriffe ankamen. Nur
-  Zahlen werden gespeichert, nie der Text.
-- Der Wortschatz bleibt verschlüsselt auf dem Mac und gilt auch offline.
-
-**Geändert**
-
-- Die Erkennung liefert die genaue statt der schnellen Variante (Apple-Option
-  `fastResults` ist aus); die Vorschau in der Pille bleibt flüssig.
-- Auf macOS 14/15 kommt diktierter Text jetzt mit Zeichensetzung.
+- Leer eine schmale Leiste; mit der ersten Nachricht nimmt das Fenster einmal
+  die Gesprächshöhe an – Verlauf oben, Eingabe unten, nichts springt mehr. Der
+  untere Rand lässt sich ziehen, die Höhe wird je Bildschirm gemerkt.
+- Keine Kopfzeile mehr: Status als Punkt auf dem K, Chat | Diktate und die
+  Aktionen in der Fußleiste, dazu ein Zahnrad.
+- Neuer Bereich Einstellungen → Schnellfenster: Lage, Höhe, Textgröße,
+  Sendetaste, Verhalten nach dem Senden, Gespräch fortsetzen, Vorschläge,
+  Mikrofon-Knopf.
+- Diktate: Tagesgruppen, „Erneut einsetzen“, „Verlauf leeren“.
 
 Die App aktualisiert sich selbst; mit „Jetzt neu starten“ wird das Update
 sofort installiert.

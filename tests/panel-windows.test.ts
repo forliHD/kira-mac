@@ -48,6 +48,9 @@ class FakeWindow {
   }
   setBounds(): void {}
   setPosition(): void {}
+  setResizable(): void {}
+  setMinimumSize(): void {}
+  setMaximumSize(): void {}
   show(): void {}
   showInactive(): void {}
   focus(): void {}
@@ -61,7 +64,7 @@ class FakeWindow {
   destroy(): void {}
 }
 
-const display = { workArea: { x: 0, y: 0, width: 1512, height: 945 } };
+const display = { id: 1, workArea: { x: 0, y: 0, width: 1512, height: 945 } };
 vi.mock("electron", () => ({
   BrowserWindow: FakeWindow,
   nativeTheme: { on: vi.fn(), shouldUseDarkColors: false },

@@ -247,3 +247,18 @@ describe("QuickChat – ohne Verbindung (Apple-Modell)", () => {
     expect(chat.getState().mode).toBe("offline");
   });
 });
+
+describe("Einstellungen der Seite und Ruhezeit (Phase 3)", () => {
+  it("liefert Standard-Einstellungen ohne prefs und die gegebenen mit; merkt sich die letzte Aktivität", async () => {
+    const chat = new QuickChat(deps({ server: { streamChat: async () => new Response("data: [DONE]\n\n", { status: 200, headers: { "Content-Type": "text/event-stream" } }) } }));
+    expect(chat.getState().prefs).toEqual({ textSize: "m", sendKey: "enter", suggestions: true, dictationButton: true });
+    expect(chat.lastActivityAt).toBeNull();
+    await chat.send("Hallo");
+    expect(typeof chat.lastActivityAt).toBe("number");
+    expect(chat.lastAnswer()?.role).toBe("assistant");
+    chat.reset();
+    expect(chat.lastActivityAt).toBeNull();
+    const withPrefs = new QuickChat({ ...deps({}), prefs: () => ({ textSize: "l", sendKey: "cmd-enter", suggestions: false, dictationButton: false }) });
+    expect(withPrefs.getState().prefs).toEqual({ textSize: "l", sendKey: "cmd-enter", suggestions: false, dictationButton: false });
+  });
+});
