@@ -6,6 +6,34 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-21
+
+### Behoben
+- **Diktat-Start dauerte ~1,5 s** (Owner-Befund 21.10.2026: „Mikrofon wird
+  vorbereitet…“ stand lange, die ersten Worte des Diktats fehlten). Gemessen
+  am Helfer: Apples Sprachfilter kostet beim ersten Einschalten je Prozess
+  1,0–1,2 s, und die Audio-Engine wurde für jedes Diktat neu gebaut – jedes
+  Diktat zahlte den Preis erneut (`stt.start` 1,5 s mit Filter, 0,2 s ohne).
+  Jetzt:
+  - **Eine warme Audio-Engine je Helfer.** Nach dem Diktat bleibt sie
+    eingerichtet (Tap weg, Engine angehalten, Mikrofon zu – kein
+    orangefarbener Punkt); der nächste Start kostet 50–80 ms.
+  - **Vorwärmen** (`audio.warm`): Die App stellt Gerät und Sprachfilter beim
+    Helfer-Start und nach jeder Änderung der Diktat-Einstellungen ein, ohne
+    das Mikrofon zu öffnen – auch das erste Diktat nach dem App-Start ist
+    schnell.
+  - **Mikrofon zuerst.** Das Mikrofon öffnet, bevor die Erkennung vorbereitet
+    wird; was in diesen Millisekunden gesagt wird, wartet gepuffert und wird
+    nachgeholt.
+  - Die vier Prüfungen der App vor dem Start (Modell, Freigaben, vorderstes
+    Programm, Wortschatz) laufen parallel statt nacheinander.
+
+  Messung am gebauten Helfer (Apple Silicon, Sprachfilter an): `stt.start`
+  vorher 1.473–1.573 ms, nachher 84–134 ms; erster Start nach `audio.warm`
+  131 ms, ohne Vorwärmen einmalig 1.189 ms. Neu im Protokoll der App:
+  `dictation_start` (Phasen in ms, `helper.timing` vom Helfer) und
+  `dictation_session.startMs` – nur Zeiten, nie Text.
+
 ## [0.6.1] - 2026-10-21
 
 ### Behoben

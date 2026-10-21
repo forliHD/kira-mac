@@ -113,6 +113,8 @@ export type DictationState = "idle" | "starting" | "listening" | "stopping";
 /** Ein fertiges Diktat (Start bis Ende) für den Verlauf (dictation-history.ts). */
 export interface DictationSession {
   startedAt: number;
+  /** Vom Tastendruck bis „hört zu“ in ms (null = nie so weit gekommen). */
+  startMs: number | null;
   app: string | null;
   target: DictationTarget;
   text: string;
@@ -309,14 +311,29 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     this.clearHideTimer();
     this.previousTail = "";
     this.stopAt = null;
-    this.session = { startedAt: this.now(), app: null, target: this.target, text: "", failed: false, finals: 0, replacements: 0 };
+    this.session = { startedAt: this.now(), startMs: null, app: null, target: this.target, text: "", failed: false, finals: 0, replacements: 0 };
     this.setHud({ phase: "starting", level: 0, partial: "", app: null, appIcon: null, message: null, progress: null });
     if (this.target === "insert") this.hud.show();
 
     // Nach jedem Warten: wurde inzwischen gestoppt/abgebrochen (z. B. fn
     // nur kurz gehalten), hat stop()/cancel() schon aufgeräumt.
-    let avail = await this.availability();
+    // Modellstand, Freigaben, vorderstes Programm und Wortschatz hängen nicht
+    // voneinander ab – parallel (0.6.2). Nacheinander kosteten sie 100–150 ms,
+    // bevor das Mikrofon überhaupt öffnete (Owner-Befund 21.10.2026: Anfänge
+    // des Diktats fehlten).
+    const t0 = this.now();
+    const checks = await Promise.all([
+      this.availability(),
+      this.ensurePermissions(),
+      this.target === "insert" ? this.frontmost() : Promise.resolve(null),
+      this.contextualStrings(),
+    ]);
     if (generation !== this.generation) return;
+    let avail = checks[0];
+    const perm = checks[1];
+    const front = checks[2];
+    const contextualStrings = checks[3];
+    const checksMs = this.now() - t0;
     if (!avail.ok && avail.status && needsAssetDownload(avail.status)) {
       // Ohne dieses Laden bleibt der Stand für immer „fehlt“: die Hülle hat
       // `stt.prepare` früher nie aufgerufen, der Knopf in den Einstellungen
@@ -359,18 +376,10 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       this.failStart(avail.reason);
       return;
     }
-    const perm = await this.ensurePermissions();
-    if (generation !== this.generation) return;
     if (perm) {
       this.failStart(perm);
       return;
     }
-
-    const [front, contextualStrings] = await Promise.all([
-      this.target === "insert" ? this.frontmost() : Promise.resolve(null),
-      this.contextualStrings(),
-    ]);
-    if (generation !== this.generation) return;
     this.terms = contextualStrings;
     this.index = null;
     const app = this.target === "quick" ? "KIRA" : this.target === "test" ? "Diktat-Test" : (front?.name ?? null);
@@ -378,6 +387,8 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     if (this.session) this.session.app = app;
 
     this.sttStarting = true;
+    const tStt = this.now();
+    let helperTiming: SttStartResult["timing"] | null = null;
     try {
       const params: Record<string, unknown> = {
         stream: DICTATION_STREAM_ID,
@@ -392,6 +403,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       }
       const res = await this.helper.request<SttStartResult>("stt.start", params);
       this.engine = typeof res?.engine === "string" ? res.engine : null;
+      helperTiming = res?.timing && typeof res.timing === "object" ? res.timing : null;
       this.microphone =
         res?.microphone && typeof res.microphone === "object"
           ? { voiceProcessing: res.microphone.voiceProcessing === true, device: typeof res.microphone.device === "string" ? res.microphone.device : null }
@@ -409,8 +421,41 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       await this.requestStop();
       return;
     }
+    const totalMs = this.now() - t0;
+    if (this.session) this.session.startMs = totalMs;
+    // Startphasen (nur Zeiten, nie Text): Hülle bis stt.start, stt.start selbst,
+    // und was der Helfer darin maß (`timing`, Helfer ≥ 0.6.2).
+    this.log.info("dictation_start", {
+      target: this.target,
+      engine: this.engine,
+      checksMs,
+      sttStartMs: this.now() - tStt,
+      totalMs,
+      helper: helperTiming,
+    });
     this.setState("listening");
     this.setHud({ phase: "listening" });
+  }
+
+  /**
+   * Mikrofon vorwärmen (`audio.warm`, Helfer ≥ 0.6.2): Gerät und Sprachfilter
+   * schon einstellen, ohne das Mikrofon zu öffnen – das erste Diktat startet
+   * dann in ~50 ms statt ~1,3 s. Beim Helfer-Start und nach jeder Änderung
+   * der Diktat-Einstellungen; nie während eines Diktats. Ältere Helfer kennen
+   * das Kommando nicht – dann still.
+   */
+  async warm(): Promise<void> {
+    if (!this.helper.running || this.state !== "idle") return;
+    const input = this.getInput?.();
+    if (!input) return;
+    const params: Record<string, unknown> = { voiceProcessing: input.voiceProcessing };
+    if (input.device) params.device = input.device;
+    try {
+      const r = await this.helper.request<{ state?: string; ms?: number }>("audio.warm", params);
+      this.log.info("dictation_warm", { state: typeof r?.state === "string" ? r.state : null, ms: typeof r?.ms === "number" ? r.ms : null });
+    } catch (err) {
+      this.log.debug("dictation_warm_failed", { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   /** Beenden: noch ausstehender Text wird eingesetzt. */
@@ -741,6 +786,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
         locale: this.getLocale(),
         engine: this.engine,
         durationMs: Math.max(0, now - session.startedAt),
+        startMs: session.startMs,
         flushMs: this.stopAt === null ? null : Math.max(0, now - this.stopAt),
         finals: session.finals,
         chars: session.text.length,

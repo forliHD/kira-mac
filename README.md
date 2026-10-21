@@ -149,7 +149,7 @@ etwa zum Ansehen über einer Vollbild-App).
 
 DMG, ZIP und `latest-mac.yml` (das liest `electron-updater`; das Repo bleibt
 dafür öffentlich). Der Tag ist `v` plus die Version aus `package.json`
-(`0.6.1` → `v0.6.1`). Dieselbe Version wird nicht ein zweites Mal
+(`0.6.2` → `v0.6.2`). Dieselbe Version wird nicht ein zweites Mal
 veröffentlicht.
 
 ### CI
@@ -163,7 +163,7 @@ und jedem Push auf `main`: Abhängigkeiten, Typprüfung, Lint, JavaScript-Tests,
 des Helfers, `electron-builder`.
 
 Ein Push auf `main` legt danach den GitHub-Release an, sofern `v<Version>`
-noch nicht existiert. `0.6.1` ist die nächste Version; `v0.6.0` bleibt der
+noch nicht existiert. `0.6.2` ist die nächste Version; `v0.6.1` bleibt der
 bisherige Release. Notizen kommen aus dem Abschnitt dieser Version in
 `CHANGELOG.md`, sonst aus `RELEASE_NOTES.md`. `workflow_dispatch` auf `main`
 macht dasselbe. Pull Requests aus diesem Repo signieren und notarisieren mit,
