@@ -9,6 +9,21 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 step() { printf '\n→ %s\n' "$*"; }
 
+is_set() {
+  local value="${1-}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  [[ -n "$value" ]]
+}
+
+# Zertifikat ist hinterlegt, das Paket aber nicht signiert und notarisiert.
+should_refuse_release() {
+  local signed="$1"
+  local notarized="$2"
+  local cert_present="$3"
+  [[ "$cert_present" == true && ( "$signed" != true || "$notarized" != true ) ]]
+}
+
 read_signing() {
   signed=false
   notarized=false
@@ -92,6 +107,14 @@ cmd_release() {
   SHA="${RELEASE_SHA:-${GITHUB_SHA:-}}"
 
   read_signing
+  local cert_present=false
+  if is_set "${MACOS_CERT_P12_BASE64-}" && is_set "${MACOS_CERT_PASSWORD-}"; then
+    cert_present=true
+  fi
+  if should_refuse_release "$signed" "$notarized" "$cert_present"; then
+    echo "Release abgelehnt: das Developer-ID-Zertifikat ist gesetzt, das Paket ist aber nicht signiert und notarisiert (signed=$signed, notarized=$notarized)." >&2
+    exit 1
+  fi
   step "Version $VERSION ($TAG)"
   if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
     echo "Release $TAG existiert bereits – kein zweites Release für dieselbe Version."
@@ -137,6 +160,26 @@ cmd_self_test() {
   notes="$(changelog_notes 9.9.9)"
   if [[ -n "${notes//[[:space:]]/}" ]]; then
     echo "Unbekannte Version sollte keinen Changelog-Text liefern." >&2
+    exit 1
+  fi
+  if should_refuse_release false false true; then
+    :
+  else
+    echo "Unsigniertes Paket mit Zertifikat hätte abgelehnt werden müssen." >&2
+    exit 1
+  fi
+  if should_refuse_release true false true; then
+    :
+  else
+    echo "Unnotarisiertes Paket mit Zertifikat hätte abgelehnt werden müssen." >&2
+    exit 1
+  fi
+  if should_refuse_release true true true; then
+    echo "Signiertes und notarisiertes Paket darf nicht abgelehnt werden." >&2
+    exit 1
+  fi
+  if should_refuse_release false false false; then
+    echo "Ohne Zertifikat bleibt ein unsigniertes Paket zulässig." >&2
     exit 1
   fi
   echo "ci-release self-test ok"

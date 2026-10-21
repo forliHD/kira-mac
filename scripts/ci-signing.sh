@@ -11,8 +11,11 @@
 #
 # Ohne Zertifikat: unsigniert, keine Notarisierung (der Build bleibt grün).
 # Notarisierung nur zusammen mit der Signatur und allen drei ASC-Werten.
-# electron-builder liest danach CSC_LINK/CSC_KEY_PASSWORD und
-# APPLE_API_KEY/APPLE_API_KEY_ID/APPLE_API_ISSUER.
+# electron-builder liest danach CSC_KEYCHAIN und CSC_NAME (ohne das Präfix
+# „Developer ID Application:“) sowie APPLE_API_KEY, APPLE_API_KEY_ID und
+# APPLE_API_ISSUER. CSC_LINK bleibt leer: electron-builder würde den
+# Schlüsselbund sonst mit dem .p12-Passwort statt dem Bund-Passwort
+# freischalten, und codesign bricht ab.
 set -euo pipefail
 
 is_set() {
@@ -29,10 +32,10 @@ plan() {
   PLAN_NOTICE=""
   PLAN_ERROR=""
 
-  # Nur main darf signieren. Pull Requests sehen die Zertifikate nicht
-  # (CI_ALLOW_SIGNING=false), auch wenn sie in der Umgebung stünden.
+  # Forks setzen CI_ALLOW_SIGNING=false. Pull Requests aus diesem Repo und
+  # main signieren, sobald die Geheimnisse da sind. Veröffentlicht wird nur main.
   if [[ "${CI_ALLOW_SIGNING:-true}" != true ]]; then
-    PLAN_NOTICE="Ohne Signatur: nur ein Lauf auf main signiert und notarisiert. Pull Requests bauen das Paket unsigniert."
+    PLAN_NOTICE="Ohne Signatur: Pull Requests aus einem Fork bekommen die Zertifikate nicht."
     return 0
   fi
 
@@ -113,6 +116,82 @@ write_output() {
   fi
 }
 
+import_apple_intermediate() {
+  local url="$1"
+  local dest="$2"
+  local keychain="$3"
+  if ! curl -fsSL --retry 3 --retry-delay 2 -o "$dest" "$url"; then
+    echo "Zwischenzertifikat nicht geladen ($(basename "$url")); der System-Schlüsselbund muss die Kette tragen." >&2
+    return 0
+  fi
+  if security import "$dest" -k "$keychain" -T /usr/bin/codesign >/dev/null 2>&1; then
+    echo "Zwischenzertifikat: $(basename "$url")"
+  else
+    echo "Zwischenzertifikat nicht importiert ($(basename "$url")); der System-Schlüsselbund muss die Kette tragen." >&2
+  fi
+}
+
+install_signing_keychain() {
+  local cert="$1"
+  local dir="$2"
+  local keychain="$dir/kira-signing.keychain-db"
+  local keychain_password
+  keychain_password="$(openssl rand -base64 24)"
+
+  security delete-keychain "$keychain" >/dev/null 2>&1 || true
+  security create-keychain -p "$keychain_password" "$keychain"
+  security set-keychain-settings -lut 21600 "$keychain"
+  security unlock-keychain -p "$keychain_password" "$keychain"
+
+  import_apple_intermediate "https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer" "$dir/DeveloperIDG2CA.cer" "$keychain"
+  import_apple_intermediate "https://www.apple.com/certificateauthority/DeveloperIDCA.cer" "$dir/DeveloperIDCA.cer" "$keychain"
+  import_apple_intermediate "https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer" "$dir/AppleWWDRCAG3.cer" "$keychain"
+
+  # -A: der Lauf hat keine Oberfläche, die den Schlüsselzugriff bestätigen könnte.
+  if ! security import "$cert" -k "$keychain" -f pkcs12 -P "$MACOS_CERT_PASSWORD" -A \
+    -T /usr/bin/codesign -T /usr/bin/productbuild -T /usr/bin/security >/dev/null; then
+    echo "Das Developer-ID-Zertifikat lässt sich nicht importieren. MACOS_CERT_P12_BASE64 muss ein .p12 mit privatem Schlüssel sein, MACOS_CERT_PASSWORD das dazu gehörige Passwort." >&2
+    exit 1
+  fi
+  if ! security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null; then
+    echo "Der Schlüsselbund gibt den Schlüssel nicht für codesign frei." >&2
+    exit 1
+  fi
+  security default-keychain -s "$keychain"
+
+  local identities identity_name short_name
+  identities="$(security find-identity -v -p codesigning "$keychain")"
+  identity_name="$(printf '%s\n' "$identities" | sed -n 's/.*"\(Developer ID Application:.*\)".*/\1/p' | head -1)"
+  if [[ -z "$identity_name" ]]; then
+    echo "Im .p12 steckt kein „Developer ID Application“-Zertifikat mit privatem Schlüssel." >&2
+    printf '%s\n' "$identities" >&2
+    exit 1
+  fi
+  short_name="${identity_name#Developer ID Application: }"
+  echo "Signatur-Identität: $identity_name"
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    printf 'Signatur-Identität: `%s`\n' "$identity_name" >> "$GITHUB_STEP_SUMMARY"
+  fi
+
+  # Den Bund in die Suchliste, sonst findet codesign die Zwischenzertifikate nicht.
+  local existing=()
+  local line
+  while IFS= read -r line; do
+    line="${line#\"}"
+    line="${line%\"}"
+    [[ -n "$line" ]] || continue
+    existing+=("$line")
+  done < <(security list-keychains -d user | sed 's/^ *//')
+  if [[ ${#existing[@]} -eq 0 ]]; then
+    security list-keychains -d user -s "$keychain" >/dev/null
+  else
+    security list-keychains -d user -s "$keychain" "${existing[@]}" >/dev/null
+  fi
+
+  write_env CSC_KEYCHAIN "$keychain"
+  write_env CSC_NAME "$short_name"
+}
+
 cmd_prepare() {
   plan
   if [[ -n "$PLAN_ERROR" ]]; then
@@ -151,8 +230,11 @@ PY
     echo "MACOS_CERT_P12_BASE64 ist kein PKCS#12-Zertifikat (Developer ID Application als .p12, base64)." >&2
     exit 1
   fi
-  write_env CSC_LINK "$cert"
-  write_secret_env CSC_KEY_PASSWORD "$MACOS_CERT_PASSWORD"
+  # electron-builder legt einen eigenen Schlüsselbund an und ruft
+  # set-key-partition-list mit dem .p12-Passwort auf, nicht mit dem Passwort
+  # dieses Bundes. codesign bleibt dann hängen („User interaction is not
+  # allowed“). Darum importieren wir selbst und geben nur CSC_KEYCHAIN weiter.
+  install_signing_keychain "$cert" "$dir"
 
   if [[ "$PLAN_NOTARIZED" != true ]]; then
     return 0

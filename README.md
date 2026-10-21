@@ -149,7 +149,7 @@ etwa zum Ansehen über einer Vollbild-App).
 
 DMG, ZIP und `latest-mac.yml` (das liest `electron-updater`; das Repo bleibt
 dafür öffentlich). Der Tag ist `v` plus die Version aus `package.json`
-(`0.3.8` → `v0.3.8`). Dieselbe Version wird nicht ein zweites Mal
+(`0.3.9` → `v0.3.9`). Dieselbe Version wird nicht ein zweites Mal
 veröffentlicht.
 
 ### CI
@@ -163,10 +163,12 @@ und jedem Push auf `main`: Abhängigkeiten, Typprüfung, Lint, JavaScript-Tests,
 des Helfers, `electron-builder`.
 
 Ein Push auf `main` legt danach den GitHub-Release an, sofern `v<Version>`
-noch nicht existiert. `v0.3.8` ist schon draußen – der nächste Release entsteht
-erst, wenn die Version in `package.json` steigt. Notizen kommen aus dem
-Abschnitt dieser Version in `CHANGELOG.md`, sonst aus `RELEASE_NOTES.md`.
-`workflow_dispatch` auf `main` macht dasselbe.
+noch nicht existiert. `0.3.9` ist die nächste Version; `v0.3.8` bleibt der
+bisherige Release. Notizen kommen aus dem Abschnitt dieser Version in
+`CHANGELOG.md`, sonst aus `RELEASE_NOTES.md`. `workflow_dispatch` auf `main`
+macht dasselbe. Pull Requests aus diesem Repo signieren und notarisieren mit,
+veröffentlichen aber nicht. Ist das Developer-ID-Zertifikat gesetzt und die
+Signatur oder die Notarisierung misslingt, legt auch `main` kein Release an.
 
 Signatur und Notarisierung hängen an Actions-Geheimnissen (Settings → Secrets
 and variables → Actions):
@@ -184,8 +186,8 @@ Ohne die beiden Zertifikats-Geheimnisse baut und veröffentlicht CI
 trotzdem anbieten, sobald die Version steigt. Notarisierung läuft nur, wenn
 signiert wird und alle drei `ASC_`-Geheimnisse gesetzt sind. Fehlt genau
 eines von beiden Zertifikatswerten, oder ist der API-Schlüssel nur
-halb gesetzt während signiert wird, bricht der Lauf ab. Pull Requests bleiben
-unsigniert: die Zertifikate kommen dort nicht in die Umgebung.
+halb gesetzt während signiert wird, bricht der Lauf ab. Pull Requests aus
+diesem Repo bekommen die Geheimnisse und signieren mit; Forks nicht.
 
 Zertifikat einmalig exportieren, auf dem Mac, in dessen Schlüsselbund das
 Developer-ID-Zertifikat von Team `GRPK3Y82ST` liegt (Schlüsselbund →

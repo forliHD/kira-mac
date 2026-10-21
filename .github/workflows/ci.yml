@@ -13,8 +13,9 @@
 #   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8
 #     App Store Connect API Key, Rohinhalt der .p8. Notarisierung nur, wenn
 #     das Paket signiert wird und alle drei gesetzt sind.
-# Pull Requests bekommen die Zertifikate nicht: electron-builder signiert bei
-# gesetztem GITHUB_BASE_REF ohnehin nicht, und Forks sähen die Geheimnisse sonst.
+# Pull Requests aus diesem Repo signieren mit, veröffentlichen aber nicht.
+# Forks bekommen die Geheimnisse nicht. Ist das Zertifikat gesetzt und die
+# Signatur oder Notarisierung misslingt, legt auch main kein Release an.
 
 name: CI
 
@@ -77,13 +78,15 @@ jobs:
       - name: Signatur vorbereiten
         id: signing
         env:
-          # Auswertung auf dem Server: der Runner sieht die Zertifikate nur auf main.
-          CI_ALLOW_SIGNING: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
-          MACOS_CERT_P12_BASE64: "${{ github.ref == 'refs/heads/main' && secrets.MACOS_CERT_P12_BASE64 || '' }}"
-          MACOS_CERT_PASSWORD: "${{ github.ref == 'refs/heads/main' && secrets.MACOS_CERT_PASSWORD || '' }}"
-          ASC_KEY_ID: "${{ github.ref == 'refs/heads/main' && secrets.ASC_KEY_ID || '' }}"
-          ASC_ISSUER_ID: "${{ github.ref == 'refs/heads/main' && secrets.ASC_ISSUER_ID || '' }}"
-          ASC_KEY_P8: "${{ github.ref == 'refs/heads/main' && secrets.ASC_KEY_P8 || '' }}"
+          # Forks: GitHub liefert die Geheimnisse leer, und CI_ALLOW_SIGNING
+          # bleibt false. Die Werte selbst nicht in den Ausdruck ziehen –
+          # ASC_KEY_P8 enthält Zeilenumbrüche.
+          CI_ALLOW_SIGNING: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'true' || 'false' }}
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: bash scripts/ci-signing.sh prepare
 
       - name: Produktionspaket
@@ -119,4 +122,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ github.sha }}
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
         run: bash scripts/ci-release.sh dist-artifacts

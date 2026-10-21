@@ -25,9 +25,17 @@ unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID APPLE_KEYCHAIN APPLE_KE
 
 args=(--mac --publish never "-c.directories.output=$DIST")
 if [[ "$signed" == true ]]; then
-  if [[ -z "${CSC_LINK:-}" || -z "${CSC_KEY_PASSWORD:-}" ]]; then
-    echo "SIGNED=true, aber CSC_LINK oder CSC_KEY_PASSWORD fehlt." >&2
+  if [[ -z "${CSC_KEYCHAIN:-}" || -z "${CSC_NAME:-}" ]]; then
+    echo "SIGNED=true, aber CSC_KEYCHAIN oder CSC_NAME fehlt." >&2
     exit 1
+  fi
+  # Ein leeres CSC_LINK würde electron-builder als Zertifikatspfad lesen
+  # und den eigenen, falsch freigeschalteten Schlüsselbund anlegen.
+  unset CSC_LINK CSC_KEY_PASSWORD || true
+  # electron-builder signiert Pull Requests nur mit diesem Schalter. Forks
+  # sehen die Geheimnisse nicht; hier ist die Signatur schon beschlossen.
+  if [[ -n "${GITHUB_BASE_REF:-}" ]]; then
+    export CSC_FOR_PULL_REQUEST=true
   fi
   if [[ "$notarized" != true ]]; then
     unset APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER || true
@@ -69,6 +77,9 @@ fi
 if [[ -f "$DIST/latest-mac-arm64.yml" ]]; then
   cp "$DIST/latest-mac-arm64.yml" "$stage/"
 fi
+# Erst die echte Prüfung. signing.env meldet das Ergebnis, nicht die Absicht.
+# Schlägt codesign, spctl oder stapler fehl, endet das Skript vorher.
+bash "$ROOT/scripts/ci-verify-macos.sh" "$DIST"
 cat > "$stage/signing.env" <<EOF
 signed=$signed
 notarized=$notarized

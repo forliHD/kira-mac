@@ -6,13 +6,16 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-10-21
+
 ### Hinzugefügt
 - GitHub Actions auf `xcode-27` (Apple Silicon, macOS-SDK 27): Abhängigkeiten,
   Typprüfung, Lint, Tests, Swift-Helfer inklusive der Fehlerzuordnung beim
   Diktat-Download, Produktionspaket. Ein Push auf `main` legt den
   GitHub-Release `v<Version>` an (DMG, ZIP, `latest-mac.yml`), wenn es ihn
-  noch nicht gibt. Ohne Developer-ID-Zertifikat in den Actions-Geheimnissen
-  bleibt das Paket unsigniert.
+  noch nicht gibt. Mit Developer-ID-Zertifikat und App-Store-Connect-Schlüssel
+  wird signiert und notarisiert. Ist das Zertifikat gesetzt, die Signatur
+  oder die Notarisierung aber misslungen, wird nichts veröffentlicht.
 
 ### Behoben
 - **Diktat-Modell fehlt, und der Download tat nichts.** Der Helfer konnte das
