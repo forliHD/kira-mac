@@ -6,6 +6,50 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-21
+
+Phase 3 des Plans „Schnellfenster & Diktat“ (KIRA-Repo,
+`docs/mac-app-schnellfenster-diktat-plan.md`; Owner-Entscheid D1/D2 = Ja):
+das Schnellfenster wird vom Spotlight-Feld zum Gespräch.
+
+### Hinzugefügt
+- **Zwei Stufen.** Leer ist das Schnellfenster eine Leiste: Eingabe mit der
+  K-Kachel, Vorschläge, Fußleiste – die Höhe folgt dem Inhalt wie bisher. Mit
+  der ersten Nachricht nimmt es EINMAL die Gesprächshöhe an (Standard 60 % der
+  Arbeitsfläche, mindestens 420 pt), der Verlauf liegt oben und scrollt innen,
+  die Eingabe bleibt unten. Danach springt nichts mehr; der untere Rand lässt
+  sich ziehen, die gezogene Höhe wird je Bildschirm gemerkt (Einstellung).
+  Die Diktate-Ansicht (⌘2) nutzt dieselbe Höhe. Die Oberkante bleibt bei
+  10 %, oder das Fenster sitzt mittig (Einstellung „Lage“).
+- **Einstellungen → Schnellfenster** (neuer Bereich): Lage, Höhe im Gespräch
+  (40–90 %), gezogene Höhe merken (mit „Vergessen“), Textgröße (Klein/
+  Normal/Groß), Senden mit ↩ oder ⌘↩ (dann ↩ = Zeile, „Im Hauptfenster“ auf
+  ⌘⇧↩), nach dem Senden offen lassen oder schließen (die fertige Antwort kommt
+  als Mitteilung, Klick öffnet das Fenster), Gespräch fortsetzen oder neu nach
+  10/30/60 Minuten Ruhe (Standard 30), Vorschläge anzeigen, Mikrofon-Knopf.
+  Das Zahnrad in der Fußleiste öffnet den Bereich.
+- **Diktate-Ansicht:** Tagesgruppen („Heute“, „Gestern“, Datum) mit Uhrzeit je
+  Karte, **Erneut einsetzen** (das Fenster geht zu, der Text landet im
+  Programm, das davor vorn war – Bedienungshilfen nötig), „Verlauf leeren“ in
+  der Fußleiste, schlanke Suche statt der Chat-Eingabe.
+
+### Geändert
+- **Keine Kopfzeile mehr.** Marke und Verbindungsstatus sind ein Punkt auf der
+  K-Kachel in der Eingabe (Tooltip erklärt), die Fußleiste trägt Chat | Diktate,
+  die Tastenhinweise, rechts „Neuer Chat“ und „Im Hauptfenster“ (im Gespräch),
+  den kurzen Instanznamen („kira-dev“ statt des ganzen Hosts) und das Zahnrad.
+  Die Fußleiste ist der Zieh-Bereich des Fensters. Die leere Leiste ist damit
+  rund ein Viertel niedriger als in 0.4.0.
+- Ohne Verbindung steht der Hinweis zum Apple-Modell unter der Eingabe statt
+  der Vorschläge; „Antworten landen im Chat-Verlauf“ ist der Tooltip des Status.
+- Der Stufenwechsel baut die Eingabe nicht neu auf (CSS-Reihenfolge statt
+  neuer Elemente) – Fokus und Schreibmarke bleiben.
+
+### Nicht gemacht (bewusst)
+- Eigenes Erscheinungsbild (Hell/Dunkel) für das Schnellfenster: das Glas
+  zeichnet macOS nach dem System; eine eigene Wahl würde nur den Text umfärben.
+- Programm-Symbole an den Diktate-Karten: kommen mit der Pille in Phase 2.
+
 ## [0.4.0] - 2026-10-21
 
 Phase 1 des Plans „Schnellfenster & Diktat“ (KIRA-Repo,

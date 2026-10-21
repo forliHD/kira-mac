@@ -64,6 +64,11 @@ html.quick body {
   --q-quote-line: light-dark(rgba(2, 132, 199, 0.45), rgba(56, 189, 248, 0.5));
   --q-scroll: light-dark(rgba(21, 23, 28, 0.22), rgba(255, 255, 255, 0.22));
 
+  /* Textgröße (Einstellung): Klein, Normal, Groß – skaliert Eingabe und Fließtext. */
+  --q-fs: 14px;
+  --q-fs-input: 15px;
+  --q-fs-meta: 12px;
+
   position: relative;
   isolation: isolate;
   box-sizing: border-box;
@@ -72,12 +77,12 @@ html.quick body {
   gap: 12px;
   width: 100%;
   max-height: 100vh;
-  padding: 16px 20px 12px;
+  padding: 14px 18px 10px;
   border-radius: 26px;
   overflow: hidden;
   outline: none;
   color: var(--q-text);
-  font-size: 14px;
+  font-size: var(--q-fs);
   line-height: 1.5;
   text-shadow: 0 1px 2px var(--q-shadow);
   /* Lichtkante wie das Glas (Radius 26 px): feiner Ring, heller Oberrand, dunkler Unterrand. */
@@ -85,6 +90,59 @@ html.quick body {
     inset 0 0 0 1px var(--q-edge-ring),
     inset 0 1px 0 var(--q-edge-top),
     inset 0 -1px 0 var(--q-edge-bottom);
+}
+
+.qw[data-text="s"] {
+  --q-fs: 13px;
+  --q-fs-input: 14px;
+  --q-fs-meta: 11.5px;
+}
+.qw[data-text="l"] {
+  --q-fs: 15.5px;
+  --q-fs-input: 16.5px;
+  --q-fs-meta: 12.5px;
+}
+
+/* Stufe B (Gespräch, Diktate): das Fenster hat die Gesprächshöhe, der
+   Verlauf füllt den Platz und scrollt innen. Reihenfolge über `order`, damit
+   die Eingabe beim Stufenwechsel nicht neu aufgebaut wird (Fokus bleibt). */
+.qw.is-tall {
+  height: 100vh;
+}
+.qw.is-tall.view-chat .q-thread {
+  order: 0;
+  flex: 1 1 auto;
+}
+.qw.is-tall.view-chat .q-composer {
+  order: 1;
+}
+.qw.is-tall.view-chat .q-notice,
+.qw.is-tall.view-chat .q-update {
+  order: 2;
+}
+.qw.is-tall.view-chat .q-foot {
+  order: 3;
+}
+/* Diktate: Suche oben, Liste darunter, Fußleiste unten. */
+.qw.view-dictations .q-composer {
+  order: 0;
+}
+.qw.view-dictations .q-notice {
+  order: 1;
+}
+.qw.view-dictations .q-thread {
+  order: 2;
+  flex: 1 1 auto;
+}
+.qw.view-dictations .q-dict-empty {
+  order: 2;
+  flex: 1 1 auto;
+}
+.qw.view-dictations .q-update {
+  order: 3;
+}
+.qw.view-dictations .q-foot {
+  order: 4;
 }
 
 /* „Transparenz reduzieren“: das System zeichnet dann eine feste Fläche – zur
@@ -122,49 +180,83 @@ html.quick body {
   white-space: nowrap;
 }
 
-/* ── Kopfzeile (ganz Zieh-Bereich) ───────────────────────────────────── */
+/* ── K-Kachel in der Eingabe: Marke und Verbindungsstatus in einem ───── */
 
-.q-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 30px;
-  -webkit-app-region: drag;
-}
-.q-head button,
-.q-head a {
-  -webkit-app-region: no-drag;
-}
-
-.q-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.q-logo {
+.q-tile {
+  position: relative;
   flex: none;
   display: grid;
   place-items: center;
   width: 30px;
   height: 30px;
+  margin: 4px 0 4px 2px;
   border-radius: 10px;
   color: #04121b;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: none;
   background: linear-gradient(145deg, #7dd3fc, #38bdf8 55%, #0369a1);
   box-shadow:
-    0 6px 18px -6px rgba(14, 165, 233, 0.9),
+    0 6px 16px -6px rgba(14, 165, 233, 0.9),
     inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  --q-dot: var(--q-text-3);
+}
+.q-tile[data-tone="ok"] {
+  --q-dot: var(--q-ok);
+}
+.q-tile[data-tone="warn"] {
+  --q-dot: var(--q-warn);
+}
+.q-tile[data-tone="err"] {
+  --q-dot: var(--q-err);
+}
+.q-tile-dot {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--q-dot);
+  box-shadow:
+    0 0 0 2px light-dark(rgba(240, 242, 246, 0.9), rgba(16, 19, 26, 0.9)),
+    0 0 8px color-mix(in srgb, var(--q-dot) 80%, transparent);
 }
 
-.q-title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+/* Lupe vor der Suche (Diktate). */
+.q-lead {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin: 4px 0 4px 2px;
+  color: var(--q-text-3);
+}
+
+.q-iconbtn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--q-pill-text);
+  background: var(--q-pill-bg);
+  border: 1px solid var(--q-pill-line);
+  box-shadow: inset 0 1px 0 var(--q-pill-hi);
+  cursor: default;
+  -webkit-app-region: no-drag;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+}
+.q-iconbtn:hover {
   color: var(--q-text-strong);
+  background: var(--q-pill-hover);
+}
+.q-gear {
+  color: var(--q-text-3);
 }
 
 .q-pill {
@@ -175,7 +267,7 @@ html.quick body {
   height: 24px;
   padding: 0 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: var(--q-fs-meta);
   line-height: 1;
   white-space: nowrap;
   color: var(--q-pill-text);
@@ -184,67 +276,47 @@ html.quick body {
   box-shadow: inset 0 1px 0 var(--q-pill-hi);
 }
 
-.q-conn {
+/* Status in der Fußleiste: Punkt + kurzer Name. */
+.q-status {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
   min-width: 0;
-  max-width: 330px;
+  max-width: 200px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: var(--q-fs-meta);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--q-pill-text);
+  background: var(--q-pill-bg);
+  border: 1px solid var(--q-pill-line);
+  -webkit-app-region: no-drag;
   --q-dot: var(--q-text-3);
 }
-.q-conn[data-tone="ok"] {
+.q-status[data-tone="ok"] {
   --q-dot: var(--q-ok);
 }
-.q-conn[data-tone="warn"] {
+.q-status[data-tone="warn"] {
   --q-dot: var(--q-warn);
 }
-.q-conn[data-tone="err"] {
+.q-status[data-tone="err"] {
   --q-dot: var(--q-err);
+}
+.q-status svg {
+  flex: none;
+  color: var(--q-text-3);
 }
 
 .q-dot {
   flex: none;
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--q-dot);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--q-dot) 85%, transparent);
-}
-
-.q-head-actions {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.q-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--q-text-3);
-}
-.q-kbds {
-  display: inline-flex;
-  gap: 4px;
-}
-
-.q-iconbtn {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 10px;
-  color: var(--q-pill-text);
-  background: var(--q-pill-bg);
-  border: 1px solid var(--q-pill-line);
-  box-shadow: inset 0 1px 0 var(--q-pill-hi);
-  cursor: default;
-  transition:
-    background-color 0.15s,
-    color 0.15s;
-}
-.q-iconbtn:hover {
-  color: var(--q-text-strong);
-  background: var(--q-pill-hover);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--q-dot) 85%, transparent);
 }
 
 .q-kbd {
@@ -278,7 +350,7 @@ html.quick body {
   align-items: flex-end;
   gap: 8px;
   min-height: 54px;
-  padding: 7px 7px 7px 16px;
+  padding: 7px 7px 7px 8px;
   border-radius: 16px;
   background: var(--q-sunk);
   border: 1px solid var(--q-sunk-line);
@@ -320,7 +392,7 @@ html.quick body {
   outline: 0;
   background: transparent;
   font: inherit;
-  font-size: 15px;
+  font-size: var(--q-fs-input);
   font-weight: 500;
   line-height: 22px;
   letter-spacing: -0.005em;
@@ -340,6 +412,24 @@ html.quick body {
 }
 .qw .q-input:focus-visible {
   outline: none;
+}
+
+/* Suche (Diktate): schlanker als die Chat-Eingabe. */
+.q-composer.is-search {
+  min-height: 42px;
+  padding: 3px 10px 3px 6px;
+  border-radius: 12px;
+}
+.q-composer.is-search .q-input {
+  min-height: 30px;
+  padding: 4px 0;
+  font-size: var(--q-fs);
+  font-weight: 400;
+}
+.q-composer.is-search .q-lead {
+  width: 26px;
+  height: 26px;
+  margin: 2px 0;
 }
 
 .q-partial {
@@ -447,8 +537,8 @@ html.quick body {
 .q-thread {
   flex: 0 1 auto;
   min-height: 0;
-  margin: 0 -12px;
-  padding: 2px 12px 4px;
+  margin: 0 -10px;
+  padding: 2px 10px 4px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -890,41 +980,46 @@ html.quick body {
   margin-top: 1px;
   color: var(--q-err);
 }
+.q-offline.is-local svg {
+  color: var(--q-warn);
+}
 
 .q-foot {
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding-top: 10px;
+  min-height: 30px;
+  padding-top: 8px;
   border-top: 1px solid var(--q-rule);
-  font-size: 12px;
+  font-size: var(--q-fs-meta);
   color: var(--q-text-3);
+  /* Ohne Kopfzeile ist die Fußleiste der Zieh-Bereich des Fensters. */
+  -webkit-app-region: drag;
+}
+.q-foot button,
+.q-foot [role="tablist"] {
+  -webkit-app-region: no-drag;
 }
 .q-keys {
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
+  min-width: 0;
+  overflow: hidden;
   white-space: nowrap;
 }
 .q-keys > span {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
-.q-foot-pill {
-  min-width: 0;
-}
-.q-foot-pill svg {
+.q-foot-right {
   flex: none;
-  color: var(--q-accent);
-}
-.q-foot-pill[data-icon="chip"] svg {
-  color: var(--q-warn);
-}
-.q-foot-pill[data-icon="off"] svg {
-  color: var(--q-err);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* ── Bewegung ────────────────────────────────────────────────────────── */
@@ -1105,12 +1200,12 @@ html.quick body {
 .q-seg-btn {
   all: unset;
   box-sizing: border-box;
-  height: 24px;
-  padding: 0 11px;
-  border-radius: 8px;
-  font-size: 12px;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: var(--q-fs-meta);
   font-weight: 500;
-  line-height: 24px;
+  line-height: 22px;
   color: var(--q-text-3);
   cursor: default;
 }
@@ -1141,6 +1236,25 @@ html.quick body {
 }
 .q-dict-log {
   padding-top: 2px;
+}
+.q-dict-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.q-dict-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.q-dict-day {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--q-text-3);
 }
 .q-dict-list {
   list-style: none;

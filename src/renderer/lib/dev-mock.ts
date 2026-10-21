@@ -160,6 +160,7 @@ function initialState(page: MockPage, p: URLSearchParams): LocalState {
           },
     hotkeys: { quickWindow: "Alt+Space", dictation: p.get("fn") ? FN_HOTKEY : "Control+Alt+D" },
     dictation: { locale: "de-DE", commands: true, dashboardStt: true, correctVocabulary: true },
+    quick: { position: "top", chatHeightShare: 0.6, rememberHeight: true, heights: { d1: 700 }, textSize: "m", sendKey: "enter", afterSend: "stay", resetAfterMin: 30, suggestions: true, dictationButton: true },
     general: { launchAtLogin: true, notifications: true },
     connection: offline
       ? { online: false, origin: null, kind: null, serverVersion: null, serverHasBridge: false, lastError: MOCK_OFFLINE_REASON, lastOnlineAt: Date.now() - 120_000 }
@@ -246,6 +247,7 @@ function createMockApi(page: MockPage, p: URLSearchParams): KiraLocalApi {
     connection: { online: true, label: "kira.example.de" },
     dictation: { available: true, active: false, level: 0, partial: "", reason: null },
     hotkeys: state.hotkeys,
+    prefs: { textSize: "m", sendKey: "enter", suggestions: true, dictationButton: true },
   };
   const log = (what: string): void => console.info(`[Attrappe] ${what}`);
 
@@ -355,6 +357,10 @@ function createMockApi(page: MockPage, p: URLSearchParams): KiraLocalApi {
     quickHide: async () => undefined,
     quickResize: async () => undefined,
     quickToggleDictation: async () => undefined,
+    quickSetTall: async () => undefined,
+    quickReinsertDictation: async () => undefined,
+    setQuick: async (quick) => setState({ ...state, quick: { ...quick, heights: state.quick.heights } }),
+    resetQuickHeights: async () => setState({ ...state, quick: { ...state.quick, heights: {} } }),
     dictationTestState: async () => ({ test: { active: false, kind: null, reference: "", text: "", partial: "", level: 0, listening: false, startedAt: null, reason: null }, results: [] }),
     dictationTestStart: async (kind) => ({ active: true, kind, reference: "Vorschau ohne Hülle.", text: "", partial: "", level: 0, listening: false, startedAt: null, reason: null }),
     dictationTestStop: async () => undefined,

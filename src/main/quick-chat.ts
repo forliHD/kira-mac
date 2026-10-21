@@ -12,7 +12,7 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 
-import { type HotkeyConfig, type QuickDictation, type QuickMessage, type QuickState, type QuickTool } from "../shared/local-api";
+import { type HotkeyConfig, type QuickDictation, type QuickMessage, type QuickPrefs, type QuickState, type QuickTool } from "../shared/local-api";
 import { type Logger, silentLogger } from "../shared/logger";
 import { SseParser, pumpSseStream } from "./sse";
 
@@ -32,6 +32,8 @@ export interface QuickChatDeps {
   local: QuickChatLocalModel;
   connection: () => { online: boolean; label: string };
   hotkeys: () => HotkeyConfig;
+  /** Einstellungen der Seite (Textgröße, Sendetaste, Vorschläge, Mikro-Knopf); Standard: alles an, ↩ sendet. */
+  prefs?: () => QuickPrefs;
   /** Netzfehler beim Senden: die Hülle prüft die Verbindung neu. */
   onNetworkError?: () => void;
   log?: Logger;
@@ -207,6 +209,8 @@ export class QuickChat extends EventEmitter<QuickChatEvents> {
   private pending = false;
   private dictation: QuickDictation = { available: false, active: false, level: 0, partial: "", reason: null };
   private localStatusCache: { at: number; available: boolean; reason: string | null } | null = null;
+  /** Letzte Frage oder Antwort (ms) – „Neu nach n Minuten Ruhe“ beim Öffnen. */
+  private lastActivity: number | null = null;
 
   constructor(deps: QuickChatDeps) {
     super();
@@ -222,6 +226,19 @@ export class QuickChat extends EventEmitter<QuickChatEvents> {
     return this.abort !== null;
   }
 
+  get lastActivityAt(): number | null {
+    return this.lastActivity;
+  }
+
+  /** Letzte Antwort des Assistenten (fertig), z. B. für die Mitteilung nach „Fenster schließen“. */
+  lastAnswer(): QuickMessage | null {
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const m = this.messages[i];
+      if (m && m.role === "assistant" && m.status !== "streaming") return m;
+    }
+    return null;
+  }
+
   getState(): QuickState {
     const conn = this.deps.connection();
     const localOk = this.localStatusCache?.available ?? false;
@@ -233,6 +250,7 @@ export class QuickChat extends EventEmitter<QuickChatEvents> {
       connection: conn,
       dictation: { ...this.dictation },
       hotkeys: this.deps.hotkeys(),
+      prefs: this.deps.prefs?.() ?? { textSize: "m", sendKey: "enter", suggestions: true, dictationButton: true },
     };
   }
 
@@ -250,6 +268,7 @@ export class QuickChat extends EventEmitter<QuickChatEvents> {
   async send(text: string): Promise<void> {
     const message = text.trim();
     if (!message || this.busy) return;
+    this.lastActivity = (this.deps.now ?? Date.now)();
     const user = newMessage("user", message);
     const assistant = newMessage("assistant", "");
     assistant.activity = "Denkt nach…";
@@ -264,6 +283,7 @@ export class QuickChat extends EventEmitter<QuickChatEvents> {
       if (!controller.signal.aborted) this.fail(assistant, err instanceof Error ? err.message : String(err));
     } finally {
       if (this.abort === controller) this.abort = null;
+      this.lastActivity = (this.deps.now ?? Date.now)();
       this.changed();
     }
   }
@@ -286,6 +306,7 @@ export class QuickChat extends EventEmitter<QuickChatEvents> {
     if (this.abort) void this.stop();
     this.messages = [];
     this.session = null;
+    this.lastActivity = null;
     this.changed();
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { QUICK_MIN_HEIGHT, QUICK_WIDTH, quickHeight, quickLeft, quickMaxHeight, quickTop } from "../src/main/windows/quick-geometry";
+import { QUICK_MIN_HEIGHT, QUICK_TALL_MIN, QUICK_WIDTH, clampShare, displayKey, quickHeight, quickLeft, quickMaxHeight, quickTallHeight, quickTop } from "../src/main/windows/quick-geometry";
 
 // Owner-Wunsch 02.10.2026: Schnellfenster höher ansetzen und mehr vom Bildschirm
 // nutzen. Arbeitsfläche eines 16-Zoll-MacBook (1728 × 1117 pt, Menüleiste 37 pt,
@@ -48,5 +48,46 @@ describe("Schnellfenster: Lage und Höhe", () => {
   it("steht waagerecht mittig, auch auf einem zweiten Bildschirm rechts", () => {
     expect(quickLeft(MBP16)).toBe((1728 - QUICK_WIDTH) / 2);
     expect(quickLeft({ x: 1728, y: 0, width: 2560, height: 1415 })).toBe(1728 + (2560 - QUICK_WIDTH) / 2);
+  });
+});
+
+describe("Schnellfenster: zwei Stufen (Phase 3)", () => {
+  it("Gesprächshöhe = Anteil der Arbeitsfläche, begrenzt auf den Platz bis unten", () => {
+    const top = quickTop(MBP16);
+    expect(quickTallHeight(MBP16, top, 0.6)).toBe(648);
+    expect(quickTallHeight(MBP16, top, 0.9)).toBe(quickMaxHeight(MBP16, top)); // 972 > 928
+    expect(quickTallHeight(AIR13, quickTop(AIR13), 0.4)).toBe(QUICK_TALL_MIN); // 338 < 420
+    expect(quickTallHeight(MBP16, top, 2)).toBe(quickMaxHeight(MBP16, top));
+    expect(quickTallHeight(MBP16, top, Number.NaN)).toBe(648);
+  });
+
+  it("die gemerkte Höhe gewinnt, aber nur innerhalb der Grenzen", () => {
+    const top = quickTop(MBP16);
+    expect(quickTallHeight(MBP16, top, 0.6, 700)).toBe(700);
+    expect(quickTallHeight(MBP16, top, 0.6, 5000)).toBe(quickMaxHeight(MBP16, top));
+    expect(quickTallHeight(MBP16, top, 0.6, 100)).toBe(QUICK_TALL_MIN);
+    expect(quickTallHeight(MBP16, top, 0.6, null)).toBe(648);
+  });
+
+  it("auf winzigen Flächen gilt der Platz, nicht die Mindesthöhe", () => {
+    const tiny = { x: 0, y: 25, width: 1280, height: 400 };
+    const top = quickTop(tiny);
+    expect(quickTallHeight(tiny, top, 0.9)).toBe(quickMaxHeight(tiny, top));
+    expect(quickTallHeight(tiny, top, 0.9)).toBeLessThan(QUICK_TALL_MIN);
+  });
+
+  it("Lage „mittig“ zentriert das Fenster seiner Höhe nach, aber nie über die 10 %", () => {
+    expect(quickTop(MBP16, "center", 648)).toBe(Math.round(37 + (1080 - 648) / 2));
+    expect(quickTop(MBP16, "center", 132)).toBe(Math.round(37 + (1080 - 132) / 2));
+    expect(quickTop(MBP16, "center", 1000)).toBe(quickTop(MBP16));
+    expect(quickTop(MBP16, "top", 648)).toBe(quickTop(MBP16));
+  });
+
+  it("Anteil wird auf 0,4 … 0,9 begrenzt; Bildschirm-Kennung aus ID oder Fläche", () => {
+    expect(clampShare(0.1)).toBe(0.4);
+    expect(clampShare(1)).toBe(0.9);
+    expect(clampShare(0.62)).toBe(0.62);
+    expect(displayKey(2077750397, MBP16)).toBe("d2077750397");
+    expect(displayKey(null, MBP16)).toBe("1728x1080");
   });
 });

@@ -68,6 +68,7 @@ function base(): QuickState {
     connection: { online: true, label: "kira.reiser.de" },
     dictation: { available: true, active: false, level: 0, partial: "", reason: null },
     hotkeys: { quickWindow: "Alt+Space", dictation: "Control+Alt+D" },
+    prefs: { textSize: "m", sendKey: "enter", suggestions: true, dictationButton: true },
   };
 }
 
@@ -143,6 +144,11 @@ export function installQuickMock(params: URLSearchParams): void {
   if (backdrop) installBackdrop(backdrop);
 
   let state = scenario(params.get("mock") ?? "1");
+  const text = params.get("text");
+  if (text === "s" || text === "m" || text === "l") state = { ...state, prefs: { ...state.prefs, textSize: text } };
+  if (params.get("send") === "cmd") state = { ...state, prefs: { ...state.prefs, sendKey: "cmd-enter" } };
+  if (params.get("suggestions") === "0") state = { ...state, prefs: { ...state.prefs, suggestions: false } };
+  if (params.get("mic") === "0") state = { ...state, prefs: { ...state.prefs, dictationButton: false } };
   const listeners = new Set<(event: LocalEvent) => void>();
   const emit = (event: LocalEvent): void => listeners.forEach((listener) => listener(event));
   const set = (next: QuickState): void => {
@@ -170,6 +176,10 @@ export function installQuickMock(params: URLSearchParams): void {
     setHotkeys: notInPreview,
     setDictation: notInPreview,
     prepareDictationModel: notInPreview,
+    setQuick: notInPreview,
+    resetQuickHeights: notInPreview,
+    quickSetTall: async () => undefined,
+    quickReinsertDictation: notInPreview,
     dictationTestState: notInPreview,
     dictationTestStart: notInPreview,
     dictationTestStop: notInPreview,

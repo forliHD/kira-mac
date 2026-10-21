@@ -26,10 +26,22 @@ export function updateFade(thread: HTMLElement): void {
   if (thread.dataset.fade !== fade) thread.dataset.fade = fade;
 }
 
-export function useReportHeight(refs: HeightRefs, report: (height: number) => void): void {
+/**
+ * `enabled` false (Stufe B): das Fenster hat die Gesprächshöhe, der Verlauf
+ * scrollt innen – nichts melden; nur die Ausblendung an den Kanten pflegen.
+ */
+export function useReportHeight(refs: HeightRefs, report: (height: number) => void, enabled = true): void {
   useLayoutEffect(() => {
     const root = refs.root.current;
     if (!root) return undefined;
+    if (!enabled) {
+      const thread = refs.thread.current;
+      if (thread && !thread.hidden) {
+        if (refs.follow.current) thread.scrollTop = thread.scrollHeight;
+        updateFade(thread);
+      }
+      return undefined;
+    }
     let frame = 0;
     let last: number | null = null;
 
@@ -60,5 +72,5 @@ export function useReportHeight(refs: HeightRefs, report: (height: number) => vo
       observer.disconnect();
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [refs, report]);
+  }, [refs, report, enabled]);
 }

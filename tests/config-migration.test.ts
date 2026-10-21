@@ -58,3 +58,37 @@ describe("Konfiguration: Kürzel des globalen Diktats", () => {
     expect(normalizeConfig({ dictationTests: "nein" }).dictationTests).toEqual([]);
   });
 });
+
+describe("Konfiguration: Schnellfenster (Phase 3)", () => {
+  it("Standards: oben, 60 %, Höhe merken, ↩ sendet, offen lassen, neu nach 30 min", () => {
+    const q = normalizeConfig({}).quick;
+    expect(q).toEqual({
+      position: "top",
+      chatHeightShare: 0.6,
+      rememberHeight: true,
+      heights: {},
+      textSize: "m",
+      sendKey: "enter",
+      afterSend: "stay",
+      resetAfterMin: 30,
+      suggestions: true,
+      dictationButton: true,
+    });
+  });
+
+  it("begrenzt den Anteil, kennt nur bekannte Werte und hält nur plausible Höhen", () => {
+    const q = normalizeConfig({
+      quick: { position: "center", chatHeightShare: 1.5, textSize: "xl", sendKey: "cmd-enter", afterSend: "hide", resetAfterMin: 45, suggestions: false, heights: { d1: 700.4, d2: 12, "bad key!": 500, d3: "x" } },
+    }).quick;
+    expect(q.position).toBe("center");
+    expect(q.chatHeightShare).toBe(0.9);
+    expect(q.textSize).toBe("m");
+    expect(q.sendKey).toBe("cmd-enter");
+    expect(q.afterSend).toBe("hide");
+    expect(q.resetAfterMin).toBe(30);
+    expect(q.suggestions).toBe(false);
+    expect(q.heights).toEqual({ d1: 700 });
+    expect(normalizeConfig({ quick: { chatHeightShare: 0.1 } }).quick.chatHeightShare).toBe(0.4);
+    expect(normalizeConfig({ quick: { resetAfterMin: 0 } }).quick.resetAfterMin).toBe(0);
+  });
+});

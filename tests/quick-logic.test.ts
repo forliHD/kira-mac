@@ -5,10 +5,13 @@ import {
   activityLine,
   connectionPill,
   desiredHeight,
+  dictationClock,
   dictationTime,
   filterDictations,
+  footerHints,
   footerNote,
   formatAccelerator,
+  groupDictations,
   groupTools,
   insertText,
   isSubmitKey,
@@ -16,7 +19,10 @@ import {
   micLevel,
   moveSelection,
   partialPreview,
+  quickStage,
+  shortHost,
   shouldReport,
+  statusChip,
   stoppedNote,
   suggestionsFor,
 } from "../src/renderer/quick/logic";
@@ -180,5 +186,58 @@ describe("Diktate-Ansicht", () => {
     expect(moveSelection(2, 1, 3)).toBe(2);
     expect(moveSelection(1, 1, 3)).toBe(2);
     expect(moveSelection(0, 1, 0)).toBe(-1);
+  });
+});
+
+describe("Zwei Stufen und Fußleiste (Phase 3)", () => {
+  it("Stufe: Leiste nur im leeren Chat, sonst Gesprächshöhe", () => {
+    expect(quickStage("chat", false, false)).toBe("bar");
+    expect(quickStage("chat", true, false)).toBe("tall");
+    expect(quickStage("chat", false, true)).toBe("tall");
+    expect(quickStage("dictations", false, false)).toBe("tall");
+  });
+
+  it("kurzer Instanzname und Status-Chip", () => {
+    expect(shortHost("kira-dev.it-reiser.cloud")).toBe("kira-dev");
+    expect(shortHost("kira.reiser.de")).toBe("kira");
+    expect(shortHost("192.168.178.166")).toBe("192.168.178.166");
+    expect(shortHost("localhost")).toBe("localhost");
+    expect(statusChip(null)).toMatchObject({ tone: "idle", text: "Verbinde…" });
+    expect(statusChip({ mode: "server", connection: { online: true, label: "kira-dev.it-reiser.cloud" } })).toMatchObject({ tone: "ok", text: "kira-dev" });
+    expect(statusChip({ mode: "server", connection: { online: true, label: "kira-dev.it-reiser.cloud" } }).title).toContain("Chat-Verlauf");
+    expect(statusChip({ mode: "local", connection: { online: false, label: "x" } })).toMatchObject({ tone: "warn", text: "Apple-Modell" });
+    expect(statusChip({ mode: "offline", connection: { online: false, label: "x" } })).toMatchObject({ tone: "err", text: "Offline" });
+  });
+
+  it("Sendetaste ⌘↩: ↩ macht die Zeile, ⌘↩ sendet, ⌘⇧↩ öffnet das Hauptfenster", () => {
+    expect(isSubmitKey(key("Enter"), "cmd-enter")).toBe(false);
+    expect(isSubmitKey(key("Enter", { metaKey: true }), "cmd-enter")).toBe(true);
+    expect(isSubmitKey(key("Enter", { metaKey: true, shiftKey: true }), "cmd-enter")).toBe(false);
+    expect(isSubmitKey(key("Enter", { metaKey: true }), "enter")).toBe(false);
+    expect(keyAction(key("Enter", { metaKey: true }), { hasSession: true, sendKey: "cmd-enter" })).toBeNull();
+    expect(keyAction(key("Enter", { metaKey: true, shiftKey: true }), { hasSession: true, sendKey: "cmd-enter" })).toBe("open-main");
+    expect(keyAction(key("Enter", { metaKey: true, shiftKey: true }), { hasSession: true, sendKey: "enter" })).toBeNull();
+  });
+
+  it("Tastenhinweise je Ansicht und Sendetaste", () => {
+    expect(footerHints("chat", false).map((h) => h.keys)).toEqual(["↩", "esc"]);
+    expect(footerHints("chat", true).map((h) => h.keys)).toEqual(["↩", "⌘↩", "esc"]);
+    expect(footerHints("chat", true, "cmd-enter").map((h) => h.keys)).toEqual(["⌘↩", "⌘⇧↩", "esc"]);
+    expect(footerHints("dictations", true).map((h) => h.label)).toEqual(["kopieren", "in den Chat", "schließen"]);
+  });
+
+  it("Diktate nach Tagen, Uhrzeit innerhalb des Tages", () => {
+    const now = new Date(2026, 9, 21, 14, 0).getTime();
+    const e = (id: string, at: number) => ({ id, at, app: "Mail", target: "insert" as const, text: id, failed: false });
+    const groups = groupDictations(
+      [e("a", now - 30_000), e("b", new Date(2026, 9, 21, 9, 5).getTime()), e("c", new Date(2026, 9, 20, 18, 30).getTime()), e("d", new Date(2026, 9, 12, 8, 0).getTime())],
+      now,
+    );
+    expect(groups.map((g) => g.label)).toEqual(["Heute", "Gestern", "Mo., 12.10."]);
+    expect(groups.map((g) => g.entries.map((x) => x.id))).toEqual([["a", "b"], ["c"], ["d"]]);
+    expect(dictationClock(now - 30_000, now)).toBe("gerade eben");
+    expect(dictationClock(now - 4 * 60_000, now)).toBe("vor 4 Min.");
+    expect(dictationClock(new Date(2026, 9, 21, 9, 5).getTime(), now)).toBe("09:05");
+    expect(groupDictations([], now)).toEqual([]);
   });
 });
