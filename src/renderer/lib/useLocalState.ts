@@ -60,6 +60,9 @@ export function useLocalState(options: UseLocalStateOptions = {}): {
         if (event.type === "state") setState(event.state);
         else if (event.type === "connection") setState((s) => (s ? { ...s, connection: event.connection } : s));
         else if (event.type === "update") setState((s) => (s ? { ...s, update: event.update } : s));
+        else if (event.type === "dictation-model") {
+          setState((s) => (s ? { ...s, dictationStatus: { ...s.dictationStatus, modelDownload: event.download } } : s));
+        }
       });
     } catch (err) {
       setError(errorText(err));

@@ -169,6 +169,7 @@ export function installQuickMock(params: URLSearchParams): void {
     finishOnboarding: notInPreview,
     setHotkeys: notInPreview,
     setDictation: notInPreview,
+    prepareDictationModel: notInPreview,
     setGeneral: notInPreview,
     requestPermission: notInPreview,
     checkForUpdates: notInPreview,

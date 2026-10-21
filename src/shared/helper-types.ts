@@ -30,11 +30,44 @@ export interface PermissionsStatus {
 
 export type PermissionKind = "microphone" | "speech" | "accessibility" | "screenRecording";
 
+/** Maschinenlesbar, warum `stt.status` nicht bereit ist (docs/helper-protocol.md). */
+export type SttAssetCode =
+  | "ok"
+  | "unsupported_os"
+  | "unsupported_locale"
+  | "assets_missing"
+  | "downloading"
+  | "unavailable"
+  | "unknown";
+
+/** Was der Helfer zum Stand des Diktat-Modells mitschickt – fürs Protokoll und die Einstellungen. */
+export interface SttDiagnostics {
+  macos: string;
+  /** `arm64` oder `x86_64`. */
+  arch: string;
+  chip: string;
+  locale: string;
+  /** Bevorzugte Sprachen des Macs, kommagetrennt. */
+  preferred?: string;
+  /** Rohzustand von AssetInventory, bei zwei Modulen `stream=…,file=…`. */
+  assetState: string;
+  speech: string;
+  microphone: string;
+  downloadable: boolean;
+}
+
 export interface HelperSttStatus {
   available: boolean;
   engine: "analyzer" | "legacy" | null;
   assets: "installed" | "downloading" | "missing";
   reason?: string;
+  code?: SttAssetCode;
+  /** Download aus der App möglich (SpeechAnalyzer). Ältere Helfer lassen das weg. */
+  downloadable?: boolean;
+  locale?: string;
+  /** 0…1, nur während eines Downloads, sonst null. */
+  progress?: number | null;
+  diagnostics?: SttDiagnostics;
 }
 
 export interface SttFileResult {

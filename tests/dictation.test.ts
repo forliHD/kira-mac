@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { type DictationHelper, type DictationSession, GlobalDictation, buildContextualStrings, isPunctuationOnly, pieceToInsert, splitVocabulary } from "../src/main/dictation";
 import { applyDictationCommands, joinDictation } from "../src/shared/dictationText.js";
-import { type HelperEvent, type HelperInfo } from "../src/shared/helper-types";
+import { type HelperEvent, type HelperInfo, type HelperSttStatus } from "../src/shared/helper-types";
 import { type HudState } from "../src/shared/local-api";
 
 describe("Diktierbefehle (Kopie aus dem Dashboard)", () => {
@@ -64,9 +64,13 @@ class FakeHelper extends EventEmitter implements DictationHelper {
   };
   readonly calls: Array<{ cmd: string; params?: Record<string, unknown> }> = [];
   permissions = { microphone: "granted", speech: "granted", accessibility: true, screenRecording: false };
-  sttStatus: { available: boolean; engine: string | null; assets: string; reason?: string } = { available: true, engine: "analyzer", assets: "installed" };
+  sttStatus: HelperSttStatus = { available: true, engine: "analyzer", assets: "installed" };
   /** Hält `stt.start` auf, bis die Zusage erfüllt ist (Start dauert). */
   sttStartGate: Promise<void> | null = null;
+  /** Wirft `stt.prepare` mit diesem Text. */
+  prepareError: string | null = null;
+  /** Eigener `stt.prepare`-Lauf (Fortschritt), sonst gilt das Modell danach als da. */
+  prepareImpl: (() => Promise<void> | void) | null = null;
   /** Diese Äußerungen spült `stt.stop` noch als `stt.final`, bevor `stt.ended` kommt. */
   flushOnStop: string[] = [];
 
@@ -87,6 +91,13 @@ class FakeHelper extends EventEmitter implements DictationHelper {
     switch (cmd) {
       case "stt.status":
         return Promise.resolve(this.sttStatus as unknown as T);
+      case "stt.prepare":
+        if (this.prepareError) return Promise.reject(new Error(this.prepareError));
+        if (this.prepareImpl) {
+          return Promise.resolve(this.prepareImpl()).then(() => ({ assets: "installed" }) as unknown as T);
+        }
+        this.sttStatus = { available: true, engine: "analyzer", assets: "installed" };
+        return Promise.resolve({ assets: "installed" } as unknown as T);
       case "permissions.status":
         return Promise.resolve({ ...this.permissions } as unknown as T);
       case "text.frontmost":
@@ -279,6 +290,55 @@ describe("GlobalDictation", () => {
     expect(helper.calls.find((c) => c.cmd === "stt.stop")?.params).toEqual({ stream: "dictation" });
     expect(dictation.currentState).toBe("idle");
     expect(hud.hide).toHaveBeenCalled();
+  });
+
+  it("lädt ein fehlendes Diktat-Modell und startet die Erkennung danach", async () => {
+    const helper = new FakeHelper();
+    helper.sttStatus = {
+      available: false,
+      engine: "analyzer",
+      assets: "missing",
+      downloadable: true,
+      reason: "Diktat-Modell fehlt: Für „de-DE“ ist noch keines installiert.",
+    };
+    const { dictation } = build(helper);
+    await dictation.start();
+    const cmds = helper.calls.map((c) => c.cmd);
+    expect(cmds.indexOf("stt.prepare")).toBeGreaterThanOrEqual(0);
+    expect(cmds.indexOf("stt.prepare")).toBeLessThan(cmds.indexOf("stt.start"));
+    expect(dictation.currentState).toBe("listening");
+  });
+
+  it("zeigt den Ladefortschritt und den Fehler, wenn das Modell nicht ankommt", async () => {
+    const helper = new FakeHelper();
+    helper.sttStatus = { available: false, engine: "analyzer", assets: "missing", downloadable: true, reason: "Diktat-Modell fehlt." };
+    helper.prepareImpl = () => {
+      helper.emitEvent({ event: "stt.progress", data: { locale: "de-DE", fraction: 0.42 } });
+      throw new Error("Das Diktat-Modell für „de-DE“ konnte nicht geladen werden: keine Verbindung zu Apple (NSURLErrorDomain -1009).");
+    };
+    const { dictation, hud } = build(helper);
+    await dictation.start();
+    expect(helper.calls.find((c) => c.cmd === "stt.start")).toBeUndefined();
+    expect(dictation.currentState).toBe("idle");
+    const messages = hud.update.mock.calls.map((c) => c[0].message);
+    expect(messages).toContain("Diktat-Modell wird geladen… 42 %");
+    expect(messages.at(-1)).toMatch(/keine Verbindung zu Apple/);
+  });
+
+  it("lädt auf macOS 14/15 nicht selbst, sondern nennt die Systemeinstellung", async () => {
+    const helper = new FakeHelper();
+    helper.sttStatus = {
+      available: false,
+      engine: "legacy",
+      assets: "missing",
+      downloadable: false,
+      reason: "Diktat-Modell fehlt: Bitte die Sprache unter Systemeinstellungen → Tastatur → Diktat hinzufügen.",
+    };
+    const { dictation } = build(helper);
+    await dictation.start();
+    expect(helper.calls.find((c) => c.cmd === "stt.prepare")).toBeUndefined();
+    expect(helper.calls.find((c) => c.cmd === "stt.start")).toBeUndefined();
+    expect(dictation.currentState).toBe("idle");
   });
 
   it("ohne Apple-Spracherkennung: klarer Hinweis mit Grund, kein Start, kein Rückfall", async () => {

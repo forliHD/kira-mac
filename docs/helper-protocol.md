@@ -74,11 +74,12 @@ version allein.
 
 | `cmd` | `params` | `result` / Ereignisse |
 |---|---|---|
-| `stt.status` | `{"locale": "de-DE"}` | `{"available": true/false, "engine": "analyzer" \| "legacy" \| null, "assets": "installed" \| "downloading" \| "missing", "reason": "…"}` |
-| `stt.prepare` | `{"locale": "de-DE"}` | lädt fehlende Modell-Assets herunter (`AssetInventory`), blockiert bis fertig: `{"assets": "installed"}` |
+| `stt.status` | `{"locale": "de-DE"}` | `{"available": true/false, "engine": "analyzer" \| "legacy" \| null, "assets": "installed" \| "downloading" \| "missing", "reason": "…", "code": "ok" \| "unsupported_os" \| "unsupported_locale" \| "assets_missing" \| "downloading" \| "unavailable" \| "unknown", "downloadable": true/false, "locale": "de-DE", "progress": 0…1 \| null, "diagnostics": {…}}`. `diagnostics` trägt `macos`, `arch` (`arm64`/`x86_64`), `chip`, `locale`, `preferred` (bevorzugte Sprachen), `assetState` (Rohzustand, bei zwei Modulen `stream=…,file=…`), `speech`, `microphone`, `downloadable`. Alles außer `available`/`engine`/`assets`/`reason` ist additiv (Protokoll 1). |
+| `stt.prepare` | `{"locale": "de-DE"}` | lädt fehlende Modell-Assets herunter (`AssetInventory`), blockiert bis fertig: `{"assets": "installed"}`. Währenddessen Ereignisse `stt.progress` (ohne `stream`): `{"locale", "fraction": 0…1}`. Scheitert der Download, ist `error.message` die deutsche Ursache (Netz, Freigabe, Sprache, Geräteverwaltung) und `error.reason` einer von `network`, `permission`, `cancelled`, `no_request`, `not_installed`, `failed`. |
 | `stt.file` | `{"path", "locale", "contextualStrings": ["Musterfirma", …]}` | `{"text", "durationMs", "engine"}`. Liest alles, was `AVAudioFile` öffnen kann (WAV, AIFF, CAF, M4A/MP4). Electron liefert immer WAV 16 kHz Mono 16 Bit: WebM/Opus aus der WebView wird im Preload per Web Audio (`OfflineAudioContext`) dekodiert, bevor es den Hauptprozess erreicht |
 | `stt.start` | `{"stream": "s1", "locale": "de-DE", "contextualStrings": [...], "source": "microphone"}` | `{"started": true}`; danach Ereignisse `stt.level` (`{"rms": 0.0…1.0}`, ~10/s), `stt.partial` (`{"text"}`, flüchtig), `stt.final` (`{"text"}`, abgeschlossener Satz/Abschnitt), `stt.ended` (`{"reason": "stopped" \| "error" \| "silence", "message"?}`) |
 | `stt.stop` | `{"stream": "s1"}` | `{"stopped": true}`; der Helfer spült die Erkennung und sendet noch ausstehende `stt.final`, dann `stt.ended` |
+| `stt.progress` | – (Ereignis) | `{"locale", "fraction"}` während `stt.prepare`. Kein `stream`. |
 
 Regeln: Audio verlässt den Helfer nie; `contextualStrings` sind die „Eigenen
 Begriffe“ des Nutzers plus Anzeigename und „KIRA“. Höchstens ein Stream je

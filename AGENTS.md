@@ -6,9 +6,14 @@
 
 Electron-Hülle (TypeScript strict, `electron-vite`) um das KIRA-Dashboard
 plus Swift-Helfer `helper/` für Apple-Schnittstellen. Owner: Lucas (einziger
-Entwickler). Kein App Store, kein CI: alles baut lokal auf dem Mac des Owners
-(macOS 27, Apple Silicon, Xcode 27, Node 22). Verteilung als DMG/ZIP über
-GitHub Releases `forliHD/kira-mac`, Auto-Update per `electron-updater`.
+Entwickler). Kein App Store. CI ist `.github/workflows/ci.yml` auf `xcode-27`
+(Apple Silicon, macOS-SDK 27): Typen, Lint, Tests, Swift-Helfer, Paket.
+Ein Push auf `main` veröffentlicht `v` + Version aus `package.json`, wenn
+dieser Release noch fehlt. Signatur nur mit `MACOS_CERT_P12_BASE64` und
+`MACOS_CERT_PASSWORD` (Developer ID Application), Notarisierung zusätzlich
+mit `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`. Ohne Zertifikat bleibt das
+Paket unsigniert. Verteilung als DMG/ZIP über GitHub Releases
+`forliHD/kira-mac`, Auto-Update per `electron-updater`.
 
 Sprache: alles für Menschen (UI, Menüs, Fehler, Doku, Commit-Texte) auf
 Deutsch; Bezeichner, Dateinamen, Konfig-Schlüssel auf Englisch. Kommentare
@@ -99,7 +104,8 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   gebauten App (`Resources/helper/kira-helper`), nicht zum Repo.
 - **`npm run dist` nicht in Agenten-Läufen**: braucht Developer-ID-Zertifikat
   und Notarisierungs-Umgebung; ohne diese scheitert es oder erzeugt ein
-  unsigniertes Paket, das Gatekeeper ablehnt.
+  unsigniertes Paket, das Gatekeeper ablehnt. Das Produktionspaket baut
+  `.github/workflows/ci.yml` auf `xcode-27`.
 - **`electron-updater` nur gepackt**: in `dev` meldet `updater.ts` den Status
   `unsupported`. Nicht „reparieren“.
 - **`src/shared/dictationText.js` nie von Hand ändern** – Kopie aus dem

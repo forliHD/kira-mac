@@ -9,6 +9,7 @@
 
 import { EventEmitter } from "node:events";
 
+import { needsAssetDownload } from "../shared/dictation-model";
 import { applyDictationCommands, joinDictation } from "../shared/dictationText.js";
 import {
   type FrontmostApp,
@@ -66,6 +67,11 @@ export interface DictationOptions {
   quick?: DictationQuickSink;
   getLocale: () => string;
   getCommandsEnabled: () => boolean;
+  /**
+   * Lädt ein fehlendes Diktat-Modell (geteilt mit Einstellungen und Dashboard).
+   * Fortschritt 0…1. Fehlt der Haken, ruft das Diktat selbst `stt.prepare`.
+   */
+  ensureAssets?: (locale: string, onProgress: (fraction: number) => void) => Promise<void>;
   log?: Logger;
   now?: () => number;
   /** Wie lange ein Fehlerhinweis im HUD stehen bleibt. */
@@ -148,6 +154,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
   private readonly errorLingerMs: number;
   private readonly getTarget: (() => DictationTarget) | undefined;
   private readonly quick: DictationQuickSink | undefined;
+  private readonly ensureAssets: ((locale: string, onProgress: (fraction: number) => void) => Promise<void>) | undefined;
   private target: DictationTarget = "insert";
 
   private state: DictationState = "idle";
@@ -177,6 +184,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     this.errorLingerMs = options.errorLingerMs ?? 4_000;
     this.getTarget = options.getTarget;
     this.quick = options.quick;
+    this.ensureAssets = options.ensureAssets;
     this.helper.on("event", this.onHelperEvent);
   }
 
@@ -235,8 +243,44 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
 
     // Nach jedem Warten: wurde inzwischen gestoppt/abgebrochen (z. B. fn
     // nur kurz gehalten), hat stop()/cancel() schon aufgeräumt.
-    const avail = await this.availability();
+    let avail = await this.availability();
     if (generation !== this.generation) return;
+    if (!avail.ok && avail.status && needsAssetDownload(avail.status)) {
+      // Ohne dieses Laden bleibt der Stand für immer „fehlt“: die Hülle hat
+      // `stt.prepare` früher nie aufgerufen, der Knopf in den Einstellungen
+      // hat nur neu gelesen.
+      const locale = this.getLocale();
+      this.setHud({ phase: "starting", message: "Diktat-Modell wird geladen…" });
+      try {
+        const ensure =
+          this.ensureAssets ??
+          (async (code: string, onProgress: (fraction: number) => void): Promise<void> => {
+            const onEvent = (ev: HelperEvent): void => {
+              if (ev.event !== "stt.progress") return;
+              const data = (ev.data && typeof ev.data === "object" ? ev.data : {}) as Record<string, unknown>;
+              if (typeof data.fraction === "number" && (data.locale === undefined || data.locale === code)) onProgress(data.fraction);
+            };
+            this.helper.on("event", onEvent);
+            try {
+              await this.helper.request("stt.prepare", { locale: code });
+            } finally {
+              this.helper.off("event", onEvent);
+            }
+          });
+        await ensure(locale, (fraction) => {
+          if (generation !== this.generation) return;
+          const pct = Math.max(0, Math.min(100, Math.round(fraction * 100)));
+          this.setHud({ message: `Diktat-Modell wird geladen… ${pct} %` });
+        });
+      } catch (err) {
+        if (generation !== this.generation) return;
+        this.failStart(err instanceof Error ? err.message : String(err));
+        return;
+      }
+      if (generation !== this.generation) return;
+      avail = await this.availability();
+      if (generation !== this.generation) return;
+    }
     if (!avail.ok) {
       this.failStart(avail.reason);
       return;

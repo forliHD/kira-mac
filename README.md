@@ -145,7 +145,62 @@ Schnellfenster und Diktat-HUD und prüft per `lsappinfo`, dass KIRA ein normales
 Programm mit Dock-Symbol bleibt (`--hold N` lässt beide Fenster N Sekunden offen,
 etwa zum Ansehen über einer Vollbild-App).
 
-## Release (lokal, kein CI)
+## Release
+
+DMG, ZIP und `latest-mac.yml` (das liest `electron-updater`; das Repo bleibt
+dafür öffentlich). Der Tag ist `v` plus die Version aus `package.json`
+(`0.3.9` → `v0.3.9`). Dieselbe Version wird nicht ein zweites Mal
+veröffentlicht.
+
+### CI
+
+`.github/workflows/ci.yml` läuft auf `xcode-27` (Apple Silicon, Xcode 27,
+macOS-SDK 27). SpeechAnalyzer braucht mindestens SDK 26; der Helfer zusätzlich
+das SDK 27 (`LanguageModelError`). `macos-26` hat nur Xcode 26.6 und kann den
+Helfer nicht bauen. Bei jedem Pull Request
+und jedem Push auf `main`: Abhängigkeiten, Typprüfung, Lint, JavaScript-Tests,
+`swift test` (darunter die Fehlerzuordnung des Diktat-Downloads), Release-Build
+des Helfers, `electron-builder`.
+
+Ein Push auf `main` legt danach den GitHub-Release an, sofern `v<Version>`
+noch nicht existiert. `0.3.9` ist die nächste Version; `v0.3.8` bleibt der
+bisherige Release. Notizen kommen aus dem Abschnitt dieser Version in
+`CHANGELOG.md`, sonst aus `RELEASE_NOTES.md`. `workflow_dispatch` auf `main`
+macht dasselbe. Pull Requests aus diesem Repo signieren und notarisieren mit,
+veröffentlichen aber nicht. Ist das Developer-ID-Zertifikat gesetzt und die
+Signatur oder die Notarisierung misslingt, legt auch `main` kein Release an.
+
+Signatur und Notarisierung hängen an Actions-Geheimnissen (Settings → Secrets
+and variables → Actions):
+
+| Geheimnis | Inhalt |
+|---|---|
+| `MACOS_CERT_P12_BASE64` | Developer ID Application als `.p12`, base64 |
+| `MACOS_CERT_PASSWORD` | Passwort dieser `.p12` |
+| `ASC_KEY_ID` | App Store Connect API Key, Key ID |
+| `ASC_ISSUER_ID` | Issuer ID |
+| `ASC_KEY_P8` | Rohinhalt der `.p8` (PEM, mit BEGIN/END) |
+
+Ohne die beiden Zertifikats-Geheimnisse baut und veröffentlicht CI
+**unsigniert**. Gatekeeper öffnet so ein Paket nicht; Auto-Update würde es
+trotzdem anbieten, sobald die Version steigt. Notarisierung läuft nur, wenn
+signiert wird und alle drei `ASC_`-Geheimnisse gesetzt sind. Fehlt genau
+eines von beiden Zertifikatswerten, oder ist der API-Schlüssel nur
+halb gesetzt während signiert wird, bricht der Lauf ab. Pull Requests aus
+diesem Repo bekommen die Geheimnisse und signieren mit; Forks nicht.
+
+Zertifikat einmalig exportieren, auf dem Mac, in dessen Schlüsselbund das
+Developer-ID-Zertifikat von Team `GRPK3Y82ST` liegt (Schlüsselbund →
+„Developer ID Application: …“ → exportieren als `.p12`):
+
+```bash
+base64 -i DeveloperID.p12 | pbcopy   # das ist MACOS_CERT_P12_BASE64
+```
+
+Die `.p8` kommt aus App Store Connect → Benutzer und Zugriff → Integrationen
+→ API (Rolle mindestens Developer, dasselbe Team).
+
+### Lokal
 
 Die Build-Ausgabe liegt in `~/Library/Caches/kira-mac/dist` (änderbar über
 `KIRA_MAC_DIST`), nicht im Repo: Liegt das Repo in iCloud Drive, hängt das
@@ -187,8 +242,9 @@ npm run release      # = scripts/release.sh
 `scripts/release.sh` prüft Zertifikat, Notarisierungs-Profil und den sauberen
 Arbeitsbaum, baut den Helfer, führt Typprüfung und Tests aus, baut mit
 `electron-builder --mac` (signiert + notarisiert, Ausgabe außerhalb von iCloud),
-setzt den Tag `v<version>` und legt den GitHub-Release mit `*.dmg`, `*.zip` und
-`latest-mac.yml` an. Jeder Schritt bricht bei Fehlern ab. `npm run dist` baut
+setzt den Tag `v<version>` und legt den GitHub-Release mit `*.dmg`, `*.zip`,
+`latest-mac.yml` und – falls vorhanden – den Blockmaps an. Lief dieselbe
+Version schon über CI, bricht das Skript ab. Jeder Schritt bricht bei Fehlern ab. `npm run dist` baut
 nur das Paket, ohne zu veröffentlichen. Prüfen eines fertigen Pakets:
 
 ```bash

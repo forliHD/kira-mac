@@ -6,6 +6,36 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-10-21
+
+### Hinzugefügt
+- GitHub Actions auf `xcode-27` (Apple Silicon, macOS-SDK 27): Abhängigkeiten,
+  Typprüfung, Lint, Tests, Swift-Helfer inklusive der Fehlerzuordnung beim
+  Diktat-Download, Produktionspaket. Ein Push auf `main` legt den
+  GitHub-Release `v<Version>` an (DMG, ZIP, `latest-mac.yml`), wenn es ihn
+  noch nicht gibt. Mit Developer-ID-Zertifikat und App-Store-Connect-Schlüssel
+  wird signiert und notarisiert. Ist das Zertifikat gesetzt, die Signatur
+  oder die Notarisierung aber misslungen, wird nichts veröffentlicht.
+
+### Behoben
+- **Diktat-Modell fehlt, und der Download tat nichts.** Der Helfer konnte das
+  Apple-Modell laden (`stt.prepare`), die Hülle hat ihn aber nie darum gebeten:
+  weder beim Start, noch beim Diktat, noch aus den Einstellungen. „Erneut
+  prüfen“ hat nur denselben Stand noch einmal gelesen. Zusätzlich hat der
+  Helfer den Stand an einer anderen Modell-Konfiguration geprüft als die
+  Erkennung selbst und ein schon vorhandenes System-Modell nicht als
+  installiert erkannt, solange die Sprache nicht reserviert war.
+- Fehlt das Modell und dieser Mac kann es laden (macOS 26, Apple-Chip), startet
+  der Download jetzt von selbst, beim ersten Diktat und über **Modell laden**
+  in den Einstellungen. Fortschritt in der Karte und in der Diktat-Pille.
+  Scheitert er, steht die Ursache dabei (keine Verbindung zu Apple, Zugriff
+  verweigert, Sprache nicht unterstützt, kein Apple-Chip, macOS zu alt,
+  Geräteverwaltung). Danach läuft das Diktat auf dem Gerät – auch ohne
+  Verbindung zum KIRA-Server.
+- Diagnose in Einstellungen → Diktat und im Protokoll (`dictation_model`,
+  `stt_status`): macOS, Architektur, Chip, Sprache, Modellzustand, Mikrofon,
+  Spracherkennung.
+
 ## [0.3.8] - 2026-10-02
 
 ### Geändert

@@ -59,7 +59,15 @@ function StillWorking({ state }: { state: LocalState | null }): ReactNode {
   // Ohne Zustand (oder bevor er da ist) beides nennen – das ist der Normalfall.
   const dictation = !state || (state.helper.running && state.dictationStatus.stt?.available !== false && Boolean(dictationKey));
   const quick = !state || (state.helper.info?.features.llm === true && Boolean(quickKey));
-  if (!dictation && !quick) return null;
+  if (!dictation && !quick) {
+    const why = state?.dictationStatus.stt?.reason;
+    if (!why) return null;
+    return (
+      <InfoNote tone="warn" icon={<IconMic size={18} />} className="offline-note">
+        Diktat auf diesem Mac gerade nicht: {why} Unter Einstellungen → Diktat lässt es sich laden oder neu prüfen.
+      </InfoNote>
+    );
+  }
   return (
     <InfoNote icon={<IconMic size={18} />} className="offline-note">
       {dictation && quick ? (

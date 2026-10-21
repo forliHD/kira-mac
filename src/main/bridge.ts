@@ -21,6 +21,7 @@ import {
   type SttStatus,
   type TranscribeResult,
 } from "../shared/bridge";
+import { needsAssetDownload } from "../shared/dictation-model";
 import { type HelperSttStatus, type SttFileResult } from "../shared/helper-types";
 import { IPC } from "../shared/ipc";
 import { type GlobalDictation } from "./dictation";
@@ -47,6 +48,12 @@ export interface BridgeContext {
   onSessionChanged: (hasTokens: boolean) => void;
   /** SSO im System-Browser für die Instanz-Origin des Absenders (browser-login.ts). */
   signInWithBrowser: (origin: string) => Promise<BrowserSignInResult>;
+  /** Fehlendes Diktat-Modell laden (stt-assets.ts). Wirft mit deutscher Ursache. */
+  ensureSttAssets?: (locale: string) => Promise<void>;
+  /** Höchstens ein automatischer Versuch je Sprache – `sttStatus` fragt oft. */
+  kickSttAssets?: (locale: string) => void;
+  /** Läuft gerade ein Download? Dann sagt `sttStatus` „wird geladen“ statt „fehlt“. */
+  modelDownloading?: () => boolean;
 }
 
 /** Bootstrap-Antwort für den Preload (synchron, beim Laden jeder Instanz-Seite). */
@@ -165,6 +172,18 @@ export function registerBridgeIpc(ctx: BridgeContext): void {
     if (info && !info.features.stt) return mapSttStatus(null, locale, "Dieser Mac bietet keine Apple-Spracherkennung.");
     try {
       const status = await ctx.helper.request<HelperSttStatus>("stt.status", { locale });
+      if (needsAssetDownload(status)) {
+        // Nicht auf den Download warten: das Dashboard fragt den Stand oft.
+        // Ein Fehlschlag wird nicht bei jeder Frage wiederholt; `transcribe`
+        // und das Diktat warten und versuchen es dann noch einmal.
+        ctx.kickSttAssets?.(status.locale || locale);
+      }
+      if (ctx.modelDownloading?.() && !status.available) {
+        return mapSttStatus(
+          { ...status, assets: "downloading", reason: status.assets === "downloading" ? status.reason : "Diktat-Modell wird geladen." },
+          locale,
+        );
+      }
       return mapSttStatus(status, locale);
     } catch (err) {
       return mapSttStatus(null, locale, err instanceof Error ? err.message : String(err));
@@ -179,6 +198,13 @@ export function registerBridgeIpc(ctx: BridgeContext): void {
     if (wav.byteLength > 64 * 1024 * 1024) throw new Error("transcribe: Aufnahme zu groß (max. 64 MB).");
     const locale = typeof v.locale === "string" && v.locale ? v.locale : ctx.locale();
     if (!ctx.helper.running) throw new HelperError("stt_unavailable", "Der Helfer läuft nicht.");
+    if (ctx.ensureSttAssets) {
+      try {
+        await ctx.ensureSttAssets(locale);
+      } catch (err) {
+        throw new HelperError("stt_assets_missing", err instanceof Error ? err.message : String(err));
+      }
+    }
 
     // `context` ist laut Vertrag die Art der Aufnahme („dictation“, „chat“), KEIN
     // Wortschatz – die eigenen Begriffe kommen vom Server (Mein Konto → Diktat).

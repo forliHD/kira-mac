@@ -9,6 +9,7 @@ export const LOCAL_IPC = {
   finishOnboarding: "local:finishOnboarding",
   setHotkeys: "local:setHotkeys",
   setDictation: "local:setDictation",
+  prepareDictationModel: "local:prepareDictationModel",
   setGeneral: "local:setGeneral",
   requestPermission: "local:requestPermission",
   checkUpdates: "local:checkUpdates",
