@@ -341,3 +341,123 @@ body[data-page="settings"][data-reduced-transparency="true"] {
   height: 30px;
   width: 30px;
 }
+
+/* ── Diktat-Test (DictationTestCard) ──────────────────────────────── */
+.dt-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.dt-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--g-text-2);
+}
+.dt-level {
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--g-pill);
+  box-shadow: inset 0 0 0 1px var(--g-pill-line);
+}
+.dt-level > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--g-accent-300), var(--g-accent-500));
+  transition: width 90ms linear;
+}
+.dt-reference {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--g-text);
+  background: var(--g-pill);
+  box-shadow: inset 0 0 0 1px var(--g-pill-line);
+}
+.dt-heard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dt-heard-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--g-text-3);
+}
+.dt-text {
+  margin: 0;
+  min-height: 1.5em;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--g-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.dt-partial {
+  font-style: italic;
+  color: var(--g-text-3);
+}
+.dt-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dt-results.is-dimmed {
+  opacity: 0.6;
+}
+.dt-result {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 0;
+  border-top: 1px solid var(--g-pill-line);
+}
+.dt-result-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--g-text-3);
+}
+.dt-wer {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--g-text);
+}
+.dt-kind {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--g-pill);
+  box-shadow: inset 0 0 0 1px var(--g-pill-line);
+  color: var(--g-text-2);
+}
+.dt-when {
+  margin-left: auto;
+}
+.dt-result-line,
+.dt-result-settings {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--g-text-2);
+}
+.dt-result-settings {
+  color: var(--g-text-3);
+}

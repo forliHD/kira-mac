@@ -214,7 +214,20 @@ export function registerBridgeIpc(ctx: BridgeContext): void {
     try {
       await writeFile(path, wav, { mode: 0o600 });
       const result = await ctx.helper.request<SttFileResult>("stt.file", { path, locale, contextualStrings });
-      return { text: typeof result.text === "string" ? result.text : "", engine: "apple", durationMs: result.durationMs };
+      const raw = typeof result.text === "string" ? result.text : "";
+      // Nachkorrektur wie beim globalen Diktat (M2); Messwerte ohne Text (M5).
+      const corrected = await ctx.dictation.correctTextAsync(raw, contextualStrings);
+      const audioMs = typeof result.audioMs === "number" ? result.audioMs : null;
+      log.info("transcribe_done", {
+        locale,
+        engine: result.engine ?? null,
+        durationMs: result.durationMs,
+        audioMs,
+        ratio: audioMs && result.durationMs ? Math.round((result.durationMs / audioMs) * 100) / 100 : null,
+        chars: corrected.text.length,
+        replacements: corrected.replacements,
+      });
+      return { text: corrected.text, engine: "apple", durationMs: result.durationMs };
     } finally {
       await unlink(path).catch(() => undefined);
     }

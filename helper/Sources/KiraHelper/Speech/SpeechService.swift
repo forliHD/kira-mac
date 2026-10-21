@@ -27,9 +27,13 @@ enum SpeechEngine: String, Sendable {
 /// und ein Download des Presets befriedigte den Stream nicht.
 @available(macOS 26, *)
 enum AnalyzerModels {
+    /// Nur `volatileResults`: die flüchtigen Ergebnisse speisen die Vorschau in
+    /// der Pille; die Finals werden eingesetzt und sollen stimmen. `.fastResults`
+    /// (bis 0.3.9) „biases the transcriber towards responsiveness, yielding
+    /// faster but also less accurate results“ (Apple) – Plan 21.10.2026, M1.
     static func stream(locale: Locale) -> SpeechTranscriber {
         SpeechTranscriber(
-            locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults, .fastResults],
+            locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults],
             attributeOptions: [])
     }
 
@@ -572,6 +576,8 @@ actor SpeechService {
         request.requiresOnDeviceRecognition = true
         request.shouldReportPartialResults = false
         request.taskHint = .dictation
+        // Ohne das kommt auf macOS 14/15 Text ohne Punkt und Komma (Standard aus).
+        request.addsPunctuation = true
         if !contextualStrings.isEmpty {
             request.contextualStrings = contextualStrings
         }
@@ -933,6 +939,7 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
         request.shouldReportPartialResults = true
         request.requiresOnDeviceRecognition = true
         request.taskHint = .dictation
+        request.addsPunctuation = true
         if !contextualStrings.isEmpty {
             request.contextualStrings = contextualStrings
         }

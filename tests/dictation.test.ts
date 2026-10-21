@@ -2,10 +2,22 @@ import { EventEmitter } from "node:events";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { type DictationHelper, type DictationSession, GlobalDictation, buildContextualStrings, isPunctuationOnly, pieceToInsert, splitVocabulary } from "../src/main/dictation";
+import {
+  type DictationHelper,
+  type DictationSession,
+  type DictationSink,
+  GlobalDictation,
+  type StoredVocabulary,
+  type VocabularyStore,
+  buildContextualStrings,
+  isPunctuationOnly,
+  pieceToInsert,
+  splitVocabulary,
+} from "../src/main/dictation";
 import { applyDictationCommands, joinDictation } from "../src/shared/dictationText.js";
 import { type HelperEvent, type HelperInfo, type HelperSttStatus } from "../src/shared/helper-types";
 import { type HudState } from "../src/shared/local-api";
+import { type Logger } from "../src/shared/logger";
 
 describe("Diktierbefehle (Kopie aus dem Dashboard)", () => {
   it("setzt Satzzeichen und Strukturbefehle um", () => {
@@ -73,11 +85,19 @@ class FakeHelper extends EventEmitter implements DictationHelper {
   prepareImpl: (() => Promise<void> | void) | null = null;
   /** Diese Äußerungen spült `stt.stop` noch als `stt.final`, bevor `stt.ended` kommt. */
   flushOnStop: string[] = [];
+  /** Antwort auf `text.knownWords` (Wörter, die das Wörterbuch kennt). */
+  knownWords: string[] = [];
+  /** Hält `text.knownWords` auf (die Wörterbuch-Frage dauert). */
+  knownWordsGate: Promise<void> | null = null;
 
   request<T = unknown>(cmd: string, params?: Record<string, unknown>): Promise<T> {
     this.calls.push({ cmd, params });
     if (cmd === "stt.start" && this.sttStartGate) {
       return this.sttStartGate.then(() => ({ started: true }) as unknown as T);
+    }
+    if (cmd === "text.knownWords") {
+      const answer = { known: this.knownWords } as unknown as T;
+      return this.knownWordsGate ? this.knownWordsGate.then(() => answer) : Promise.resolve(answer);
     }
     if (cmd === "stt.stop") {
       const pending = this.flushOnStop;
@@ -127,20 +147,36 @@ class FakeHelper extends EventEmitter implements DictationHelper {
   }
 }
 
-function build(helper: FakeHelper, opts: { commands?: boolean; vocabulary?: string | null; vocabularyGate?: Promise<void> } = {}) {
+function build(
+  helper: FakeHelper,
+  opts: {
+    commands?: boolean;
+    correction?: boolean;
+    vocabulary?: string | null;
+    displayName?: string | null;
+    vocabularyGate?: Promise<void>;
+    test?: DictationSink;
+    vocabularyStore?: VocabularyStore;
+    log?: Logger;
+  } = {},
+) {
   const hud = { show: vi.fn(), hide: vi.fn(), update: vi.fn<(s: HudState) => void>() };
   const dictation = new GlobalDictation({
     helper,
     server: {
       fetchVocabulary: async () => {
         if (opts.vocabularyGate) await opts.vocabularyGate;
-        return opts.vocabulary ?? "Musterfirma, Proxmox";
+        return opts.vocabulary === undefined ? "Musterfirma, Proxmox" : opts.vocabulary;
       },
-      fetchDisplayName: async () => "Lucas",
+      fetchDisplayName: async () => (opts.displayName === undefined ? "Lucas" : opts.displayName),
     },
     hud,
+    test: opts.test,
+    vocabularyStore: opts.vocabularyStore,
     getLocale: () => "de-DE",
     getCommandsEnabled: () => opts.commands ?? true,
+    getCorrectionEnabled: () => opts.correction ?? true,
+    log: opts.log,
     errorLingerMs: 5,
   });
   return { dictation, hud };
@@ -475,5 +511,149 @@ describe("GlobalDictation", () => {
     now = 61 * 60 * 1000;
     await dictation.contextualStrings();
     expect(fetchVocabulary).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Nachkorrektur, Diktat-Test und Wortschatz-Speicher (Phase 1, 0.4.0)", () => {
+  it("korrigiert ein verhörtes Wort gegen den Wortschatz und fragt das Wörterbuch nur nach Tippfehler-Kandidaten", async () => {
+    const helper = new FakeHelper();
+    const { dictation } = build(helper);
+    await dictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Hallo Tira, frag Lugas nach Proxmocks Punkt" } });
+    await tick();
+    await tick();
+    const inserts = helper.calls.filter((c) => c.cmd === "text.insert").map((c) => c.params?.text);
+    expect(inserts).toEqual(["Hallo KIRA, frag Lucas nach Proxmox."]);
+    const asked = helper.calls.find((c) => c.cmd === "text.knownWords");
+    expect(asked?.params).toEqual({ locale: "de-DE", words: ["Tira"] });
+  });
+
+  it("lässt ein Wort stehen, das das Wörterbuch kennt, und merkt sich die Antwort", async () => {
+    const helper = new FakeHelper();
+    helper.knownWords = ["Tira"];
+    const { dictation } = build(helper);
+    await dictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Tira kommt" } });
+    await tick();
+    await tick();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Tira geht" } });
+    await tick();
+    await tick();
+    const inserts = helper.calls.filter((c) => c.cmd === "text.insert").map((c) => c.params?.text);
+    expect(inserts).toEqual(["Tira kommt", " Tira geht"]);
+    expect(helper.calls.filter((c) => c.cmd === "text.knownWords")).toHaveLength(1);
+  });
+
+  it("lässt sich abschalten", async () => {
+    const helper = new FakeHelper();
+    const { dictation } = build(helper, { correction: false });
+    await dictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Hallo Tira" } });
+    await tick();
+    expect(helper.calls.filter((c) => c.cmd === "text.insert").map((c) => c.params?.text)).toEqual(["Hallo Tira"]);
+    expect(helper.calls.some((c) => c.cmd === "text.knownWords")).toBe(false);
+    expect(dictation.correctText("Hallo Tira")).toEqual({ text: "Hallo Tira", replacements: 0 });
+  });
+
+  it("wartet mit dem Ende auf eine laufende Wörterbuch-Frage, damit der letzte Satz nicht fehlt", async () => {
+    const helper = new FakeHelper();
+    let release = (): void => undefined;
+    helper.knownWordsGate = new Promise<void>((r) => (release = r));
+    const { dictation } = build(helper);
+    const sessions: DictationSession[] = [];
+    dictation.on("session", (s) => sessions.push(s));
+    await dictation.start();
+    helper.flushOnStop = ["Letzter Satz mit Tira"];
+    await dictation.stop();
+    await tick();
+    await tick();
+    expect(dictation.currentState).toBe("stopping");
+    expect(sessions).toHaveLength(0);
+    release();
+    await tick();
+    await tick();
+    await tick();
+    expect(dictation.currentState).toBe("idle");
+    expect(sessions[0]?.text).toBe("Letzter Satz mit KIRA");
+    expect(sessions[0]).toMatchObject({ finals: 1, replacements: 1 });
+  });
+
+  it("Ziel „test“: keine Pille, keine Bedienungshilfen nötig, Text geht in die Senke", async () => {
+    const helper = new FakeHelper();
+    helper.permissions = { ...helper.permissions, accessibility: false };
+    const updates: Array<{ active: boolean; reason: string | null }> = [];
+    const inserted: string[] = [];
+    const sink: DictationSink = {
+      update: (s) => updates.push({ active: s.active, reason: s.reason }),
+      insert: (t) => inserted.push(t),
+    };
+    const { dictation, hud } = build(helper, { test: sink });
+    const sessions: DictationSession[] = [];
+    dictation.on("session", (s) => sessions.push(s));
+    await dictation.start("test");
+    expect(dictation.currentTarget).toBe("test");
+    expect(hud.show).not.toHaveBeenCalled();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Hallo Tira Punkt" } });
+    await tick();
+    await tick();
+    expect(inserted).toEqual(["Hallo KIRA."]);
+    expect(helper.calls.some((c) => c.cmd === "text.insert")).toBe(false);
+    await dictation.stop();
+    await tick();
+    await tick();
+    expect(updates.at(-1)).toEqual({ active: false, reason: null });
+    expect(sessions[0]).toMatchObject({ target: "test", app: "Diktat-Test", text: "Hallo KIRA." });
+  });
+
+  it("ohne Test-Senke fällt „test“ auf das Einsetzen zurück", async () => {
+    const helper = new FakeHelper();
+    const { dictation, hud } = build(helper);
+    await dictation.start("test");
+    expect(dictation.currentTarget).toBe("insert");
+    expect(hud.show).toHaveBeenCalled();
+  });
+
+  it("Wortschatz-Speicher: speichert nach dem Holen, dient offline als Rückfall und meldet den Stand", async () => {
+    const saved: StoredVocabulary[] = [];
+    const store: VocabularyStore = { load: () => saved.at(-1) ?? null, save: (v) => void saved.push(v) };
+    const online = build(new FakeHelper(), { vocabularyStore: store });
+    expect(online.dictation.vocabularyInfo()).toBeNull();
+    expect(await online.dictation.contextualStrings()).toEqual(["KIRA", "Lucas", "Musterfirma", "Proxmox"]);
+    expect(saved).toHaveLength(1);
+    expect(online.dictation.vocabularyInfo()).toMatchObject({ count: 4 });
+
+    // Zweite Instanz, keine Sitzung (Server liefert null): der gespeicherte Stand gilt, auch wenn er alt ist.
+    const offline = build(new FakeHelper(), { vocabularyStore: store, vocabulary: null, displayName: null });
+    expect(await offline.dictation.contextualStrings()).toEqual(["KIRA", "Lucas", "Musterfirma", "Proxmox"]);
+    expect(saved).toHaveLength(1);
+    const helper = new FakeHelper();
+    const offlineDictation = build(helper, { vocabularyStore: store, vocabulary: null, displayName: null }).dictation;
+    await offlineDictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Gruß an Lugas" } });
+    await tick();
+    await tick();
+    expect(helper.calls.filter((c) => c.cmd === "text.insert").map((c) => c.params?.text)).toEqual(["Gruß an Lucas"]);
+
+    // Ohne Speicher und ohne Sitzung bleibt die Mindestliste.
+    const bare = build(new FakeHelper(), { vocabulary: null, displayName: null });
+    expect(await bare.dictation.contextualStrings()).toEqual(["KIRA"]);
+  });
+
+  it("protokolliert je Diktat Zähler und Zeiten, nie Text", async () => {
+    const helper = new FakeHelper();
+    const info = vi.fn<(message: string, ...meta: unknown[]) => void>();
+    const log: Logger = { debug: () => undefined, info, warn: () => undefined, error: () => undefined };
+    const { dictation } = build(helper, { log });
+    await dictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Hallo Tira Punkt" } });
+    await tick();
+    await tick();
+    await dictation.stop();
+    await tick();
+    await tick();
+    const entry = info.mock.calls.find((c) => c[0] === "dictation_session");
+    expect(entry?.[1]).toMatchObject({ target: "insert", app: "Mail", locale: "de-DE", finals: 1, replacements: 1, failed: false, chars: 11 });
+    expect(JSON.stringify(entry?.[1])).not.toContain("Hallo");
+    expect(typeof (entry?.[1] as { flushMs: unknown }).flushMs).toBe("number");
   });
 });

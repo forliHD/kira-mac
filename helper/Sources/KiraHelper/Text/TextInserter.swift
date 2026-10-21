@@ -58,6 +58,36 @@ final class TextInserter {
         }
     }
 
+    // MARK: Wörterbuch
+
+    /// `text.knownWords`: welche der Wörter das Systemwörterbuch der Sprache
+    /// kennt (`NSSpellChecker`). Für die Nachkorrektur der Hülle (seit 0.4.0):
+    /// ein bekanntes Wort („Kita“) wird bei bloßer Buchstabenähnlichkeit nicht
+    /// zu einem Begriff (KIRA). Die Wörter werden weder protokolliert noch
+    /// gespeichert.
+    func knownWords(locale: String, words: [String]) -> JSONValue {
+        let checker = NSSpellChecker.shared
+        let language = Self.spellLanguage(for: locale, available: checker.availableLanguages)
+        var known: [String] = []
+        for word in words.prefix(200) where !word.isEmpty {
+            let range = checker.checkSpelling(
+                of: word, startingAt: 0, language: language, wrap: false, inSpellDocumentWithTag: 0, wordCount: nil)
+            if range.location == NSNotFound { known.append(word) }
+        }
+        return ["known": .strings(known), "language": .optionalString(language)]
+    }
+
+    /// „de-DE“ → „de_DE“, wenn der Prüfer die Variante kennt, sonst „de“ (oder
+    /// eine andere Variante der Sprache); nil = der Prüfer wählt selbst.
+    nonisolated static func spellLanguage(for locale: String, available: [String]) -> String? {
+        let underscored = locale.replacingOccurrences(of: "-", with: "_")
+        if available.contains(underscored) { return underscored }
+        let base = String(locale.split(whereSeparator: { $0 == "-" || $0 == "_" }).first ?? Substring(""))
+        guard !base.isEmpty else { return nil }
+        if available.contains(base) { return base }
+        return available.first { $0.hasPrefix(base + "_") }
+    }
+
     // MARK: Accessibility
 
     /// Setzt `kAXSelectedTextAttribute` des fokussierten Elements. Viele
@@ -210,6 +240,11 @@ enum TextCommands {
         }
         table["text.frontmost"] = { _ in
             await services.text.frontmost()
+        }
+        table["text.knownWords"] = { request in
+            let locale = try request.params.optionalString("locale") ?? SpeechCommands.defaultLocale()
+            let words = try request.params.stringArray("words")
+            return await services.text.knownWords(locale: locale, words: words)
         }
     }
 }

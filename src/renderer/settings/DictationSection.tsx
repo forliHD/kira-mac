@@ -7,11 +7,12 @@ import { type ReactNode, useState } from "react";
 import { type DictationConfig } from "../../shared/local-api";
 import { formatModelDiagnostics } from "../../shared/dictation-model";
 import { modelCard } from "../lib/dictation-model";
-import { localeName, sortLocales } from "../lib/format";
+import { formatLastSeen, localeName, sortLocales } from "../lib/format";
 import { IconAlert, IconCheck, IconDownload, IconRefresh, IconWave } from "../lib/icons";
 import { errorText, localApi } from "../lib/useLocalState";
 import { Button, GlassCard, InfoNote, KbdCombo, SettingRow, StatusCard, Switch, type Tone } from "../lib/ui";
 import { DictationHistoryCard } from "./DictationHistoryCard";
+import { DictationTestCard } from "./DictationTestCard";
 import { type SectionProps } from "./shared";
 
 function toneIcon(tone: Tone): ReactNode {
@@ -45,6 +46,10 @@ export function DictationSection({ state, setState, refresh, go }: SectionProps)
     arch: state.dictationStatus.stt?.diagnostics?.arch ?? null,
   });
   const accessibility = state.dictationStatus.permissions?.accessibility;
+  const vocabulary = state.dictationStatus.vocabulary;
+  const vocabularyNote = vocabulary
+    ? `${vocabulary.count} ${vocabulary.count === 1 ? "Begriff" : "Begriffe"} (KIRA, dein Name, eigene Begriffe), Stand ${formatLastSeen(new Date(vocabulary.fetchedAt)).replace(/^um /, "heute um ")} – bleibt verschlüsselt auf diesem Mac, auch offline.`
+    : "Noch keine Begriffe geholt – sie kommen beim ersten Diktat vom Server (Anmeldung im Hauptfenster).";
 
   async function update(patch: Partial<DictationConfig>): Promise<void> {
     setPending((p) => ({ ...p, ...patch }));
@@ -129,6 +134,14 @@ export function DictationSection({ state, setState, refresh, go }: SectionProps)
         <SettingRow title="Diktierbefehle" description="„Punkt“, „Komma“, „neue Zeile“, „neuer Absatz“, „Anführungszeichen auf/zu“, „das löschen“">
           {(ids) => <Switch checked={dictation.commands} labelledBy={ids.titleId} describedBy={ids.descId} onChange={(v) => void update({ commands: v })} />}
         </SettingRow>
+        <SettingRow
+          title="Eigene Begriffe nachkorrigieren"
+          description={`Ähnlich Klingendes wird zu deinen Begriffen („Tira“ → KIRA, „Lukas“ → Lucas); Wörter aus dem Wörterbuch bleiben. ${vocabularyNote}`}
+        >
+          {(ids) => (
+            <Switch checked={dictation.correctVocabulary} labelledBy={ids.titleId} describedBy={ids.descId} onChange={(v) => void update({ correctVocabulary: v })} />
+          )}
+        </SettingRow>
         <SettingRow title="Globales Diktat" description="Spricht in das vorderste Programm. Eigene Begriffe kommen aus „Mein Konto“ auf dem Server.">
           <KbdCombo accelerator={state.hotkeys.dictation} />
           <Button aria-label="Tastenkürzel für das Diktat ändern" onClick={() => go("kuerzel", "dictation")}>
@@ -142,6 +155,8 @@ export function DictationSection({ state, setState, refresh, go }: SectionProps)
           {error}
         </InfoNote>
       ) : null}
+
+      <DictationTestCard state={state} />
 
       <DictationHistoryCard />
 

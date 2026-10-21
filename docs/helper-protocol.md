@@ -111,6 +111,7 @@ Eingaben vorher zu; der Helfer meldet Überlänge als `context_too_long`.
 |---|---|---|
 | `text.insert` | `{"text", "mode": "auto" \| "ax" \| "paste"}` | `{"method": "ax" \| "paste"}`. `auto`: erst Accessibility (`kAXSelectedTextAttribute` des fokussierten Elements), bei Fehlschlag Einsetzen über die Zwischenablage mit ⌘V per `CGEvent`; der vorherige Inhalt der Zwischenablage wird danach wiederhergestellt |
 | `text.frontmost` | – | `{"bundleId", "name"}` des vordersten Programms (für den HUD-Hinweis „Diktat in Mail“) |
+| `text.knownWords` | `{"locale": "de-DE", "words": ["Tira", "Kita"]}` | `{"known": ["Kita"], "language": "de"}` – welche der Wörter das Systemwörterbuch der Sprache kennt (`NSSpellChecker`), höchstens 200 je Anfrage; `language` ist die gewählte Prüfsprache (null = Automatik). Seit Helfer 0.4.0 für die Nachkorrektur der Hülle: ein bekanntes Wort wird bei bloßer Buchstabenähnlichkeit nicht zu einem Begriff. Die Wörter werden nicht protokolliert |
 
 ### fn-Taste (🌐) als Diktat-Auslöser
 

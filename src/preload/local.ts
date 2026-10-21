@@ -6,6 +6,8 @@ import { contextBridge, ipcRenderer } from "electron";
 import { LOCAL_IPC } from "../shared/ipc-local";
 import {
   type DictationHistoryView,
+  type DictationTestResult,
+  type DictationTestState,
   type KiraLocalApi,
   type LocalEvent,
   type LocalState,
@@ -48,6 +50,10 @@ const api: KiraLocalApi = {
   quickHide: () => ipcRenderer.invoke(LOCAL_IPC.quickHide) as Promise<void>,
   quickResize: (height) => ipcRenderer.invoke(LOCAL_IPC.quickResize, height) as Promise<void>,
   quickToggleDictation: () => ipcRenderer.invoke(LOCAL_IPC.quickToggleDictation) as Promise<void>,
+  dictationTestState: () => ipcRenderer.invoke(LOCAL_IPC.dictationTestState) as Promise<{ test: DictationTestState; results: DictationTestResult[] }>,
+  dictationTestStart: (kind) => ipcRenderer.invoke(LOCAL_IPC.dictationTestStart, kind) as Promise<DictationTestState>,
+  dictationTestStop: () => ipcRenderer.invoke(LOCAL_IPC.dictationTestStop) as Promise<void>,
+  dictationTestCancel: () => ipcRenderer.invoke(LOCAL_IPC.dictationTestCancel) as Promise<void>,
   on: (listener) => {
     const handler = (_event: unknown, payload: unknown): void => {
       if (payload && typeof payload === "object" && typeof (payload as LocalEvent).type === "string") listener(payload as LocalEvent);

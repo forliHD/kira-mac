@@ -29,7 +29,32 @@ describe("Konfiguration: Kürzel des globalen Diktats", () => {
   it("kennt die neuen Felder mit sicheren Standards", () => {
     const cfg = normalizeConfig({});
     expect(cfg.dictation.dashboardStt).toBe(true);
+    expect(cfg.dictation.correctVocabulary).toBe(true);
+    expect(cfg.dictationTests).toEqual([]);
     expect(cfg.lastServerVersion).toBeNull();
     expect(normalizeConfig({ lastServerVersion: "3.298.0" }).lastServerVersion).toBe("3.298.0");
+    expect(normalizeConfig({ dictation: { correctVocabulary: false } }).dictation.correctVocabulary).toBe(false);
+  });
+
+  it("hält nur gültige Diktat-Test-Ergebnisse, höchstens fünf, neueste zuerst", () => {
+    const result = {
+      id: "r1",
+      at: 1,
+      kind: "terms",
+      wer: 0.1,
+      words: 40,
+      substitutions: 2,
+      insertions: 1,
+      deletions: 1,
+      termsTotal: 10,
+      termsHit: 9,
+      durationMs: 42_000,
+      settings: { locale: "de-DE", engine: "analyzer", commands: true, correction: true, appVersion: "0.4.0" },
+    };
+    const many = Array.from({ length: 7 }, (_, i) => ({ ...result, id: `r${i}` }));
+    const cfg = normalizeConfig({ dictationTests: [...many, { id: "kaputt" }, "x"] });
+    expect(cfg.dictationTests).toHaveLength(5);
+    expect(cfg.dictationTests[0]?.id).toBe("r0");
+    expect(normalizeConfig({ dictationTests: "nein" }).dictationTests).toEqual([]);
   });
 });

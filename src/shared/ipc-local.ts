@@ -35,6 +35,10 @@ export const LOCAL_IPC = {
   quickHide: "local:quickHide",
   quickResize: "local:quickResize",
   quickToggleDictation: "local:quickToggleDictation",
+  dictationTestState: "local:dictationTestState",
+  dictationTestStart: "local:dictationTestStart",
+  dictationTestStop: "local:dictationTestStop",
+  dictationTestCancel: "local:dictationTestCancel",
   // Hauptprozess → lokale Seiten
   event: "local:event",
 } as const;
