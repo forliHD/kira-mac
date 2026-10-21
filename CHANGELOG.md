@@ -6,6 +6,62 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-21
+
+Phase 1 des Plans „Schnellfenster & Diktat“ (KIRA-Repo,
+`docs/mac-app-schnellfenster-diktat-plan.md`): die Erkennung wird ehrlich –
+genauer, mit Wortschatz, offline-fähig und messbar.
+
+### Hinzugefügt
+- **Nachkorrektur gegen den Wortschatz** (Einstellungen → Diktat → „Eigene
+  Begriffe nachkorrigieren“, Standard an). Der Helfer gibt KIRA, deinen Namen
+  und die eigenen Begriffe zwar als `contextualStrings` an Apple, der
+  `SpeechTranscriber` (macOS 26+) wertet sie aber nicht aus (Apple-Forum
+  801877, Apple_Agent 09/2025). Deshalb korrigiert die Hülle jedes fertige
+  Stück selbst: lautgleiche Wörter („Lukas“ → Lucas, „Lugas“ → Lucas) und
+  kleine Tippfehler („Tira“ → KIRA, „Weeber“ → Weber) werden zum Begriff,
+  Groß/Klein wird angeglichen („kira“ → KIRA). Vorsichtig: häufige deutsche
+  Wörter bleiben, Wörter aus dem macOS-Wörterbuch werden bei bloßer
+  Buchstabenähnlichkeit nie ersetzt (neues Helfer-Kommando `text.knownWords`
+  über `NSSpellChecker`, „Kita“ bleibt Kita), zwei gleich gute Begriffe heben
+  sich auf, Zahlen bleiben. Gilt für das globale Diktat, das Schnellfenster
+  und das Dashboard-Diktat über die Hülle. Das Protokoll zählt nur
+  Ersetzungen, nie Text (`src/main/dictation-correct.ts`,
+  `tests/dictation-correct.test.ts`).
+- **Diktat-Test** (Einstellungen → Diktat): drei feste Texte – „Begriffe“
+  (aus KIRA, deinem Namen und deinen Begriffen gebaut), „Zahlen und Daten“,
+  „Freier Text“ (~1 min). Lies vor, „Auswerten“, und die App zeigt die
+  Wortfehlerrate (WER) mit Ersetzungen, zu viel, fehlt, beim Begriffe-Test
+  „Begriffe n von m“, dazu Dauer und die Einstellungen des Laufs (Sprache,
+  Engine, Nachkorrektur, Befehle, Version). Die letzten fünf Ergebnisse bleiben
+  in der Konfiguration – nur Zahlen und Einstellungen, nie der Text; der Ton
+  verlässt den Mac nicht (`src/shared/wer.ts`, `src/shared/dictation-test.ts`,
+  `src/main/dictation-test.ts`).
+- **Wortschatz bleibt auf dem Mac**: Der zuletzt vom Server geholte Wortschatz
+  wird wie der Diktat-Verlauf verschlüsselt gespeichert (`vocabulary.bin`,
+  `safeStorage`, nur gepackt) und gilt offline oder ohne Sitzung weiter;
+  erneuert wird weiter stündlich. Einstellungen → Diktat zeigt Anzahl und
+  Stand.
+- **Messwerte** im Protokoll, nie Text: je Diktat `dictation_session` (Ziel,
+  Programm, Sprache, Engine, Dauer, Spüldauer nach dem Stopp, fertige Stücke,
+  Zeichen, Ersetzungen, Fehler), je Dashboard-Äußerung `transcribe_done`
+  (Dauer, Audiolänge, Verhältnis, Zeichen, Ersetzungen).
+
+### Geändert
+- **Erkennung ohne `.fastResults`.** Der Stream lief mit
+  `[.volatileResults, .fastResults]`; Apple dokumentiert `fastResults` als
+  „biases the transcriber towards responsiveness, yielding faster but also
+  less accurate results“. Die flüchtigen Ergebnisse (`volatileResults`) speisen
+  weiter die Vorschau in der Pille; die Finals, die eingesetzt werden, sind
+  jetzt die genaue Variante. Fällt die Verzögerung auf, misst der Diktat-Test
+  sie (`flushMs` im Protokoll).
+- Zeichensetzung auf dem Rückfall-Pfad (`SFSpeechRecognizer`, macOS 14/15):
+  `addsPunctuation` war nicht gesetzt, Text kam ohne Punkt und Komma.
+- Das Ende eines Diktats wartet auf laufende Wörterbuch-Fragen, damit der
+  letzte Satz weder im Verlauf noch im Diktat-Test fehlt.
+- Helfer-Protokoll (additiv, Version 1): `text.knownWords`
+  (`docs/helper-protocol.md`).
+
 ## [0.3.9] - 2026-10-21
 
 ### Hinzugefügt

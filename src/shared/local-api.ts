@@ -3,6 +3,7 @@
 // src/preload/local.ts. Nicht Teil des Vertrags mit dem Dashboard.
 
 import { type DictationModelDownload } from "./dictation-model";
+import { type DictationTestKind, type DictationTestResult, type DictationTestState } from "./dictation-test";
 import { type HelperInfo, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "./helper-types";
 
 export interface InstanceConfig {
@@ -22,6 +23,8 @@ export interface DictationConfig {
   commands: boolean;
   /** Diktat im Dashboard über den Apple-Chip (Fähigkeit `stt`); aus = Server wie im Browser. */
   dashboardStt: boolean;
+  /** Nachkorrektur gegen den Wortschatz („Tira“ → KIRA), seit 0.4.0, Standard an. */
+  correctVocabulary: boolean;
 }
 
 export interface GeneralConfig {
@@ -69,6 +72,8 @@ export interface DictationStatus {
   fnKey: FnKeyStatus;
   /** Laufender oder gescheiterter Download des Diktat-Modells. */
   modelDownload: DictationModelDownload;
+  /** Wortschatz für die Nachkorrektur: Anzahl und Stand (null = noch nie geholt). */
+  vocabulary: { count: number; fetchedAt: number } | null;
 }
 
 /** Was macOS selbst beim Drücken von 🌐 tut (`AppleFnUsageType`); `default` = nie geändert. */
@@ -193,7 +198,9 @@ export type LocalEvent =
   /** Fortschritt oder Fehler beim Laden des Diktat-Modells (ohne den ganzen Zustand neu zu holen). */
   | { type: "dictation-model"; download: DictationModelDownload }
   /** Schnellfenster: Ansicht wechseln (Menüleiste „Diktat-Verlauf…“ → Diktate). */
-  | { type: "quick-view"; view: "chat" | "dictations" };
+  | { type: "quick-view"; view: "chat" | "dictations" }
+  /** Diktat-Test (Einstellungen → Diktat): Lauf und bisherige Ergebnisse. */
+  | { type: "dictation-test"; test: DictationTestState; results: DictationTestResult[] };
 
 /** Ein Eintrag im Diktat-Verlauf (nur auf diesem Mac, src/main/dictation-history.ts). */
 export interface DictationEntry {
@@ -214,6 +221,8 @@ export interface DictationHistoryView {
   persistent: boolean;
 }
 
+export type { DictationTestKind, DictationTestResult, DictationTestState };
+
 export interface KiraLocalApi {
   getState(): Promise<LocalState>;
   probe(url: string): Promise<ProbeResult>;
@@ -223,6 +232,13 @@ export interface KiraLocalApi {
   setDictation(dictation: DictationConfig): Promise<LocalState>;
   /** Fehlendes Diktat-Modell jetzt laden. Wirft mit der deutschen Ursache, wenn es scheitert. */
   prepareDictationModel(): Promise<LocalState>;
+  // Diktat-Test (Einstellungen → Diktat, src/main/dictation-test.ts)
+  dictationTestState(): Promise<{ test: DictationTestState; results: DictationTestResult[] }>;
+  /** Vorlage bauen und die Erkennung starten; Fortschritt kommt als Ereignis `dictation-test`. */
+  dictationTestStart(kind: DictationTestKind): Promise<DictationTestState>;
+  /** Erkennung beenden; das Ergebnis kommt als Ereignis `dictation-test`, sobald der Helfer gespült hat. */
+  dictationTestStop(): Promise<void>;
+  dictationTestCancel(): Promise<void>;
   setGeneral(general: GeneralConfig): Promise<LocalState>;
   requestPermission(kind: PermissionKind): Promise<PermissionsStatus | null>;
   checkForUpdates(): Promise<UpdateState>;

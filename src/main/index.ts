@@ -11,6 +11,7 @@ import { BrowserWindow, Notification, type WebContents, app, clipboard, session 
 import { type AppInfo, BRIDGE_VERSION, type Capability, type InstanceInfo, type NativeEvent } from "../shared/bridge";
 import { capabilitiesFrom } from "../shared/capabilities";
 import { IDLE_MODEL_DOWNLOAD } from "../shared/dictation-model";
+import { type DictationTestKind } from "../shared/dictation-test";
 import { isAllowedSettingsUrl, isFnHotkey } from "../shared/hotkey";
 import { type HelperEvent, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
 import { type ConnectionState, type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalEvent, type LocalState, type ProbeResult } from "../shared/local-api";
@@ -18,8 +19,9 @@ import { ACCESS_COOKIE, AccessLogin } from "./access-login";
 import { registerBridgeIpc } from "./bridge";
 import { BrowserLogin, URL_SCHEME, callbackPath } from "./browser-login";
 import { type AppConfig, configStore } from "./config";
-import { GlobalDictation } from "./dictation";
-import { DictationHistory } from "./dictation-history";
+import { GlobalDictation, type StoredVocabulary, type VocabularyStore } from "./dictation";
+import { DictationHistory, type HistoryCodec, type HistoryFs } from "./dictation-history";
+import { DictationTestRunner } from "./dictation-test";
 import { installDownloadHandler } from "./downloads";
 import { FnKeyController } from "./fn-key";
 import { HelperClient } from "./helper";
@@ -69,6 +71,8 @@ class KiraApp {
   private helper!: HelperClient;
   private sttAssets!: SttAssets;
   private dictation!: GlobalDictation;
+  /** Diktat-Test (Einstellungen → Diktat): Vorlage, Lauf, Auswertung (dictation-test.ts). */
+  private dictationTest!: DictationTestRunner;
   private fnKey!: FnKeyController;
   private quickChat!: QuickChat;
   private notifications: NotificationClient | null = null;
@@ -97,6 +101,8 @@ class KiraApp {
   private accessHandoverAt = 0;
   /** Diktat-Verlauf (nur dieser Mac, verschlüsselt; dictation-history.ts) – erst beim ersten Gebrauch. */
   private historyStore: DictationHistory | null = null;
+  /** Verschlüsselung für Verlauf und Wortschatz (undefined = noch nicht geprüft). */
+  private secureCodecCache: HistoryCodec | null | undefined;
 
   async boot(): Promise<void> {
     if (!app.requestSingleInstanceLock()) {
@@ -313,6 +319,22 @@ class KiraApp {
         this.broadcastState();
       }
     });
+    this.dictationTest = new DictationTestRunner({
+      store: {
+        load: () => this.config.dictationTests,
+        save: (results) => {
+          this.config = configStore.update({ dictationTests: results });
+        },
+      },
+      settings: () => ({
+        locale: this.config.dictation.locale,
+        engine: this.dictation.lastEngine,
+        commands: this.config.dictation.commands,
+        correction: this.config.dictation.correctVocabulary,
+        appVersion: app.getVersion(),
+      }),
+    });
+    this.dictationTest.on("change", (test) => this.broadcast({ type: "dictation-test", test, results: this.dictationTest.results() }));
     this.dictation = new GlobalDictation({
       helper: this.helper,
       ensureAssets: (locale, onProgress) => this.sttAssets.ensure(locale, onProgress),
@@ -321,6 +343,9 @@ class KiraApp {
         update: (d) => this.quickChat.setDictation(d),
         insert: (text) => this.quickWin?.send({ type: "quick-insert", text }),
       },
+      test: this.dictationTest.sink,
+      getCorrectionEnabled: () => this.config.dictation.correctVocabulary,
+      vocabularyStore: this.createVocabularyStore(),
       server: {
         fetchVocabulary: async () => {
           if (!session.getOrigin()) return null;
@@ -345,12 +370,16 @@ class KiraApp {
       getCommandsEnabled: () => this.config.dictation.commands,
       log: scoped("dictation"),
     });
-    this.dictation.on("state", () => {
+    this.dictation.on("state", (state) => {
       this.tray.refresh();
       this.rebuildMenu();
+      // Der Helfer hat gespült, alle Stücke sind angekommen: jetzt auswerten.
+      if (state === "idle" && this.dictationTest.active) this.dictationTest.finish();
     });
     // Jedes Diktat in den Verlauf – auch wenn das Einsetzen scheiterte.
     this.dictation.on("session", (s) => {
+      // Der Diktat-Test liest eine Vorlage vor – das gehört nicht in den Verlauf.
+      if (s.target === "test") return;
       this.history.add({ at: s.startedAt, app: s.app, target: s.target, text: s.text, failed: s.failed });
       this.notifyHistoryChanged();
     });
@@ -367,29 +396,68 @@ class KiraApp {
     return this.historyStore;
   }
 
-  private createHistory(): DictationHistory {
-    const file = join(app.getPath("userData"), "dictation-history.bin");
-    const log = scoped("dictation-history");
+  /** Schlüsselbund-Verschlüsselung (nur gepackt, s. o.); einmal geprüft, einmal gewarnt. */
+  private secureCodec(): HistoryCodec | null {
+    if (this.secureCodecCache !== undefined) return this.secureCodecCache;
     const codec =
       app.isPackaged && safeStorage.isEncryptionAvailable()
         ? { encrypt: (plain: string) => safeStorage.encryptString(plain), decrypt: (data: Buffer) => safeStorage.decryptString(data) }
         : null;
+    if (!codec) this.log.warn("secure_storage_unavailable", { packaged: app.isPackaged });
+    this.secureCodecCache = codec;
+    return codec;
+  }
+
+  /** Datei in userData, atomar geschrieben (Temp-Datei + rename). */
+  private secureFile(name: string): HistoryFs {
+    const file = join(app.getPath("userData"), name);
+    return {
+      read: () => (existsSync(file) ? readFileSync(file) : null),
+      write: (data) => {
+        const tmp = `${file}.tmp`;
+        writeFileSync(tmp, data, { mode: 0o600 });
+        renameSync(tmp, file);
+      },
+      remove: () => rmSync(file, { force: true }),
+    };
+  }
+
+  private createHistory(): DictationHistory {
+    const log = scoped("dictation-history");
+    const codec = this.secureCodec();
     if (!codec) log.warn("dictation_history_memory_only", { packaged: app.isPackaged });
     const history = new DictationHistory({
       codec,
-      fs: {
-        read: () => (existsSync(file) ? readFileSync(file) : null),
-        write: (data) => {
-          const tmp = `${file}.tmp`;
-          writeFileSync(tmp, data, { mode: 0o600 });
-          renameSync(tmp, file);
-        },
-        remove: () => rmSync(file, { force: true }),
-      },
+      fs: this.secureFile("dictation-history.bin"),
       onWarn: (event, data) => log.warn(event, data),
     });
     history.load();
     return history;
+  }
+
+  /**
+   * Wortschatz-Cache (Plan 21.10.2026, M4): der zuletzt geholte Wortschatz,
+   * verschlüsselt wie der Verlauf, damit das Diktat offline seine Begriffe
+   * kennt. Ohne Verschlüsselung bleibt er nur im Speicher.
+   */
+  private createVocabularyStore(): VocabularyStore | undefined {
+    const codec = this.secureCodec();
+    if (!codec) return undefined;
+    const fs = this.secureFile("vocabulary.bin");
+    const log = scoped("vocabulary");
+    return {
+      load: () => {
+        const raw = fs.read();
+        if (!raw || raw.length === 0) return null;
+        try {
+          return JSON.parse(codec.decrypt(raw)) as StoredVocabulary;
+        } catch (err) {
+          log.warn("vocabulary_unreadable", { error: err instanceof Error ? err.message : String(err) });
+          return null;
+        }
+      },
+      save: (vocabulary) => fs.write(codec.encrypt(JSON.stringify(vocabulary))),
+    };
   }
 
   private historyView(): { entries: ReturnType<DictationHistory["list"]>; persistent: boolean } {
@@ -606,6 +674,27 @@ class KiraApp {
         this.accessWait = null;
         this.accessInWindowUntil = Date.now() + ACCESS_IN_WINDOW_MS;
         this.mainWin.loadInstance(origin);
+      },
+      dictationTest: {
+        state: () => ({ test: this.dictationTest.state(), results: this.dictationTest.results() }),
+        start: async (kind: DictationTestKind) => {
+          if (this.dictation.currentState !== "idle") await this.dictation.stop();
+          const terms = await this.dictation.contextualStrings();
+          const state = this.dictationTest.begin(kind, terms);
+          void this.dictation.start("test");
+          return state;
+        },
+        stop: async () => {
+          if (this.dictation.currentState === "idle") {
+            if (this.dictationTest.active) this.dictationTest.finish();
+            return;
+          }
+          await this.dictation.stop();
+        },
+        cancel: async () => {
+          if (this.dictation.currentTarget === "test" && this.dictation.currentState !== "idle") await this.dictation.cancel();
+          this.dictationTest.cancel();
+        },
       },
       quick: {
         getState: () => this.quickChat.getState(),
@@ -896,6 +985,7 @@ class KiraApp {
         hotkeyConflicts: this.hotkeyConflicts,
         fnKey: await this.fnKey.refresh(),
         modelDownload: this.sttAssets?.snapshot() ?? IDLE_MODEL_DOWNLOAD,
+        vocabulary: this.dictation?.vocabularyInfo() ?? null,
       },
       onboarded: this.config.onboarded,
       logPath: logFilePath(),

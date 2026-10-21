@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 
 import { app } from "electron";
 
+import { type DictationTestResult, TEST_RESULTS_MAX, isDictationTestResult } from "../shared/dictation-test";
 import { FN_HOTKEY, isFnHotkey } from "../shared/hotkey";
 import { type DictationConfig, type GeneralConfig, type HotkeyConfig, type InstanceConfig } from "../shared/local-api";
 import { scoped } from "./log";
@@ -33,6 +34,8 @@ export interface AppConfig {
   mainWindow: WindowBounds | null;
   /** Zuletzt gesehene Server-Version – entscheidet beim Start über die eingelassene Titelleiste. */
   lastServerVersion: string | null;
+  /** Ergebnisse des Diktat-Tests (nur Zahlen und Einstellungen, neueste zuerst, höchstens TEST_RESULTS_MAX). */
+  dictationTests: DictationTestResult[];
 }
 
 export const DEFAULT_HOTKEYS: HotkeyConfig = {
@@ -50,11 +53,12 @@ export function defaultConfig(): AppConfig {
     deviceId: randomUUID(),
     instance: { internalUrl: null, externalUrl: null, label: "KIRA" },
     hotkeys: { ...DEFAULT_HOTKEYS },
-    dictation: { locale: "de-DE", commands: true, dashboardStt: true },
+    dictation: { locale: "de-DE", commands: true, dashboardStt: true, correctVocabulary: true },
     general: { launchAtLogin: false, notifications: true },
     onboarded: false,
     mainWindow: null,
     lastServerVersion: null,
+    dictationTests: [],
   };
 }
 
@@ -102,6 +106,7 @@ export function normalizeConfig(raw: unknown): AppConfig {
       locale: str(dict.locale, base.dictation.locale) || base.dictation.locale,
       commands: bool(dict.commands, base.dictation.commands),
       dashboardStt: bool(dict.dashboardStt, base.dictation.dashboardStt),
+      correctVocabulary: bool(dict.correctVocabulary, base.dictation.correctVocabulary),
     },
     general: {
       launchAtLogin: bool(gen.launchAtLogin, base.general.launchAtLogin),
@@ -110,6 +115,7 @@ export function normalizeConfig(raw: unknown): AppConfig {
     onboarded: bool(r.onboarded, false),
     mainWindow: bounds,
     lastServerVersion: strOrNull(r.lastServerVersion),
+    dictationTests: Array.isArray(r.dictationTests) ? r.dictationTests.filter(isDictationTestResult).slice(0, TEST_RESULTS_MAX) : [],
   };
 }
 

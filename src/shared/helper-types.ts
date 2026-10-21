@@ -73,6 +73,8 @@ export interface HelperSttStatus {
 export interface SttFileResult {
   text: string;
   durationMs: number;
+  /** Länge der Aufnahme (Helfer ≥ 0.3.x); fehlt bei älteren Helfern. */
+  audioMs?: number;
   engine: string;
 }
 

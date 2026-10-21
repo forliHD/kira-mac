@@ -224,6 +224,36 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   `loginChanged()` statt im Takt anzufragen; `reconnectNow()` (Minuten-Prüfung)
   weckt ihn nicht, ein stehender Stream übersteht Token-Erneuerungen.
 
+- **Erkennung ohne `.fastResults`** (seit 0.4.0, `AnalyzerModels.stream`):
+  Apple: „faster but also less accurate results“. Die Pille braucht nur
+  `volatileResults`. Nicht wieder einschalten, ohne es mit dem Diktat-Test zu
+  messen (`flushMs` in `dictation_session`).
+- **`contextualStrings` wirken beim `SpeechTranscriber` nicht** (Apple-Forum
+  801877, Apple_Agent 09/2025 – nur `DictationTranscriber` nimmt sie). Die
+  Hülle übergibt sie weiter (Legacy-Pfad, mögliche spätere Engine), verlässt
+  sich aber nicht darauf: `src/main/dictation-correct.ts` korrigiert jedes
+  Final gegen die Begriffe (lautgleich → Stufe 1, Tippfehler ≤ 1 ab 4 bzw.
+  ≤ 2 ab 8 Zeichen → Stufe 2). Regeln, die bleiben müssen: Sperrliste
+  häufiger Wörter; Stufe-2-Treffer nie für Wörter, die `text.knownWords`
+  (NSSpellChecker) kennt – Live 21.10.2026: „Kita“, „Reiter“, „Musterfirma“
+  sind bekannt, „Tira“, „Lugas“ nicht; Gleichstand zweier Begriffe → nichts;
+  Zahlen und Wörter < 3 Zeichen nie. Neue Lautregeln mit Positiv- UND
+  Negativfall in `tests/dictation-correct.test.ts`. Die Wörterbuch-Frage ist
+  asynchron (1,5 s Limit, Cache 2.000 Wörter) – `GlobalDictation.finish()`
+  wartet auf laufende `insertFinal`, sonst fehlt der letzte Satz.
+- **Diktat-Ziel `test`** (`DictationTarget`, Senke wie das Schnellfenster, kein
+  HUD, keine Bedienungshilfen): `src/main/dictation-test.ts` baut die Vorlage,
+  sammelt die Finals und wertet beim Übergang nach `idle` aus (`wer.ts`,
+  `dictation-test.ts` in `shared/`). Test-Diktate gehen nie in den Verlauf.
+  Ergebnisse in `config.dictationTests` (nur Zahlen/Einstellungen, höchstens
+  fünf). Vorlagen-Text ändern = alte Ergebnisse nicht mehr vergleichbar – im
+  CHANGELOG nennen.
+- **Wortschatz-Cache** (`vocabulary.bin`, `createVocabularyStore` in index.ts,
+  derselbe Schlüsselbund-Codec wie der Verlauf): `contextualStrings()` nimmt
+  den gespeicherten Stand, wenn der Server null liefert (keine Sitzung,
+  offline) – auch wenn er älter als eine Stunde ist. Nie Klartext auf die
+  Platte; ohne Codec (unverpackt) nur im Speicher.
+
 ## Offene Punkte (Stand 0.1.0)
 
 - `share`-Ereignis (Teilen aus Finder/Dock) braucht eine Share-Extension – noch

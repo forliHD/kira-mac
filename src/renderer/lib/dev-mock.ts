@@ -159,7 +159,7 @@ function initialState(page: MockPage, p: URLSearchParams): LocalState {
             label: "kira.example.de",
           },
     hotkeys: { quickWindow: "Alt+Space", dictation: p.get("fn") ? FN_HOTKEY : "Control+Alt+D" },
-    dictation: { locale: "de-DE", commands: true, dashboardStt: true },
+    dictation: { locale: "de-DE", commands: true, dashboardStt: true, correctVocabulary: true },
     general: { launchAtLogin: true, notifications: true },
     connection: offline
       ? { online: false, origin: null, kind: null, serverVersion: null, serverHasBridge: false, lastError: MOCK_OFFLINE_REASON, lastOnlineAt: Date.now() - 120_000 }
@@ -185,6 +185,7 @@ function initialState(page: MockPage, p: URLSearchParams): LocalState {
         sttMode === "downloading"
           ? { phase: "downloading", progress: 40, error: null, locale: "de-DE" }
           : { ...IDLE_MODEL_DOWNLOAD },
+      vocabulary: { count: 4, fetchedAt: Date.now() - 5 * 60_000 },
     },
     onboarded: !onboarding,
     logPath: "/Users/kira/Library/Logs/KIRA/main.log",
@@ -354,6 +355,10 @@ function createMockApi(page: MockPage, p: URLSearchParams): KiraLocalApi {
     quickHide: async () => undefined,
     quickResize: async () => undefined,
     quickToggleDictation: async () => undefined,
+    dictationTestState: async () => ({ test: { active: false, kind: null, reference: "", text: "", partial: "", level: 0, listening: false, startedAt: null, reason: null }, results: [] }),
+    dictationTestStart: async (kind) => ({ active: true, kind, reference: "Vorschau ohne Hülle.", text: "", partial: "", level: 0, listening: false, startedAt: null, reason: null }),
+    dictationTestStop: async () => undefined,
+    dictationTestCancel: async () => undefined,
     dictationHistory: async () => ({ entries: history, persistent: true }),
     copyDictation: async (id) => log(`Diktat kopiert: ${id}`),
     deleteDictation: async (id) => {

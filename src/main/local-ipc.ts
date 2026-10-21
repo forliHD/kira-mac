@@ -4,6 +4,7 @@
 
 import { type IpcMainInvokeEvent, app, ipcMain, shell } from "electron";
 
+import { type DictationTestKind, type DictationTestResult, type DictationTestState, isDictationTestKind } from "../shared/dictation-test";
 import { type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
 import { LOCAL_IPC } from "../shared/ipc-local";
 import {
@@ -47,6 +48,12 @@ export interface LocalIpcContext {
     copy: (id: string) => void;
     remove: (id: string) => DictationHistoryView;
     clear: () => DictationHistoryView;
+  };
+  dictationTest: {
+    state: () => { test: DictationTestState; results: DictationTestResult[] };
+    start: (kind: DictationTestKind) => Promise<DictationTestState>;
+    stop: () => Promise<void>;
+    cancel: () => Promise<void>;
   };
   quick: {
     getState: () => QuickState;
@@ -105,7 +112,12 @@ export function registerLocalIpc(ctx: LocalIpcContext): void {
     LOCAL_IPC.setDictation,
     guard(async (value: unknown) => {
       const v = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
-      await ctx.setDictation({ locale: str(v.locale) || "de-DE", commands: bool(v.commands, true), dashboardStt: bool(v.dashboardStt, true) });
+      await ctx.setDictation({
+        locale: str(v.locale) || "de-DE",
+        commands: bool(v.commands, true),
+        dashboardStt: bool(v.dashboardStt, true),
+        correctVocabulary: bool(v.correctVocabulary, true),
+      });
       return ctx.getState();
     }),
   );
@@ -187,5 +199,15 @@ export function registerLocalIpc(ctx: LocalIpcContext): void {
     }),
   );
   ipcMain.handle(LOCAL_IPC.quickToggleDictation, guard(() => ctx.quick.toggleDictation()));
+  ipcMain.handle(LOCAL_IPC.dictationTestState, guard(() => ctx.dictationTest.state()));
+  ipcMain.handle(
+    LOCAL_IPC.dictationTestStart,
+    guard((kind: unknown) => {
+      if (!isDictationTestKind(kind)) throw new Error("Unbekannte Testart.");
+      return ctx.dictationTest.start(kind);
+    }),
+  );
+  ipcMain.handle(LOCAL_IPC.dictationTestStop, guard(() => ctx.dictationTest.stop()));
+  ipcMain.handle(LOCAL_IPC.dictationTestCancel, guard(() => ctx.dictationTest.cancel()));
   log.info("local_ipc_registered");
 }
