@@ -14,6 +14,7 @@
 // app=…, partial=…, message=…, live=1 · Diktat auf der 🌐 fn-Taste: fn=1
 // (bzw. fn=permission|unavailable|error), fnaction=none|inputSource|emoji|dictation|default.
 
+import { IDLE_MODEL_DOWNLOAD, type DictationModelDownload } from "../../shared/dictation-model";
 import { FN_HOTKEY, fnSystemActionFrom, isFnHotkey } from "../../shared/hotkey";
 import { type HelperInfo, type PermissionKind, type PermissionsStatus } from "../../shared/helper-types";
 import {
@@ -180,6 +181,10 @@ function initialState(page: MockPage, p: URLSearchParams): LocalState {
       permissions: helperRunning ? permissions(p.get("perms")) : null,
       hotkeyConflicts: p.get("conflicts") === "1" ? ["Globales Diktat: „⌃⌥D“ wird bereits von einem anderen Programm oder macOS belegt."] : [],
       fnKey: fnKeyStatus(p.get("fn") ? FN_HOTKEY : "Control+Alt+D", p, helperRunning && permissions(p.get("perms")).accessibility),
+      modelDownload:
+        sttMode === "downloading"
+          ? { phase: "downloading", progress: 40, error: null, locale: "de-DE" }
+          : { ...IDLE_MODEL_DOWNLOAD },
     },
     onboarded: !onboarding,
     logPath: "/Users/kira/Library/Logs/KIRA/main.log",
@@ -282,6 +287,25 @@ function createMockApi(page: MockPage, p: URLSearchParams): KiraLocalApi {
     setDictation: async (dictation) => {
       await delay(150);
       return setState({ ...state, dictation });
+    },
+    prepareDictationModel: async () => {
+      const locale = state.dictation.locale;
+      const step = (download: DictationModelDownload): void => {
+        state = { ...state, dictationStatus: { ...state.dictationStatus, modelDownload: download } };
+        emit({ type: "dictation-model", download });
+      };
+      step({ phase: "downloading", progress: 15, error: null, locale });
+      await delay(400);
+      if (p.get("stt") === "unavailable") {
+        const error = "Diktat-Modell fehlt: Dieser Mac kann das Modell nicht laden (macOS zu alt oder kein Apple-Chip).";
+        step({ phase: "failed", progress: 15, error, locale });
+        throw new Error(error);
+      }
+      step({ phase: "downloading", progress: 70, error: null, locale });
+      await delay(400);
+      const installed = { available: true, engine: "analyzer" as const, assets: "installed" as const, downloadable: true, locale };
+      step({ phase: "idle", progress: null, error: null, locale });
+      return setState({ ...state, dictationStatus: { ...state.dictationStatus, stt: installed, modelDownload: { ...IDLE_MODEL_DOWNLOAD, locale } } });
     },
     setGeneral: async (general) => {
       await delay(150);

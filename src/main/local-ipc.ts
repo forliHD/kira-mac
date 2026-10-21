@@ -27,6 +27,7 @@ export interface LocalIpcContext {
   finishOnboarding: () => Promise<void>;
   setHotkeys: (hotkeys: HotkeyConfig) => Promise<string[]>;
   setDictation: (dictation: DictationConfig) => Promise<void>;
+  prepareDictationModel: () => Promise<LocalState>;
   setGeneral: (general: GeneralConfig) => Promise<void>;
   requestPermission: (kind: PermissionKind) => Promise<PermissionsStatus | null>;
   checkForUpdates: () => Promise<UpdateState>;
@@ -108,6 +109,7 @@ export function registerLocalIpc(ctx: LocalIpcContext): void {
       return ctx.getState();
     }),
   );
+  ipcMain.handle(LOCAL_IPC.prepareDictationModel, guard(() => ctx.prepareDictationModel()));
   ipcMain.handle(
     LOCAL_IPC.setGeneral,
     guard(async (value: unknown) => {

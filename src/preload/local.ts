@@ -22,6 +22,7 @@ const api: KiraLocalApi = {
   finishOnboarding: () => ipcRenderer.invoke(LOCAL_IPC.finishOnboarding) as Promise<void>,
   setHotkeys: (hotkeys) => ipcRenderer.invoke(LOCAL_IPC.setHotkeys, hotkeys) as Promise<{ state: LocalState; conflicts: string[] }>,
   setDictation: (dictation) => ipcRenderer.invoke(LOCAL_IPC.setDictation, dictation) as Promise<LocalState>,
+  prepareDictationModel: () => ipcRenderer.invoke(LOCAL_IPC.prepareDictationModel) as Promise<LocalState>,
   setGeneral: (general) => ipcRenderer.invoke(LOCAL_IPC.setGeneral, general) as Promise<LocalState>,
   requestPermission: (kind) => ipcRenderer.invoke(LOCAL_IPC.requestPermission, kind) as Promise<PermissionsStatus | null>,
   checkForUpdates: () => ipcRenderer.invoke(LOCAL_IPC.checkUpdates) as Promise<UpdateState>,

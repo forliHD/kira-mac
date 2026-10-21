@@ -154,7 +154,14 @@ export class HelperClient extends EventEmitter<HelperEvents> {
     child.stderr?.setEncoding?.("utf8");
     child.stderr?.on("data", (chunk: string | Buffer) => {
       const text = (typeof chunk === "string" ? chunk : chunk.toString("utf8")).trim();
-      if (text) this.log.debug("helper_stderr", { text: text.slice(0, 500) });
+      if (!text) return;
+      const clipped = text.slice(0, 800);
+      // Im gepackten Betrieb schreibt die Datei erst ab info. Warnungen und
+      // der Modell-Stand müssen dort ankommen, sonst sieht man auf dem
+      // betroffenen Mac nur „Diktat-Modell fehlt“ ohne Ursache.
+      if (/\] ERROR /.test(text)) this.log.error("helper_stderr", { text: clipped });
+      else if (/\] WARN /.test(text) || /stt_status|Diktat-Modell/.test(text)) this.log.warn("helper_stderr", { text: clipped });
+      else this.log.debug("helper_stderr", { text: clipped });
     });
     child.on("error", (err) => {
       this.lastErrorText = `Helfer-Prozessfehler: ${err.message}`;

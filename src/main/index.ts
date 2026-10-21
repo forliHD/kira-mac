@@ -10,6 +10,7 @@ import { BrowserWindow, Notification, type WebContents, app, clipboard, session 
 
 import { type AppInfo, BRIDGE_VERSION, type Capability, type InstanceInfo, type NativeEvent } from "../shared/bridge";
 import { capabilitiesFrom } from "../shared/capabilities";
+import { IDLE_MODEL_DOWNLOAD } from "../shared/dictation-model";
 import { isAllowedSettingsUrl, isFnHotkey } from "../shared/hotkey";
 import { type HelperEvent, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
 import { type ConnectionState, type DictationConfig, type GeneralConfig, type HotkeyConfig, type LocalEvent, type LocalState, type ProbeResult } from "../shared/local-api";
@@ -44,6 +45,7 @@ import { NotificationClient } from "./notifications";
 import { QuickChat, localReason } from "./quick-chat";
 import { helperBinaryPath } from "./paths";
 import { session } from "./session";
+import { SttAssets } from "./stt-assets";
 import { TrayController } from "./tray";
 import { updater } from "./updater";
 import { HudWindowController } from "./windows/hud";
@@ -65,6 +67,7 @@ class KiraApp {
   private readonly log = scoped("app");
   private quitting = false;
   private helper!: HelperClient;
+  private sttAssets!: SttAssets;
   private dictation!: GlobalDictation;
   private fnKey!: FnKeyController;
   private quickChat!: QuickChat;
@@ -124,7 +127,7 @@ class KiraApp {
     });
 
     await app.whenReady();
-    this.log.info("app_ready", { version: app.getVersion(), packaged: app.isPackaged });
+    this.log.info("app_ready", { version: app.getVersion(), packaged: app.isPackaged, arch: process.arch });
 
     this.setupHelper();
     this.setupQuickChat();
@@ -212,11 +215,12 @@ class KiraApp {
     const binary = helperBinaryPath();
     this.helper = new HelperClient({ binaryPath: binary, log: scoped("helper") });
     this.helper.on("info", (info) => {
-      this.log.info("helper_info", { version: info.version, macos: info.macos, features: info.features });
+      this.log.info("helper_info", { version: info.version, macos: info.macos, arch: process.arch, chip: info.chip, features: info.features });
       this.statusCache = null;
       this.broadcastState();
       this.quickChat?.setDictation({ available: Boolean(info.features.sttStream), reason: info.features.sttStream ? null : "Dieser Mac bietet keine laufende Spracherkennung." });
       this.quickChat?.refresh();
+      void this.sttAssets?.ensureAutomatic(this.config.dictation.locale);
     });
     this.helper.on("exited", () => {
       this.statusCache = null;
@@ -301,8 +305,17 @@ class KiraApp {
   }
 
   private setupDictation(): void {
+    this.sttAssets = new SttAssets(this.helper, scoped("stt"));
+    this.sttAssets.on("change", (download) => {
+      this.broadcast({ type: "dictation-model", download });
+      if (download.phase !== "downloading") {
+        this.statusCache = null;
+        this.broadcastState();
+      }
+    });
     this.dictation = new GlobalDictation({
       helper: this.helper,
+      ensureAssets: (locale, onProgress) => this.sttAssets.ensure(locale, onProgress),
       getTarget: () => (this.quickWin?.isFocused() ? "quick" : "insert"),
       quick: {
         update: (d) => this.quickChat.setDictation(d),
@@ -499,6 +512,11 @@ class KiraApp {
         if (hasTokens) this.notifications?.loginChanged();
       },
       signInWithBrowser: (origin) => this.browserLogin.start(origin),
+      ensureSttAssets: (locale) => this.sttAssets.ensure(locale),
+      kickSttAssets: (locale) => {
+        void this.sttAssets.ensureAutomatic(locale);
+      },
+      modelDownloading: () => this.sttAssets.snapshot().phase === "downloading",
     });
     registerLocalIpc({
       getState: () => this.localState(),
@@ -525,10 +543,17 @@ class KiraApp {
       },
       setDictation: async (dictation: DictationConfig) => {
         const before = this.config.dictation.dashboardStt;
+        const beforeLocale = this.config.dictation.locale;
         this.config = configStore.update({ dictation });
         this.statusCache = null;
         // Die Fähigkeit `stt` kommt beim Laden der Seite – neu laden, damit das Dashboard umschaltet.
         if (before !== dictation.dashboardStt && this.mainWin.isDashboardLoaded()) this.mainWin.window?.webContents.reload();
+        if (beforeLocale !== dictation.locale) void this.sttAssets.ensureAutomatic(dictation.locale);
+      },
+      prepareDictationModel: async () => {
+        await this.sttAssets.download(this.config.dictation.locale);
+        this.statusCache = null;
+        return this.localState();
       },
       setGeneral: async (general: GeneralConfig) => {
         const before = this.config.general;
@@ -865,7 +890,13 @@ class KiraApp {
       connection: this.connection,
       update: updater.state,
       helper: { running: this.helper.running, info: this.helper.info, lastError: missing },
-      dictationStatus: { stt: status.stt, permissions: status.permissions, hotkeyConflicts: this.hotkeyConflicts, fnKey: await this.fnKey.refresh() },
+      dictationStatus: {
+        stt: status.stt,
+        permissions: status.permissions,
+        hotkeyConflicts: this.hotkeyConflicts,
+        fnKey: await this.fnKey.refresh(),
+        modelDownload: this.sttAssets?.snapshot() ?? IDLE_MODEL_DOWNLOAD,
+      },
       onboarded: this.config.onboarded,
       logPath: logFilePath(),
     };

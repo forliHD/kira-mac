@@ -2,6 +2,7 @@
 // hud, offline) und dem Hauptprozess – `window.KiraLocal`, bereitgestellt von
 // src/preload/local.ts. Nicht Teil des Vertrags mit dem Dashboard.
 
+import { type DictationModelDownload } from "./dictation-model";
 import { type HelperInfo, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "./helper-types";
 
 export interface InstanceConfig {
@@ -66,6 +67,8 @@ export interface DictationStatus {
   permissions: PermissionsStatus | null;
   hotkeyConflicts: string[];
   fnKey: FnKeyStatus;
+  /** Laufender oder gescheiterter Download des Diktat-Modells. */
+  modelDownload: DictationModelDownload;
 }
 
 /** Was macOS selbst beim Drücken von 🌐 tut (`AppleFnUsageType`); `default` = nie geändert. */
@@ -187,6 +190,8 @@ export type LocalEvent =
   | { type: "access-login"; status: "error" | "expired"; message: string }
   /** Der Diktat-Verlauf hat sich geändert (neues Diktat, gelöscht). */
   | { type: "dictation-history" }
+  /** Fortschritt oder Fehler beim Laden des Diktat-Modells (ohne den ganzen Zustand neu zu holen). */
+  | { type: "dictation-model"; download: DictationModelDownload }
   /** Schnellfenster: Ansicht wechseln (Menüleiste „Diktat-Verlauf…“ → Diktate). */
   | { type: "quick-view"; view: "chat" | "dictations" };
 
@@ -216,6 +221,8 @@ export interface KiraLocalApi {
   finishOnboarding(): Promise<void>;
   setHotkeys(hotkeys: HotkeyConfig): Promise<{ state: LocalState; conflicts: string[] }>;
   setDictation(dictation: DictationConfig): Promise<LocalState>;
+  /** Fehlendes Diktat-Modell jetzt laden. Wirft mit der deutschen Ursache, wenn es scheitert. */
+  prepareDictationModel(): Promise<LocalState>;
   setGeneral(general: GeneralConfig): Promise<LocalState>;
   requestPermission(kind: PermissionKind): Promise<PermissionsStatus | null>;
   checkForUpdates(): Promise<UpdateState>;

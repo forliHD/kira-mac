@@ -76,10 +76,14 @@ Hülle muss deshalb `NSMicrophoneUsageDescription` (und für macOS 14/15
 ## Verhalten im Detail
 
 - **Spracherkennung (macOS 26+):** `SpeechAnalyzer` + `SpeechTranscriber`,
-  On-Device. `stt.status` meldet `assets: "installed"` erst, wenn die Sprache
-  über `stt.prepare` reserviert und ihr Modell installiert ist — auch wenn
-  das Modell schon für das System-Diktat vorliegt. `stt.prepare` blockiert,
-  bis der Download fertig ist. `contextualStrings` gehen als
+  On-Device. Status, Download und Erkennung prüfen **dieselbe**
+  Modul-Konfiguration (`transcriptionOptions`/`reportingOptions`, nicht das
+  Preset `.transcription` — das ist für `AssetInventory` ein anderes Asset).
+  `stt.status` reserviert die Sprache, bevor es „fehlt“ sagt: ein Modell, das
+  das System-Diktat schon hat, gilt danach als installiert, ohne Download.
+  Fehlt es wirklich, ist `downloadable: true`; `stt.prepare` lädt es und
+  sendet `stt.progress`. Die Meldung nennt die Ursache (Netz, Freigabe,
+  Sprache, Chip/macOS). `contextualStrings` gehen als
   `AnalysisContext.contextualStrings[.general]` an die Erkennung.
   Stream-Ereignisse: `stt.level` (~10/s), `stt.partial` (flüchtige Hypothese
   des aktuellen Abschnitts), `stt.final` (abgeschlossener Abschnitt),
