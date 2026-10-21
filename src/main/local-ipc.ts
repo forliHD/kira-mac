@@ -123,6 +123,8 @@ export function registerLocalIpc(ctx: LocalIpcContext): void {
         commands: bool(v.commands, true),
         dashboardStt: bool(v.dashboardStt, true),
         correctVocabulary: bool(v.correctVocabulary, true),
+        voiceProcessing: bool(v.voiceProcessing, true),
+        inputDevice: strOrNull(v.inputDevice),
       });
       return ctx.getState();
     }),

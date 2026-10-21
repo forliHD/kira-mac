@@ -4,17 +4,82 @@ import Foundation
 // Gemeinsame Audio-Bausteine für Spracherkennung und Systemton-Aufnahme.
 // Hier fließen Audiodaten durch — sie werden nie protokolliert.
 
+/// Wie das Mikrofon geöffnet wird (Plan 21.10.2026, Phase 2): ein bestimmtes
+/// Gerät (UID, sonst das Systemstandard-Mikrofon) und Apples Sprachfilter
+/// (Voice Processing: Echo-Unterdrückung, Rauschfilter, Pegelregelung).
+struct MicrophoneOptions: Sendable, Equatable {
+    var deviceUID: String? = nil
+    var voiceProcessing: Bool = false
+}
+
+/// Was `prepare` tatsächlich erreicht hat – fürs Protokoll und die Pille.
+struct MicrophoneReport: Sendable, Equatable {
+    var voiceProcessing: Bool
+    /// Name des genutzten Geräts (nil = Systemstandard oder unbekannt).
+    var device: String?
+
+    var json: JSONValue {
+        ["voiceProcessing": .bool(voiceProcessing), "device": .optionalString(device)]
+    }
+}
+
 /// Mikrofon-Aufnahme über einen `AVAudioEngine`-Input-Tap. Der Handler
 /// bekommt jeden Puffer im nativen Format des Eingabegeräts auf dem
 /// Audio-Thread; er muss schnell zurückkehren.
+///
+/// Reihenfolge: `prepare(options:)` wählt Gerät und Sprachfilter und liefert
+/// den Bericht (das Format ändert sich mit dem Sprachfilter!), dann baut der
+/// Aufrufer seinen Konverter aus `inputFormat`, dann `start(handler:)`.
 final class MicrophoneCapture: @unchecked Sendable {
     private let engine = AVAudioEngine()
     private let lock = NSLock()
     private var running = false
+    private(set) var report = MicrophoneReport(voiceProcessing: false, device: nil)
 
     /// Natives Format des Eingabegeräts (Abtastrate 0 = kein Gerät).
     var inputFormat: AVAudioFormat {
         engine.inputNode.outputFormat(forBus: 0)
+    }
+
+    /// Gerät und Sprachfilter einstellen. Scheitert der Sprachfilter (bekannt:
+    /// Aggregat-Gerät, Fehler -10876 auf manchen Macs), läuft es ohne weiter.
+    @discardableResult
+    func prepare(options: MicrophoneOptions) -> MicrophoneReport {
+        lock.lock()
+        defer { lock.unlock() }
+        var report = MicrophoneReport(voiceProcessing: false, device: nil)
+        let input = engine.inputNode
+        if let uid = options.deviceUID {
+            if let device = AudioInputDevices.device(forUID: uid), let unit = input.audioUnit {
+                var deviceID = device.id
+                let status = AudioUnitSetProperty(
+                    unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &deviceID,
+                    UInt32(MemoryLayout<AudioDeviceID>.size))
+                if status == noErr {
+                    report.device = device.name
+                } else {
+                    HelperLog.warn("Mikrofon „\(device.name)“ ließ sich nicht wählen (\(status)); Systemstandard.")
+                }
+            } else {
+                HelperLog.warn("Mikrofon mit UID \(uid) nicht gefunden; Systemstandard.")
+            }
+        }
+        if options.voiceProcessing {
+            do {
+                try input.setVoiceProcessingEnabled(true)
+                report.voiceProcessing = true
+                // Anderen Ton nur leicht dämpfen – das Diktat soll Musik nicht abwürgen.
+                input.voiceProcessingOtherAudioDuckingConfiguration = AVAudioVoiceProcessingOtherAudioDuckingConfiguration(
+                    enableAdvancedDucking: false, duckingLevel: .min)
+            } catch {
+                HelperLog.warn("Sprachfilter nicht verfügbar: \(HelperError.describe(error)); Aufnahme ohne.")
+                try? input.setVoiceProcessingEnabled(false)
+            }
+        } else if input.isVoiceProcessingEnabled {
+            try? input.setVoiceProcessingEnabled(false)
+        }
+        self.report = report
+        return report
     }
 
     func start(handler: @escaping @Sendable (AVAudioPCMBuffer) -> Void) throws {
@@ -249,5 +314,77 @@ func withTimeout<T: Sendable>(
                 continuation.resume(throwing: TimeoutError())
             }
         }
+    }
+}
+
+// MARK: - Eingabegeräte (CoreAudio)
+
+struct AudioInputDevice: Sendable, Equatable {
+    let id: AudioDeviceID
+    let uid: String
+    let name: String
+    let isDefault: Bool
+
+    var json: JSONValue {
+        ["uid": .string(uid), "name": .string(name), "default": .bool(isDefault)]
+    }
+}
+
+/// Liste der Mikrofone (Geräte mit Eingabekanälen) und Auflösung einer UID.
+enum AudioInputDevices {
+    private static func address(_ selector: AudioObjectPropertySelector, scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal)
+        -> AudioObjectPropertyAddress
+    {
+        AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+    }
+
+    private static func string(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
+        var addr = address(selector)
+        var size = UInt32(MemoryLayout<CFString?>.size)
+        var value: Unmanaged<CFString>?
+        let status = withUnsafeMutablePointer(to: &value) { pointer in
+            AudioObjectGetPropertyData(id, &addr, 0, nil, &size, pointer)
+        }
+        guard status == noErr, let value else { return nil }
+        return value.takeRetainedValue() as String
+    }
+
+    private static func inputChannels(_ id: AudioObjectID) -> Int {
+        var addr = address(kAudioDevicePropertyStreamConfiguration, scope: kAudioObjectPropertyScopeInput)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(id, &addr, 0, nil, &size) == noErr, size > 0 else { return 0 }
+        let raw = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { raw.deallocate() }
+        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, raw) == noErr else { return 0 }
+        let list = UnsafeMutableAudioBufferListPointer(raw.assumingMemoryBound(to: AudioBufferList.self))
+        return list.reduce(0) { $0 + Int($1.mNumberChannels) }
+    }
+
+    static func defaultInputID() -> AudioDeviceID? {
+        var addr = address(kAudioHardwarePropertyDefaultInputDevice)
+        var id = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &id) == noErr, id != 0
+        else { return nil }
+        return id
+    }
+
+    static func list() -> [AudioInputDevice] {
+        var addr = address(kAudioHardwarePropertyDevices)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr else { return [] }
+        let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+        var ids = [AudioDeviceID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids) == noErr else { return [] }
+        let defaultID = defaultInputID()
+        return ids.compactMap { id in
+            guard inputChannels(id) > 0, let uid = string(id, kAudioDevicePropertyDeviceUID) else { return nil }
+            let name = string(id, kAudioObjectPropertyName) ?? uid
+            return AudioInputDevice(id: id, uid: uid, name: name, isDefault: id == defaultID)
+        }
+    }
+
+    static func device(forUID uid: String) -> AudioInputDevice? {
+        list().first { $0.uid == uid }
     }
 }

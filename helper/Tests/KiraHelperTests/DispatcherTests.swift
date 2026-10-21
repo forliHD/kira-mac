@@ -143,7 +143,7 @@ final class DispatcherTests: XCTestCase {
             "permissions.status", "permissions.request",
             "stt.status", "stt.prepare", "stt.file", "stt.start", "stt.stop",
             "llm.status", "llm.generate", "llm.stream", "llm.cancel",
-            "audio.system.start", "audio.system.stop",
+            "audio.system.start", "audio.system.stop", "audio.inputs",
             "text.insert", "text.frontmost", "text.knownWords",
             "fn.watch", "fn.status",
         ]

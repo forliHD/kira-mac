@@ -4,7 +4,7 @@
 
 import { type DictationModelDownload } from "./dictation-model";
 import { type DictationTestKind, type DictationTestResult, type DictationTestState } from "./dictation-test";
-import { type HelperInfo, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "./helper-types";
+import { type AudioInputDevice, type HelperInfo, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "./helper-types";
 
 export interface InstanceConfig {
   internalUrl: string | null;
@@ -25,6 +25,10 @@ export interface DictationConfig {
   dashboardStt: boolean;
   /** Nachkorrektur gegen den Wortschatz („Tira“ → KIRA), seit 0.4.0, Standard an. */
   correctVocabulary: boolean;
+  /** Apples Sprachfilter beim Diktat (Echo, Rauschen, Pegel), seit 0.6.0, Standard an. */
+  voiceProcessing: boolean;
+  /** UID des Mikrofons aus `audio.inputs`; null = Systemstandard. */
+  inputDevice: string | null;
 }
 
 export interface GeneralConfig {
@@ -108,6 +112,8 @@ export interface DictationStatus {
   modelDownload: DictationModelDownload;
   /** Wortschatz für die Nachkorrektur: Anzahl und Stand (null = noch nie geholt). */
   vocabulary: { count: number; fetchedAt: number } | null;
+  /** Mikrofone dieses Macs (leer, wenn der Helfer sie nicht kennt). */
+  inputDevices: AudioInputDevice[];
 }
 
 /** Was macOS selbst beim Drücken von 🌐 tut (`AppleFnUsageType`); `default` = nie geändert. */
@@ -152,14 +158,19 @@ export interface LocalState {
   logPath: string;
 }
 
-export type HudPhase = "starting" | "listening" | "stopping" | "unavailable" | "error";
+/** `inserted`: kurze Bestätigung am Ende („Eingefügt · 42 Zeichen“), dann weg. */
+export type HudPhase = "starting" | "listening" | "stopping" | "inserted" | "unavailable" | "error";
 
 export interface HudState {
   phase: HudPhase;
   level: number;
   partial: string;
   app: string | null;
+  /** Symbol des Zielprogramms (PNG, Base64) oder null. */
+  appIcon: string | null;
   message: string | null;
+  /** Fortschritt 0…1 (Modell-Download), sonst null. */
+  progress: number | null;
 }
 
 // ── Schnellfenster (nativer Mini-Chat) ─────────────────────────────────

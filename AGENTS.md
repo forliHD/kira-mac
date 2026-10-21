@@ -279,6 +279,21 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   warten, dann `text.insert` – vorher hätte das Panel den Fokus; der Text
   landet im Programm, das vor dem Schnellfenster vorn war.
 
+- **Mikrofon und Sprachfilter** (seit 0.6.0): `MicrophoneCapture.prepare(options:)`
+  stellt Gerät (`kAudioOutputUnitProperty_CurrentDevice` am Input-Unit) und
+  Apples Voice Processing (`setVoiceProcessingEnabled`, Ducking `.min`) ein
+  und MUSS vor dem `BufferConverter` laufen – der Sprachfilter ändert das
+  Eingabeformat. Scheitert der Filter, läuft es ohne (`MicrophoneReport`);
+  nie als Fehler an den Menschen. `audio.inputs` listet Geräte mit
+  Eingabekanälen (CoreAudio); die Hülle fragt es in `helperStatus` mit ab
+  (ältere Helfer → leere Liste). `text.frontmost` liefert `icon` (PNG 64 px,
+  je Bundle gecacht) – nie protokollieren.
+- **Pillen-Rückmeldung**: `GlobalDictation.finish()` zeigt beim Einsetzen-Ziel
+  „Eingefügt · n Zeichen“ (`inserted`, `INSERTED_LINGER_MS`) bzw. den Fehler
+  mit Hinweis auf den Verlauf (4 s) und blendet erst danach aus; Senken
+  (Schnellfenster, Diktat-Test) sind davon unberührt. `HudState.progress`
+  (0…1) trägt den Modell-Download, `appIcon` das Symbol.
+
 ## Offene Punkte (Stand 0.1.0)
 
 - `share`-Ereignis (Teilen aus Finder/Dock) braucht eine Share-Extension – noch

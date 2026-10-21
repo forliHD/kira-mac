@@ -34,6 +34,11 @@ describe("Konfiguration: Kürzel des globalen Diktats", () => {
     expect(cfg.lastServerVersion).toBeNull();
     expect(normalizeConfig({ lastServerVersion: "3.298.0" }).lastServerVersion).toBe("3.298.0");
     expect(normalizeConfig({ dictation: { correctVocabulary: false } }).dictation.correctVocabulary).toBe(false);
+    // Phase 2 (0.6.0): Sprachfilter an, Mikrofon = Systemstandard.
+    expect(cfg.dictation.voiceProcessing).toBe(true);
+    expect(cfg.dictation.inputDevice).toBeNull();
+    expect(normalizeConfig({ dictation: { voiceProcessing: false, inputDevice: " AirPods-UID " } }).dictation).toMatchObject({ voiceProcessing: false, inputDevice: "AirPods-UID" });
+    expect(normalizeConfig({ dictation: { inputDevice: "" } }).dictation.inputDevice).toBeNull();
   });
 
   it("hält nur gültige Diktat-Test-Ergebnisse, höchstens fünf, neueste zuerst", () => {
