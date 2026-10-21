@@ -186,6 +186,12 @@ enum LevelReporter {
 
 /// Konvertiert Puffer vom Geräteformat in das Zielformat (Abtastrate, Kanäle,
 /// Sample-Typ) mit einem fortlaufenden `AVAudioConverter`.
+///
+/// Live-Befund 21.10.2026 (0.6.0): Mit Apples Sprachfilter (Voice Processing)
+/// liefert der Tap Puffer in einem ANDEREN Format als `inputNode.outputFormat`
+/// vor dem Start meldete – der feste Konverter schwieg, die Erkennung bekam
+/// nichts. Der Konverter folgt deshalb dem Format jedes Puffers und baut sich
+/// bei einem Wechsel neu (einmal protokolliert, nie Audiodaten).
 final class BufferConverter: @unchecked Sendable {
     private final class InputBox: @unchecked Sendable {
         let buffer: AVAudioPCMBuffer
@@ -193,23 +199,117 @@ final class BufferConverter: @unchecked Sendable {
         init(_ buffer: AVAudioPCMBuffer) { self.buffer = buffer }
     }
 
-    private let converter: AVAudioConverter?
+    private let lock = NSLock()
+    private var converter: AVAudioConverter?
+    private var inputFormat: AVAudioFormat
     private let outputFormat: AVAudioFormat
 
     init(from input: AVAudioFormat, to output: AVAudioFormat) throws {
         outputFormat = output
-        if input == output {
-            converter = nil
-        } else {
-            guard let converter = AVAudioConverter(from: input, to: output) else {
-                throw HelperError(.sttFailed, "Audioformat kann nicht konvertiert werden.")
+        inputFormat = input
+        converter = try Self.make(from: input, to: output)
+    }
+
+    private static func make(from input: AVAudioFormat, to output: AVAudioFormat) throws -> AVAudioConverter? {
+        if input == output { return nil }
+        guard let converter = AVAudioConverter(from: input, to: output) else {
+            throw HelperError(.sttFailed, "Audioformat kann nicht konvertiert werden.")
+        }
+        converter.primeMethod = .none
+        return converter
+    }
+
+    static func describe(_ f: AVAudioFormat) -> String {
+        "\(Int(f.sampleRate)) Hz, \(f.channelCount) Kanal/Kanäle, \(f.commonFormat.rawValue)\(f.isInterleaved ? " interleaved" : "")"
+    }
+
+    /// Einmal je Prozess, nicht je Diktat.
+    nonisolated(unsafe) private static var channelsLogged = false
+
+    /// Mehrkanalige Eingaben (der Sprachfilter liefert z. B. 9 Kanäle) selbst
+    /// auf Mono mischen – `AVAudioConverter` lieferte dafür leere Puffer.
+    static func mono(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        let channels = Int(buffer.format.channelCount)
+        let frames = Int(buffer.frameLength)
+        guard channels > 1, frames > 0,
+            let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: buffer.format.sampleRate, channels: 1, interleaved: false),
+            let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)),
+            let dst = out.floatChannelData?[0]
+        else { return nil }
+        out.frameLength = AVAudioFrameCount(frames)
+        let scale = 1 / Float(channels)
+        if let src = buffer.floatChannelData {
+            if buffer.format.isInterleaved {
+                let base = src[0]
+                for i in 0..<frames {
+                    var sum: Float = 0
+                    for c in 0..<channels { sum += base[i * channels + c] }
+                    dst[i] = sum * scale
+                }
+            } else {
+                for i in 0..<frames { dst[i] = 0 }
+                for c in 0..<channels {
+                    let ch = src[c]
+                    for i in 0..<frames { dst[i] += ch[i] * scale }
+                }
             }
-            converter.primeMethod = .none
-            self.converter = converter
+            return out
+        }
+        if let src = buffer.int16ChannelData {
+            let norm = scale / 32768
+            if buffer.format.isInterleaved {
+                let base = src[0]
+                for i in 0..<frames {
+                    var sum: Float = 0
+                    for c in 0..<channels { sum += Float(base[i * channels + c]) }
+                    dst[i] = sum * norm
+                }
+            } else {
+                for i in 0..<frames { dst[i] = 0 }
+                for c in 0..<channels {
+                    let ch = src[c]
+                    for i in 0..<frames { dst[i] += Float(ch[i]) * norm }
+                }
+            }
+            return out
+        }
+        return nil
+    }
+
+    /// Pegel je Kanal (RMS), nur Zahlen – einmal protokolliert, um zu sehen, wo die Stimme liegt.
+    private static func channelLevels(_ buffer: AVAudioPCMBuffer) -> [String] {
+        let channels = Int(buffer.format.channelCount)
+        let frames = Int(buffer.frameLength)
+        guard let src = buffer.floatChannelData, frames > 0 else { return [] }
+        return (0..<channels).map { c in
+            var sum: Float = 0
+            if buffer.format.isInterleaved {
+                for i in 0..<frames { let v = src[0][i * channels + c]; sum += v * v }
+            } else {
+                for i in 0..<frames { let v = src[c][i]; sum += v * v }
+            }
+            return String(format: "%.4f", (sum / Float(frames)).squareRoot())
         }
     }
 
-    func convert(_ buffer: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer? {
+    func convert(_ raw: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer? {
+        var buffer = raw
+        if raw.format.channelCount > 1 {
+            if !Self.channelsLogged, LevelMeter.rms(of: raw) > 0.01 {
+                Self.channelsLogged = true
+                HelperLog.info("Kanalpegel der Eingabe: \(Self.channelLevels(raw).joined(separator: " "))")
+            }
+            if let mixed = Self.mono(raw) { buffer = mixed }
+        }
+        let converter: AVAudioConverter?
+        lock.lock()
+        if buffer.format != inputFormat {
+            HelperLog.info("Eingabeformat gewechselt: \(Self.describe(inputFormat)) → \(Self.describe(buffer.format)); Konverter neu.")
+            inputFormat = buffer.format
+            self.converter = try Self.make(from: buffer.format, to: outputFormat)
+        }
+        converter = self.converter
+        lock.unlock()
         guard let converter else { return buffer }
         let ratio = outputFormat.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up)) + 64

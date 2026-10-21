@@ -6,6 +6,20 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-21
+
+### Behoben
+- **Diktat ohne Text seit 0.6.0** (Owner-Befund 21.10.2026, Schnellfenster und
+  globales Diktat: Pegel schlagen aus, nichts wird erkannt). Mit dem
+  Apple-Sprachfilter liefert der Mikrofon-Tap 48 kHz mit **9 Kanälen** (das
+  gefilterte Signal auf jedem Kanal); `AVAudioConverter` von 9 auf 1 Kanal gab
+  leere Puffer an die Erkennung. Der Helfer mischt mehrkanalige Eingaben jetzt
+  selbst auf Mono, der Konverter folgt dem Format jedes Puffers (einmal
+  protokolliert: Formate und Kanalpegel, nie Audio). Reproduziert und geprüft
+  mit `stt.start` am gebauten Helfer: ohne Filter Text, mit Filter vorher
+  nichts, nachher Text. Der Sprachfilter bleibt Standard an; abschaltbar unter
+  Einstellungen → Diktat.
+
 ## [0.6.0] - 2026-10-21
 
 Phase 2 des Plans „Schnellfenster & Diktat“ (KIRA-Repo,
