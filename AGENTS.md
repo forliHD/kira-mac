@@ -284,7 +284,16 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   Apples Voice Processing (`setVoiceProcessingEnabled`, Ducking `.min`) ein
   und MUSS vor dem `BufferConverter` laufen – der Sprachfilter ändert das
   Eingabeformat. Scheitert der Filter, läuft es ohne (`MicrophoneReport`);
-  nie als Fehler an den Menschen. `audio.inputs` listet Geräte mit
+  nie als Fehler an den Menschen. **Live-Befund 21.10.2026 (0.6.0):** mit dem
+  Filter liefert der Tap 48 kHz × 9 Kanäle (dasselbe Signal auf allen), und
+  `AVAudioConverter` 9→1 gab leere Puffer zurück – kein Fehler, kein Text.
+  `BufferConverter.convert` mischt daher mehrkanalige Puffer selbst auf Mono
+  (`BufferConverter.mono`) und baut den Konverter bei einem Formatwechsel neu;
+  nie wieder einen festen Konverter aus dem Format VOR `engine.start()`
+  vertrauen. Nachstellen ohne App: `scripts/stt-probe.py` (Helfer per
+  stdin, `say` über die Lautsprecher) – mit Filter kommt wegen der
+  Echo-Unterdrückung nur Bruchstück-Text, das ist erwartet.
+  `audio.inputs` listet Geräte mit
   Eingabekanälen (CoreAudio); die Hülle fragt es in `helperStatus` mit ab
   (ältere Helfer → leere Liste). `text.frontmost` liefert `icon` (PNG 64 px,
   je Bundle gecacht) – nie protokollieren.

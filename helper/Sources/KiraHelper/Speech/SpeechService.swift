@@ -805,7 +805,9 @@ final class AnalyzerStream: SpeechStream, @unchecked Sendable {
         let mic = stream.mic
         let meter = stream.meter
         // Gerät und Sprachfilter VOR dem Konverter: der Sprachfilter ändert das Eingabeformat.
-        mic.prepare(options: input)
+        let report = mic.prepare(options: input)
+        HelperLog.info(
+            "Mikrofon: \(BufferConverter.describe(mic.inputFormat)) → Erkennung \(BufferConverter.describe(analyzerFormat)); Sprachfilter \(report.voiceProcessing ? "an" : "aus")")
         let converter: BufferConverter
         do {
             converter = try BufferConverter(from: mic.inputFormat, to: analyzerFormat)

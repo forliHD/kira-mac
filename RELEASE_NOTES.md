@@ -1,16 +1,10 @@
-## KIRA für Mac 0.6.0
+## KIRA für Mac 0.6.1
 
-**Mikrofon**
+**Behoben**
 
-- Apple-Sprachfilter fürs Diktat (Echo, Rauschen, Pegel), Standard an,
-  abschaltbar unter Einstellungen → Diktat.
-- Mikrofon wählen – oder dem System folgen.
-
-**Pille**
-
-- Symbol des Zielprogramms, Fortschrittsbalken beim Modell-Download,
-  Bestätigung „Eingefügt · n Zeichen“, und ein gescheitertes Einsetzen bleibt
-  lesbar stehen.
+- Diktat erkannte seit 0.6.0 nichts mehr (Pegel ja, Text nein): Der
+  Apple-Sprachfilter liefert das Mikrofon mit 9 Kanälen, die Umwandlung auf
+  Mono gab leere Puffer weiter. Jetzt mischt der Helfer selbst auf Mono.
 
 Die App aktualisiert sich selbst; mit „Jetzt neu starten“ wird das Update
 sofort installiert.
