@@ -1,21 +1,72 @@
-MIT License
+kira-mac — Proprietäre Lizenz / Proprietary License
 
 Copyright (c) 2026 forliHD
+Alle Rechte vorbehalten. / All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+── Deutsch ────────────────────────────────────────────────────────────
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Dieser Quellcode und alle zugehörigen Dateien (der „Code") sind
+urheberrechtlich geschützt. Der Code wird ausschließlich zur Ansicht
+veröffentlicht (Source-Available). Es werden keine Nutzungsrechte
+eingeräumt, soweit unten nicht ausdrücklich anders bestimmt.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+OHNE VORHERIGE SCHRIFTLICHE GENEHMIGUNG des Rechteinhabers ist
+insbesondere untersagt:
+
+ 1. das Kopieren, Verändern oder Weiterverbreiten des Codes oder
+    wesentlicher Teile davon;
+ 2. die Veröffentlichung des Codes oder abgeleiteter Werke — insbesondere
+    in Browser-Extension-Stores (Chrome Web Store, Firefox Add-ons,
+    Edge Add-ons u. a.), Paketregistern oder anderen Vertriebskanälen;
+ 3. die kommerzielle Nutzung des Codes oder abgeleiteter Werke;
+ 4. das Ausgeben des Codes oder von Teilen davon als eigenes Werk.
+
+ERLAUBT ist:
+
+ 1. das Ansehen und Studieren des Codes auf GitHub (einschließlich der
+    von GitHub-Nutzungsbedingungen gedeckten Funktionen wie Forks
+    innerhalb von GitHub);
+ 2. die private, unveränderte Installation der Erweiterung aus diesem
+    Repository zu Test- und Lernzwecken;
+ 3. die Nutzung der offiziell veröffentlichten Erweiterung aus einem
+    offiziellen Store (Chrome Web Store, Firefox Add-ons, Microsoft Edge
+    Add-ons) gemäß den jeweiligen Store-Bedingungen.
+
+Der Name „kira-mac" und die zugehörige Aufmachung dürfen nicht zur
+Kennzeichnung fremder Software verwendet werden.
+
+DER CODE WIRD OHNE JEDE GEWÄHRLEISTUNG BEREITGESTELLT („AS IS").
+
+── English ────────────────────────────────────────────────────────────
+
+This source code and all accompanying files (the "Code") are protected
+by copyright. The Code is published for viewing only (source-available).
+No rights of use are granted except as expressly stated below.
+
+WITHOUT PRIOR WRITTEN PERMISSION of the copyright holder, the following
+is prohibited in particular:
+
+ 1. copying, modifying, or redistributing the Code or substantial
+    parts of it;
+ 2. publishing the Code or derivative works — in particular in browser
+    extension stores (Chrome Web Store, Firefox Add-ons, Edge Add-ons,
+    etc.), package registries, or other distribution channels;
+ 3. commercial use of the Code or derivative works;
+ 4. presenting the Code or parts of it as your own work.
+
+PERMITTED:
+
+ 1. viewing and studying the Code on GitHub (including features covered
+    by the GitHub Terms of Service, such as forks within GitHub);
+ 2. private, unmodified installation of the extension from this
+    repository for testing and learning purposes;
+ 3. using the extension as officially published in an official store
+    (Chrome Web Store, Firefox Add-ons, Microsoft Edge Add-ons), subject
+    to the respective store's terms.
+
+The name "kira-mac" and its distinctive appearance may not be used
+to brand third-party software.
+
+THE CODE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+Kontakt / Contact: https://github.com/forliHD

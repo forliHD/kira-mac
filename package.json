@@ -4,7 +4,7 @@
   "version": "0.3.8",
   "description": "KIRA für Mac – native Hülle um das KIRA-Dashboard (Benachrichtigungen, Diktat auf dem Apple-Chip, Menüleiste)",
   "private": true,
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "author": {
     "name": "Lucas Reiser"
   },

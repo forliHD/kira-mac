@@ -247,6 +247,8 @@ docs/                helper-protocol.md
 
 ## Lizenz
 
-KIRA für Mac steht unter der [MIT-Lizenz](LICENSE)
-(Copyright (c) 2026 forliHD). Schwachstellen bitte privat melden, siehe
-[SECURITY.md](SECURITY.md).
+**© 2026 forliHD — alle Rechte vorbehalten.** Der Code gehört forliHD. Er ist
+zur Ansicht veröffentlicht (Source-Available), darf aber ohne schriftliche
+Genehmigung nicht kopiert, verändert, weiterverbreitet oder als eigenes Werk
+ausgegeben werden. Einzelheiten in [LICENSE](LICENSE). Schwachstellen bitte
+privat melden, siehe [SECURITY.md](SECURITY.md).
