@@ -1,7 +1,11 @@
 # Paketierung „KIRA für Mac“ – electron-builder.
-# Baut lokal auf dem Mac des Owners (kein CI). Signatur: Developer ID aus dem
-# Schlüsselbund (CSC_NAME oder automatische Erkennung), Notarisierung über
-# APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD und APPLE_TEAM_ID in der Umgebung.
+# CI (.github/workflows/ci.yml) signiert nur mit CSC_LINK aus
+# MACOS_CERT_P12_BASE64/MACOS_CERT_PASSWORD und notarisiert nur mit
+# APPLE_API_KEY aus ASC_KEY_ID/ASC_ISSUER_ID/ASC_KEY_P8. Ohne Zertifikat setzt
+# der Workflow die Identität auf null.
+# Lokal: Developer ID aus dem Schlüsselbund (CSC_NAME oder automatische
+# Erkennung), Notarisierung über APPLE_KEYCHAIN_PROFILE oder APPLE_ID,
+# APPLE_APP_SPECIFIC_PASSWORD und APPLE_TEAM_ID (scripts/release.sh).
 appId: de.kira.mac
 productName: KIRA
 copyright: Copyright © 2026 Lucas Reiser

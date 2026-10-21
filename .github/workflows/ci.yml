@@ -1,0 +1,121 @@
+# CI und Release für „KIRA für Mac“.
+# Runner macos-26: Apple Silicon und Xcode 26 mit dem macOS-26-SDK.
+# macos-15 (und macos-latest, das heute noch darauf zeigt) hat dieses SDK
+# nicht – SpeechAnalyzer/SpeechTranscriber ließe sich dort nicht übersetzen.
+#
+# Release: nur Push auf main (und workflow_dispatch dort), nach grünem Build.
+# Tag v<Version aus package.json>. Existiert der Release schon, passiert nichts.
+#
+# Geheimnisse (Repository → Settings → Secrets and variables → Actions):
+#   MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD
+#     Developer ID Application als .p12. Fehlen sie, bleibt das Paket unsigniert.
+#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8
+#     App Store Connect API Key, Rohinhalt der .p8. Notarisierung nur, wenn
+#     das Paket signiert wird und alle drei gesetzt sind.
+# Pull Requests bekommen die Zertifikate nicht: electron-builder signiert bei
+# gesetztem GITHUB_BASE_REF ohnehin nicht, und Forks sähen die Geheimnisse sonst.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Prüfen und bauen
+    runs-on: macos-26
+    timeout-minutes: 90
+    outputs:
+      signed: ${{ steps.signing.outputs.signed }}
+      notarized: ${{ steps.signing.outputs.notarized }}
+    steps:
+      - name: Quelltext
+        uses: actions/checkout@v4
+
+      - name: Xcode mit macOS-SDK 26
+        run: bash scripts/ci-select-xcode.sh
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Abhängigkeiten
+        run: npm ci --no-audit --no-fund
+
+      - name: Typprüfung
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: JavaScript-Tests
+        run: npm test
+
+      - name: Signatur-Plan
+        run: bash scripts/ci-signing.sh self-test && bash scripts/ci-release.sh self-test
+
+      - name: Swift-Tests (inkl. SpeechDownloadError)
+        working-directory: helper
+        run: swift test
+
+      - name: Helfer (Release)
+        run: bash scripts/build-helper.sh
+
+      - name: Signatur vorbereiten
+        id: signing
+        env:
+          # Auswertung auf dem Server: der Runner sieht die Zertifikate nur auf main.
+          CI_ALLOW_SIGNING: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
+          MACOS_CERT_P12_BASE64: "${{ github.ref == 'refs/heads/main' && secrets.MACOS_CERT_P12_BASE64 || '' }}"
+          MACOS_CERT_PASSWORD: "${{ github.ref == 'refs/heads/main' && secrets.MACOS_CERT_PASSWORD || '' }}"
+          ASC_KEY_ID: "${{ github.ref == 'refs/heads/main' && secrets.ASC_KEY_ID || '' }}"
+          ASC_ISSUER_ID: "${{ github.ref == 'refs/heads/main' && secrets.ASC_ISSUER_ID || '' }}"
+          ASC_KEY_P8: "${{ github.ref == 'refs/heads/main' && secrets.ASC_KEY_P8 || '' }}"
+        run: bash scripts/ci-signing.sh prepare
+
+      - name: Produktionspaket
+        run: bash scripts/ci-dist.sh
+
+      - name: Artefakte
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-dist
+          path: dist/ci-artifacts
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Release
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Quelltext
+        uses: actions/checkout@v4
+
+      - name: Paket
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-dist
+          path: dist-artifacts
+
+      - name: GitHub-Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: bash scripts/ci-release.sh dist-artifacts

@@ -6,6 +6,14 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+### Hinzugefügt
+- GitHub Actions auf `macos-26` (Apple Silicon, macOS-SDK 26): Abhängigkeiten,
+  Typprüfung, Lint, Tests, Swift-Helfer inklusive der Fehlerzuordnung beim
+  Diktat-Download, Produktionspaket. Ein Push auf `main` legt den
+  GitHub-Release `v<Version>` an (DMG, ZIP, `latest-mac.yml`), wenn es ihn
+  noch nicht gibt. Ohne Developer-ID-Zertifikat in den Actions-Geheimnissen
+  bleibt das Paket unsigniert.
+
 ### Behoben
 - **Diktat-Modell fehlt, und der Download tat nichts.** Der Helfer konnte das
   Apple-Modell laden (`stt.prepare`), die Hülle hat ihn aber nie darum gebeten:

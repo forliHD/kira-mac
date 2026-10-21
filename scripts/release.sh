@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Lokaler Release (es gibt kein CI): sauberer Baum → Version aus package.json
-# → Helfer bauen → npm run build → electron-builder (signiert + notarisiert)
-# → GitHub-Release mit DMG, ZIP und latest-mac.yml (für electron-updater).
+# Lokaler Release. Der übliche Weg ist .github/workflows/ci.yml (Push auf
+# main, Tag v<Version>). Dieses Skript bleibt für einen signierten Build
+# auf dem Mac des Owners. Es bricht ab, wenn der Tag schon existiert –
+# CI überspringt denselben Fall, statt zu scheitern.
+# Ablauf: sauberer Baum → Version aus package.json → Helfer bauen →
+# npm run build → electron-builder (signiert + notarisiert) → GitHub-Release
+# mit DMG, ZIP und latest-mac.yml (für electron-updater).
 #
 # Notarisierung, zwei Wege (electron-builder liest beide):
 #   1. Schlüsselbund-Profil (empfohlen, kein Passwort in der Umgebung):
@@ -82,7 +86,14 @@ git tag -a "$TAG" -m "KIRA für Mac $VERSION"
 git push origin "$TAG"
 
 step "GitHub-Release $TAG anlegen"
-gh release create "$TAG" "$DIST"/*.dmg "$DIST"/*.zip "$DIST"/latest-mac.yml \
+assets=("$DIST"/*.dmg "$DIST"/*.zip "$DIST"/latest-mac.yml)
+shopt -s nullglob
+for extra in "$DIST"/*.blockmap "$DIST"/latest-mac-arm64.yml; do
+  [[ -e "$extra" ]] || continue
+  assets+=("$extra")
+done
+shopt -u nullglob
+gh release create "$TAG" "${assets[@]}" \
   --title "KIRA für Mac $VERSION" \
   --notes-file RELEASE_NOTES.md
 
