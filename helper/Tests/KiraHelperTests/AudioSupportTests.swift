@@ -61,4 +61,28 @@ final class AudioSupportTests: XCTestCase {
         XCTAssertEqual(out?.format.sampleRate, 16_000)
         XCTAssertGreaterThan(Int(out?.frameLength ?? 0), 1000)
     }
+
+    // MARK: Warme Engine (0.6.2)
+
+    func testFreshCaptureIsNotWarm() {
+        let capture = MicrophoneCapture()
+        XCTAssertFalse(capture.isWarm(for: MicrophoneOptions()))
+        XCTAssertFalse(capture.isWarm(for: MicrophoneOptions(voiceProcessing: true)))
+    }
+
+    func testPreparedJSONCarriesStateAndMicrophone() {
+        let prepared = MicrophoneCapture.Prepared(
+            report: MicrophoneReport(voiceProcessing: true, device: "Headset"), state: .configured, ms: 275)
+        guard case .object(let o) = prepared.json else { return XCTFail("kein Objekt") }
+        XCTAssertEqual(o["state"], .string("configured"))
+        XCTAssertEqual(o["ms"], .int(275))
+        XCTAssertEqual(o["microphone"], ["voiceProcessing": .bool(true), "device": .string("Headset")])
+    }
+
+    func testStartTimingJSON() {
+        let timing = StartTiming(checksMs: 4, microphoneMs: 61, recognizerMs: 130, totalMs: 195, warm: true)
+        XCTAssertEqual(
+            timing.json,
+            ["checksMs": .int(4), "microphoneMs": .int(61), "recognizerMs": .int(130), "totalMs": .int(195), "warm": .bool(true)])
+    }
 }

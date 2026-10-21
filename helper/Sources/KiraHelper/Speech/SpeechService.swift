@@ -65,11 +65,35 @@ final class DownloadFractionBox: @unchecked Sendable {
     }
 }
 
+/// Dauer der Startphasen eines Streams in Millisekunden – nur Zahlen, für das
+/// Protokoll der Hülle (`dictation_start`). Owner-Befund 21.10.2026: „Mikrofon
+/// wird vorbereitet“ stand lange, Satzanfänge fehlten.
+struct StartTiming: Sendable, Equatable {
+    /// Modellprüfung und Audioformat.
+    var checksMs: Int
+    /// Mikrofon einrichten und öffnen.
+    var microphoneMs: Int
+    /// Erkennung vorbereiten und starten.
+    var recognizerMs: Int
+    var totalMs: Int
+    /// Die Audio-Engine trug die Einstellungen schon (warm).
+    var warm: Bool
+
+    var json: JSONValue {
+        [
+            "checksMs": .int(checksMs), "microphoneMs": .int(microphoneMs), "recognizerMs": .int(recognizerMs),
+            "totalMs": .int(totalMs), "warm": .bool(warm),
+        ]
+    }
+}
+
 /// Ein laufender Erkennungs-Stream (eine Kennung, eine Mikrofonquelle).
 protocol SpeechStream: AnyObject, Sendable {
     var id: String { get }
     /// Gerät und Sprachfilter, mit denen die Aufnahme läuft.
     var microphone: MicrophoneReport { get }
+    /// Dauer der Startphasen (nil, wenn die Engine sie nicht misst).
+    var timing: StartTiming? { get }
     /// Spült die Erkennung, sendet ausstehende `stt.final`, dann `stt.ended(stopped)`.
     func stop() async
     /// Bricht sofort ab und sendet `stt.ended` mit dem genannten Grund.
@@ -665,7 +689,32 @@ actor SpeechService {
         streams[id] = stream
         var result: [String: JSONValue] = ["started": true, "engine": .string(engine.rawValue)]
         result["microphone"] = stream.microphone.json
+        if let timing = stream.timing {
+            result["timing"] = timing.json
+        }
         return .object(result)
+    }
+
+    // MARK: audio.warm
+
+    /// Mikrofon vorwärmen: Gerät und Sprachfilter einstellen, ohne das
+    /// Mikrofon zu öffnen (Hülle: beim Helfer-Start und nach jeder Änderung
+    /// der Diktat-Einstellungen). Ohne erteilte Mikrofon-Freigabe passiert
+    /// nichts – die Systemfrage stellt erst das Diktat selbst. Die Einrichtung
+    /// (bis ~1,2 s) läuft abseits des Actors, damit `stt.status` & Co.
+    /// währenddessen nicht warten.
+    func warmMicrophone(_ options: MicrophoneOptions) async -> JSONValue {
+        guard permissions.microphoneStatus() == .granted else {
+            return ["state": "permission", "ms": 0]
+        }
+        let prepared = await Task.detached(priority: .utility) {
+            MicrophoneCapture.shared.prepare(options: options)
+        }.value
+        if prepared.state == .configured {
+            HelperLog.info(
+                "Mikrofon vorgewärmt in \(prepared.ms) ms; Sprachfilter \(prepared.report.voiceProcessing ? "an" : "aus")")
+        }
+        return prepared.json
     }
 
     func stop(stream id: String) async throws -> JSONValue {
@@ -736,7 +785,8 @@ final class AnalyzerStream: SpeechStream, @unchecked Sendable {
     private let transcriber: SpeechTranscriber
     private let analyzer: SpeechAnalyzer
     private let continuation: AsyncStream<AnalyzerInput>.Continuation
-    private let mic = MicrophoneCapture()
+    private let mic = MicrophoneCapture.shared
+    private(set) var timing: StartTiming?
     private let meter = LevelMeter()
     private let ended = OnceFlag()
     private let onEnded: @Sendable (String, ObjectIdentifier) -> Void
@@ -762,6 +812,9 @@ final class AnalyzerStream: SpeechStream, @unchecked Sendable {
         id: String, locale: Locale, contextualStrings: [String], input: MicrophoneOptions, writer: OutputWriter,
         onEnded: @escaping @Sendable (String, ObjectIdentifier) -> Void
     ) async throws -> AnalyzerStream {
+        let clock = ContinuousClock()
+        let t0 = clock.now
+        func ms(_ since: ContinuousClock.Instant) -> Int { Int((clock.now - since) / .milliseconds(1)) }
         let transcriber = AnalyzerModels.stream(locale: locale)
         guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
             throw HelperError(
@@ -783,36 +836,25 @@ final class AnalyzerStream: SpeechStream, @unchecked Sendable {
         let stream = AnalyzerStream(
             id: id, writer: writer, transcriber: transcriber, analyzer: analyzer, continuation: continuation,
             onEnded: onEnded)
+        let checksMs = ms(t0)
 
-        do {
-            try await analyzer.setContext(context)
-            try await analyzer.prepareToAnalyze(in: analyzerFormat)
-        } catch {
-            continuation.finish()
-            throw HelperError(.sttFailed, "Erkennung konnte nicht vorbereitet werden: \(HelperError.describe(error))")
-        }
-
-        stream.resultsTask = Task { await stream.consumeResults() }
-
-        do {
-            try await analyzer.start(inputSequence: inputSequence)
-        } catch {
-            continuation.finish()
-            stream.resultsTask?.cancel()
-            throw HelperError(.sttFailed, "Erkennung konnte nicht gestartet werden: \(HelperError.describe(error))")
-        }
-
+        // Mikrofon ZUERST (0.6.2): Was der Mensch sagt, während die Erkennung
+        // noch vorbereitet wird, wartet gepuffert im AsyncStream (unbegrenzt)
+        // und wird nach `analyzer.start` nachgeholt – keine fehlenden
+        // Satzanfänge mehr. Gerät und Sprachfilter VOR dem Konverter: der
+        // Sprachfilter ändert das Eingabeformat.
         let mic = stream.mic
         let meter = stream.meter
-        // Gerät und Sprachfilter VOR dem Konverter: der Sprachfilter ändert das Eingabeformat.
-        let report = mic.prepare(options: input)
+        let tMic = clock.now
+        let prepared = mic.prepare(options: input)
+        let report = prepared.report
         HelperLog.info(
-            "Mikrofon: \(BufferConverter.describe(mic.inputFormat)) → Erkennung \(BufferConverter.describe(analyzerFormat)); Sprachfilter \(report.voiceProcessing ? "an" : "aus")")
+            "Mikrofon: \(BufferConverter.describe(mic.inputFormat)) → Erkennung \(BufferConverter.describe(analyzerFormat)); Sprachfilter \(report.voiceProcessing ? "an" : "aus")\(prepared.state == .warm ? " (warm)" : "")")
         let converter: BufferConverter
         do {
             converter = try BufferConverter(from: mic.inputFormat, to: analyzerFormat)
         } catch {
-            await stream.cancel(reason: "error", message: "Audioformat kann nicht konvertiert werden.", notify: false)
+            continuation.finish()
             throw error
         }
         let conversionFailed = OnceFlag()
@@ -830,12 +872,41 @@ final class AnalyzerStream: SpeechStream, @unchecked Sendable {
                 }
             }
         } catch {
-            await stream.cancel(reason: "error", message: nil, notify: false)
+            continuation.finish()
             throw error
         }
+        let microphoneMs = ms(tMic)
+
+        let tRecognizer = clock.now
+        do {
+            try await analyzer.setContext(context)
+            try await analyzer.prepareToAnalyze(in: analyzerFormat)
+        } catch {
+            mic.stop()
+            continuation.finish()
+            throw HelperError(.sttFailed, "Erkennung konnte nicht vorbereitet werden: \(HelperError.describe(error))")
+        }
+
+        stream.resultsTask = Task { await stream.consumeResults() }
+
+        do {
+            try await analyzer.start(inputSequence: inputSequence)
+        } catch {
+            mic.stop()
+            continuation.finish()
+            stream.resultsTask?.cancel()
+            throw HelperError(.sttFailed, "Erkennung konnte nicht gestartet werden: \(HelperError.describe(error))")
+        }
+        let recognizerMs = ms(tRecognizer)
 
         stream.levelTask = LevelReporter.start(
             event: "stt.level", stream: id, meter: meter, writer: writer, intervalMs: 100)
+        let timing = StartTiming(
+            checksMs: checksMs, microphoneMs: microphoneMs, recognizerMs: recognizerMs, totalMs: ms(t0),
+            warm: prepared.state == .warm)
+        stream.timing = timing
+        HelperLog.info(
+            "Diktat-Start: Prüfung \(timing.checksMs) ms, Mikrofon \(timing.microphoneMs) ms (\(timing.warm ? "warm" : "kalt")), Erkennung \(timing.recognizerMs) ms, gesamt \(timing.totalMs) ms")
         return stream
     }
 
@@ -906,7 +977,8 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
     private let emitter: SerialEmitter
     private let recognizer: SFSpeechRecognizer
     private let request: SFSpeechAudioBufferRecognitionRequest
-    private let mic = MicrophoneCapture()
+    private let mic = MicrophoneCapture.shared
+    private(set) var timing: StartTiming?
     private let meter = LevelMeter()
     private let ended = OnceFlag()
     private let onEnded: @Sendable (String, ObjectIdentifier) -> Void
@@ -966,7 +1038,9 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
         stream.lock.unlock()
 
         let meter = stream.meter
-        stream.mic.prepare(options: input)
+        let clock = ContinuousClock()
+        let tMic = clock.now
+        let prepared = stream.mic.prepare(options: input)
         do {
             try stream.mic.start { buffer in
                 meter.update(buffer)
@@ -976,8 +1050,13 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
             task.cancel()
             throw error
         }
+        let microphoneMs = Int((clock.now - tMic) / .milliseconds(1))
         stream.levelTask = LevelReporter.start(
             event: "stt.level", stream: id, meter: meter, writer: writer, intervalMs: 100)
+        stream.timing = StartTiming(
+            checksMs: 0, microphoneMs: microphoneMs, recognizerMs: 0, totalMs: microphoneMs,
+            warm: prepared.state == .warm)
+        HelperLog.info("Diktat-Start (Legacy): Mikrofon \(microphoneMs) ms (\(prepared.state == .warm ? "warm" : "kalt"))")
         return stream
     }
 
@@ -1102,6 +1181,13 @@ enum SpeechCommands {
         // Mikrofone dieses Macs (Einstellungen → Diktat → Mikrofon).
         table["audio.inputs"] = { _ in
             ["devices": .array(AudioInputDevices.list().map(\.json))]
+        }
+        // Mikrofon vorwärmen (seit 0.6.2), siehe SpeechService.warmMicrophone.
+        table["audio.warm"] = { request in
+            let input = MicrophoneOptions(
+                deviceUID: try request.params.optionalString("device"),
+                voiceProcessing: try request.params.optionalBool("voiceProcessing") ?? false)
+            return await services.speech.warmMicrophone(input)
         }
         table["stt.stop"] = { request in
             let stream = try request.params.string("stream")

@@ -104,6 +104,8 @@ export interface SttStartResult {
   engine?: string;
   /** Helfer ≥ 0.6.0: was die Aufnahme tatsächlich nutzt. */
   microphone?: { voiceProcessing: boolean; device: string | null };
+  /** Helfer ≥ 0.6.2: Dauer der Startphasen in ms; `warm` = Audio-Engine war schon eingerichtet. */
+  timing?: { checksMs: number; microphoneMs: number; recognizerMs: number; totalMs: number; warm: boolean };
 }
 
 export interface HelperErrorShape {

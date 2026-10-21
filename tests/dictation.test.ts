@@ -125,7 +125,12 @@ class FakeHelper extends EventEmitter implements DictationHelper {
       case "text.frontmost":
         return Promise.resolve({ bundleId: "com.apple.mail", name: "Mail", icon: this.frontmostIcon } as unknown as T);
       case "stt.start":
-        return Promise.resolve({ started: true, engine: "analyzer", microphone: { voiceProcessing: params?.voiceProcessing === true, device: null } } as unknown as T);
+        return Promise.resolve({
+          started: true,
+          engine: "analyzer",
+          microphone: { voiceProcessing: params?.voiceProcessing === true, device: null },
+          timing: { checksMs: 3, microphoneMs: 61, recognizerMs: 130, totalMs: 194, warm: true },
+        } as unknown as T);
       case "stt.stop":
         queueMicrotask(() => this.emit("event", { event: "stt.ended", stream: "dictation", data: { reason: "stopped" } }));
         return Promise.resolve({ stopped: true } as unknown as T);
@@ -734,5 +739,74 @@ describe("Mikrofon und Pille (Phase 2, 0.6.0)", () => {
     const progress = built.hud.update.mock.calls.map((c) => c[0].progress).filter((p): p is number => typeof p === "number");
     expect(progress).toContain(0.4);
     expect(built.hud.update.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "listening", progress: null });
+  });
+});
+
+describe("Schnellstart (0.6.2): Prüfungen parallel, Startzeiten, warmes Mikrofon", () => {
+  it("fragt Modell, Freigaben, Programm und Wörterbuch gleichzeitig und protokolliert die Startphasen", async () => {
+    const helper = new FakeHelper();
+    const info = vi.fn<(message: string, ...meta: unknown[]) => void>();
+    const log: Logger = { debug: () => undefined, info, warn: () => undefined, error: () => undefined };
+    let now = 1_000;
+    const dictation = new GlobalDictation({
+      helper,
+      server: { fetchVocabulary: async () => "Musterfirma", fetchDisplayName: async () => "Lucas" },
+      hud: { show: vi.fn(), hide: vi.fn(), update: vi.fn() },
+      getLocale: () => "de-DE",
+      getCommandsEnabled: () => true,
+      getCorrectionEnabled: () => true,
+      log,
+      now: () => (now += 10),
+    });
+    await dictation.start();
+    expect(dictation.currentState).toBe("listening");
+    // Alle vier Anfragen gehen raus, bevor die erste Antwort da ist (parallel).
+    const cmds = helper.calls.map((c) => c.cmd);
+    const first = ["stt.status", "permissions.status", "text.frontmost"].map((c) => cmds.indexOf(c));
+    expect(first.every((i) => i >= 0 && i < cmds.indexOf("stt.start"))).toBe(true);
+    const entry = info.mock.calls.find((c) => c[0] === "dictation_start");
+    expect(entry?.[1]).toMatchObject({
+      target: "insert",
+      engine: "analyzer",
+      helper: { checksMs: 3, microphoneMs: 61, recognizerMs: 130, totalMs: 194, warm: true },
+    });
+    const meta = entry?.[1] as { checksMs: number; sttStartMs: number; totalMs: number };
+    expect(meta.checksMs).toBeGreaterThan(0);
+    expect(meta.sttStartMs).toBeGreaterThan(0);
+    expect(meta.totalMs).toBeGreaterThanOrEqual(meta.checksMs + meta.sttStartMs);
+    await dictation.stop();
+    await tick();
+    await tick();
+    const session = info.mock.calls.find((c) => c[0] === "dictation_session");
+    expect((session?.[1] as { startMs: unknown }).startMs).toBe(meta.totalMs);
+  });
+
+  it("warm() schickt audio.warm mit Mikrofon und Sprachfilter und bleibt bei alten Helfern still", async () => {
+    const helper = new FakeHelper();
+    const info = vi.fn<(message: string, ...meta: unknown[]) => void>();
+    const log: Logger = { debug: () => undefined, info, warn: () => undefined, error: () => undefined };
+    const { dictation } = build(helper, { input: { device: "AirPods-UID", voiceProcessing: true }, log });
+    await dictation.warm();
+    expect(helper.calls.find((c) => c.cmd === "audio.warm")?.params).toEqual({ voiceProcessing: true, device: "AirPods-UID" });
+    expect(info).toHaveBeenCalledWith("dictation_warm", expect.objectContaining({ state: null }));
+
+    // Älterer Helfer: unbekanntes Kommando – kein Fehler nach außen.
+    helper.request = (() => Promise.reject(new Error("unknown command audio.warm"))) as typeof helper.request;
+    await expect(dictation.warm()).resolves.toBeUndefined();
+  });
+
+  it("warm() tut nichts ohne Mikrofon-Einstellungen oder während eines Diktats", async () => {
+    const plain = new FakeHelper();
+    const { dictation: noInput } = build(plain);
+    await noInput.warm();
+    expect(plain.calls.find((c) => c.cmd === "audio.warm")).toBeUndefined();
+
+    const helper = new FakeHelper();
+    const { dictation } = build(helper, { input: { device: null, voiceProcessing: true } });
+    await dictation.start();
+    expect(dictation.currentState).toBe("listening");
+    await dictation.warm();
+    expect(helper.calls.find((c) => c.cmd === "audio.warm")).toBeUndefined();
+    await dictation.stop();
   });
 });

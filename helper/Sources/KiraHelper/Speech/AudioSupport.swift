@@ -30,23 +30,93 @@ struct MicrophoneReport: Sendable, Equatable {
 /// Reihenfolge: `prepare(options:)` wählt Gerät und Sprachfilter und liefert
 /// den Bericht (das Format ändert sich mit dem Sprachfilter!), dann baut der
 /// Aufrufer seinen Konverter aus `inputFormat`, dann `start(handler:)`.
+///
+/// Es gibt EINE Engine je Prozess (`shared`), und sie bleibt zwischen zwei
+/// Diktaten warm: `stop()` nimmt nur den Tap weg und hält die Engine an,
+/// Gerät und Sprachfilter bleiben eingestellt. Messung 21.10.2026 (Apple
+/// Silicon, Owner-Befund „Mikrofon wird vorbereitet“ dauert lange): den
+/// Sprachfilter erstmals einschalten 1,0–1,2 s, erster Start einer neuen
+/// Engine 0,3 s (ohne Filter 0,8 s), Neustart der warmen Engine 55–95 ms.
+/// Eine angehaltene Engine hält das Gerät nicht offen
+/// (`kAudioDevicePropertyDeviceIsRunningSomewhere` = 0, kein orangefarbener
+/// Punkt). `prepare` mit den gleichen Einstellungen kostet nichts; andere
+/// Einstellungen bauen die Engine neu (ein Gerät „Systemstandard“ darf nicht
+/// auf dem alten Gerät kleben bleiben). `audio.warm` ruft `prepare` schon vor
+/// dem ersten Diktat, ohne das Mikrofon zu öffnen.
 final class MicrophoneCapture: @unchecked Sendable {
-    private let engine = AVAudioEngine()
+    static let shared = MicrophoneCapture()
+
+    /// Ergebnis von `prepare`.
+    struct Prepared: Sendable, Equatable {
+        enum State: String, Sendable {
+            /// Engine trug die Einstellungen schon – nichts zu tun.
+            case warm
+            /// Engine (neu) eingerichtet.
+            case configured
+            /// Aufnahme läuft gerade mit anderen Einstellungen; nichts geändert.
+            case busy
+        }
+
+        var report: MicrophoneReport
+        var state: State
+        /// Dauer der Einrichtung in Millisekunden (0 bei `warm`/`busy`).
+        var ms: Int
+
+        var json: JSONValue {
+            ["state": .string(state.rawValue), "ms": .int(ms), "microphone": report.json]
+        }
+    }
+
+    private var engine = AVAudioEngine()
     private let lock = NSLock()
     private var running = false
+    /// Einstellungen, die die Engine gerade trägt (nil = neu einrichten).
+    private var configured: MicrophoneOptions?
+    private var observer: NSObjectProtocol?
     private(set) var report = MicrophoneReport(voiceProcessing: false, device: nil)
+
+    init() {
+        observe(engine)
+    }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
 
     /// Natives Format des Eingabegeräts (Abtastrate 0 = kein Gerät).
     var inputFormat: AVAudioFormat {
         engine.inputNode.outputFormat(forBus: 0)
     }
 
-    /// Gerät und Sprachfilter einstellen. Scheitert der Sprachfilter (bekannt:
-    /// Aggregat-Gerät, Fehler -10876 auf manchen Macs), läuft es ohne weiter.
-    @discardableResult
-    func prepare(options: MicrophoneOptions) -> MicrophoneReport {
+    /// Trägt die Engine gerade diese Einstellungen (und läuft nicht)?
+    func isWarm(for options: MicrophoneOptions) -> Bool {
         lock.lock()
         defer { lock.unlock() }
+        return !running && configured == options
+    }
+
+    /// Gerät und Sprachfilter einstellen. Scheitert der Sprachfilter (bekannt:
+    /// Aggregat-Gerät, Fehler -10876 auf manchen Macs), läuft es ohne weiter.
+    /// Gleiche Einstellungen wie zuletzt: sofort zurück (warm).
+    @discardableResult
+    func prepare(options: MicrophoneOptions) -> Prepared {
+        lock.lock()
+        defer { lock.unlock() }
+        if configured == options {
+            return Prepared(report: report, state: .warm, ms: 0)
+        }
+        guard !running else {
+            return Prepared(report: report, state: .busy, ms: 0)
+        }
+        let clock = ContinuousClock()
+        let t0 = clock.now
+        if configured != nil {
+            // Andere Einstellungen: frische Engine, damit „Systemstandard“ wieder
+            // dem System folgt und kein Filterzustand hängen bleibt.
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            engine = AVAudioEngine()
+            observe(engine)
+        }
         var report = MicrophoneReport(voiceProcessing: false, device: nil)
         let input = engine.inputNode
         if let uid = options.deviceUID {
@@ -78,14 +148,19 @@ final class MicrophoneCapture: @unchecked Sendable {
         } else if input.isVoiceProcessingEnabled {
             try? input.setVoiceProcessingEnabled(false)
         }
+        // Ressourcen jetzt belegen, nicht erst beim Start (Mikrofon bleibt zu).
+        engine.prepare()
+        configured = options
         self.report = report
-        return report
+        return Prepared(report: report, state: .configured, ms: Int((clock.now - t0) / .milliseconds(1)))
     }
 
     func start(handler: @escaping @Sendable (AVAudioPCMBuffer) -> Void) throws {
         lock.lock()
         defer { lock.unlock() }
-        guard !running else { return }
+        guard !running else {
+            throw HelperError(.sttFailed, "Das Mikrofon ist schon in Gebrauch.")
+        }
 
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
@@ -107,6 +182,7 @@ final class MicrophoneCapture: @unchecked Sendable {
         running = true
     }
 
+    /// Hält die Aufnahme an; die Engine bleibt eingerichtet (warm).
     func stop() {
         lock.lock()
         defer { lock.unlock() }
@@ -114,6 +190,29 @@ final class MicrophoneCapture: @unchecked Sendable {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         running = false
+    }
+
+    private func observe(_ engine: AVAudioEngine) {
+        observer = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+        ) { [weak self] _ in
+            // Nicht unter dem Lock des Auslösers arbeiten (kommt u. U. aus start/stop).
+            DispatchQueue.global().async { self?.configurationChanged() }
+        }
+    }
+
+    /// Gerät gewechselt (Headset dazu/weg, Systemstandard geändert): die
+    /// Engine beim nächsten `prepare` neu einrichten. Läuft gerade eine
+    /// Aufnahme, läuft sie weiter (wie vor 0.6.2); nur protokollieren.
+    private func configurationChanged() {
+        lock.lock()
+        defer { lock.unlock() }
+        configured = nil
+        if running {
+            HelperLog.warn("Audio-Gerät während der Aufnahme gewechselt – Mikrofon wird beim nächsten Diktat neu eingerichtet.")
+        } else {
+            HelperLog.info("Audio-Gerät gewechselt – Mikrofon wird beim nächsten Diktat neu eingerichtet.")
+        }
     }
 }
 

@@ -297,6 +297,26 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   Eingabekanälen (CoreAudio); die Hülle fragt es in `helperStatus` mit ab
   (ältere Helfer → leere Liste). `text.frontmost` liefert `icon` (PNG 64 px,
   je Bundle gecacht) – nie protokollieren.
+- **Warme Audio-Engine** (seit 0.6.2, Owner-Befund 21.10.2026: „Mikrofon wird
+  vorbereitet“ stand ~1,5 s, Satzanfänge fehlten): `MicrophoneCapture.shared`
+  ist die EINE Engine je Helfer-Prozess. `stop()` nimmt nur den Tap weg und
+  hält sie an (Mikrofon zu, kein orangefarbener Punkt), Gerät und Sprachfilter
+  bleiben. Messung: Sprachfilter erstmals einschalten 1,0–1,2 s, warmer
+  Neustart 50–80 ms; vorher baute jeder Stream eine neue Engine und zahlte das
+  jedes Mal. `prepare(options:)` mit gleichen Optionen ist gratis (`warm`),
+  andere Optionen bauen die Engine neu (ein „Systemstandard“-Gerät darf nicht
+  auf dem alten Gerät kleben bleiben), während einer Aufnahme wird nichts
+  umgestellt (`busy`); ein Gerätewechsel (`AVAudioEngineConfigurationChange`)
+  setzt `configured = nil`. `audio.warm` (Hülle: `GlobalDictation.warm()` bei
+  Helfer-`info` und nach Änderung von Mikrofon/Sprachfilter) richtet ein, ohne
+  das Mikrofon zu öffnen – nur mit erteilter Freigabe, nie eine Systemfrage von
+  dort. Reihenfolge in `AnalyzerStream.start`: Mikrofon ZUERST, dann
+  `prepareToAnalyze`/`start` – der `AsyncStream` puffert unbegrenzt, Audio aus
+  der Vorbereitung geht nicht verloren. Nie wieder die Erkennung vor dem
+  Mikrofon aufsetzen. Zeiten: Helfer-Log „Diktat-Start: …“, `stt.start`-Antwort
+  `timing`, Hülle `dictation_start`/`dictation_session.startMs` – alles ohne
+  Text. Nachstellen: `scripts/stt-probe.py stream 0|1` zeigt die Zeile;
+  `echo '{"id":"w","cmd":"audio.warm","params":{"voiceProcessing":true}}' | kira-helper`.
 - **Pillen-Rückmeldung**: `GlobalDictation.finish()` zeigt beim Einsetzen-Ziel
   „Eingefügt · n Zeichen“ (`inserted`, `INSERTED_LINGER_MS`) bzw. den Fehler
   mit Hinweis auf den Verlauf (4 s) und blendet erst danach aus; Senken

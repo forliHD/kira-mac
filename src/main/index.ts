@@ -227,6 +227,8 @@ class KiraApp {
       this.quickChat?.setDictation({ available: Boolean(info.features.sttStream), reason: info.features.sttStream ? null : "Dieser Mac bietet keine laufende Spracherkennung." });
       this.quickChat?.refresh();
       void this.sttAssets?.ensureAutomatic(this.config.dictation.locale);
+      // Mikrofon vorwärmen (0.6.2): das erste Diktat soll nicht 1,3 s auf den Sprachfilter warten.
+      if (this.dictation) void this.dictation.warm();
     });
     this.helper.on("exited", () => {
       this.statusCache = null;
@@ -630,7 +632,10 @@ class KiraApp {
       setDictation: async (dictation: DictationConfig) => {
         const before = this.config.dictation.dashboardStt;
         const beforeLocale = this.config.dictation.locale;
+        const beforeInput = { device: this.config.dictation.inputDevice, voiceProcessing: this.config.dictation.voiceProcessing };
         this.config = configStore.update({ dictation });
+        // Anderes Mikrofon oder Sprachfilter umgeschaltet: Engine im Hintergrund neu einrichten.
+        if (beforeInput.device !== dictation.inputDevice || beforeInput.voiceProcessing !== dictation.voiceProcessing) void this.dictation.warm();
         this.statusCache = null;
         // Die Fähigkeit `stt` kommt beim Laden der Seite – neu laden, damit das Dashboard umschaltet.
         if (before !== dictation.dashboardStt && this.mainWin.isDashboardLoaded()) this.mainWin.window?.webContents.reload();

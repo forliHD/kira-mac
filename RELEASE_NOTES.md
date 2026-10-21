@@ -1,3 +1,16 @@
+## KIRA für Mac 0.6.2
+
+**Behoben**
+
+- Der Diktat-Start dauerte rund 1,5 Sekunden („Mikrofon wird vorbereitet…“),
+  die ersten Worte fehlten: Apples Sprachfilter kostet beim Einschalten gut
+  eine Sekunde, und die Audio-Engine wurde für jedes Diktat neu gebaut. Jetzt
+  bleibt eine Engine je Helfer warm (Mikrofon dabei zu), die App wärmt sie
+  beim Start und nach Änderungen der Diktat-Einstellungen vor, und das
+  Mikrofon öffnet, bevor die Erkennung vorbereitet wird – Gesagtes aus
+  diesen Millisekunden wird nachgeholt. Gemessen: Start 1,5 s → unter
+  0,15 s.
+
 ## KIRA für Mac 0.6.1
 
 **Behoben**
