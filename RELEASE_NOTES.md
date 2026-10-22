@@ -1,3 +1,11 @@
+## KIRA für Mac 0.6.4
+
+**Behoben**
+
+- Schnellfenster: Die Tastenhinweise in der Fußleiste („esc schließen“ auf
+  „Diktate“) werden nicht mehr mitten im Wort abgeschnitten und liegen nie
+  mehr hinter den Knöpfen. Wird es eng, bleiben nur die Tasten stehen.
+
 ## KIRA für Mac 0.6.3
 
 **Sicherheit**

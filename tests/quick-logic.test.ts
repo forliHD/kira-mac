@@ -8,6 +8,7 @@ import {
   dictationClock,
   dictationTime,
   filterDictations,
+  fitHints,
   footerHints,
   footerNote,
   formatAccelerator,
@@ -224,6 +225,21 @@ describe("Zwei Stufen und Fußleiste (Phase 3)", () => {
     expect(footerHints("chat", true).map((h) => h.keys)).toEqual(["↩", "⌘↩", "esc"]);
     expect(footerHints("chat", true, "cmd-enter").map((h) => h.keys)).toEqual(["⌘↩", "⌘⇧↩", "esc"]);
     expect(footerHints("dictations", true).map((h) => h.label)).toEqual(["kopieren", "in den Chat", "schließen"]);
+  });
+
+  it("Hinweise passen sich ein: erst Wörter weg, dann ganze Hinweise von hinten", () => {
+    // ↩ kopieren · ⌘↩ in den Chat · esc schließen (Breiten wie im Fenster, gerundet)
+    const full = [80, 100, 95];
+    const caps = [22, 30, 30];
+    expect(fitHints(full, caps, 10, 400)).toEqual({ count: 3, labels: true });
+    expect(fitHints(full, caps, 10, 295)).toEqual({ count: 3, labels: true });
+    expect(fitHints(full, caps, 10, 295.4)).toEqual({ count: 3, labels: true });
+    expect(fitHints(full, caps, 10, 294)).toEqual({ count: 3, labels: false });
+    expect(fitHints(full, caps, 10, 102)).toEqual({ count: 3, labels: false });
+    expect(fitHints(full, caps, 10, 101)).toEqual({ count: 2, labels: false });
+    expect(fitHints(full, caps, 10, 22)).toEqual({ count: 1, labels: false });
+    expect(fitHints(full, caps, 10, 10)).toEqual({ count: 0, labels: false });
+    expect(fitHints([], [], 10, 0)).toEqual({ count: 0, labels: true });
   });
 
   it("Diktate nach Tagen, Uhrzeit innerhalb des Tages", () => {

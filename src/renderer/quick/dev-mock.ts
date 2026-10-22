@@ -8,7 +8,7 @@
 //   ?theme=light|dark       Hell/Dunkel erzwingen (sonst System)
 //   ?backdrop=aurora|bright Kulisse + nachgeahmtes Glas hinter dem Fenster
 
-import { type KiraLocalApi, type LocalEvent, type QuickMessage, type QuickState, type QuickTool } from "../../shared/local-api";
+import { type DictationEntry, type DictationHistoryView, type KiraLocalApi, type LocalEvent, type QuickMessage, type QuickState, type QuickTool } from "../../shared/local-api";
 
 let seq = 0;
 const id = (): string => `mock-${++seq}`;
@@ -167,6 +167,12 @@ export function installQuickMock(params: URLSearchParams): void {
     timers.push(window.setTimeout(fn, ms));
   };
   const notInPreview = (): Promise<never> => Promise.reject(new Error("In der Vorschau nicht verfügbar."));
+  // Diktate-Ansicht (⌘2) mit Verlauf – damit Liste und Mülleimer in der Fußleiste prüfbar sind.
+  let dictations: DictationEntry[] = [
+    { id: "d-1", at: Date.now() - 4 * 60_000, app: "Safari", target: "insert", text: "Bitte schick mir die Datenschutz-Anlage bis Mittwoch.", failed: false },
+    { id: "d-2", at: Date.now() - 3 * 3_600_000, app: "KIRA", target: "quick", text: "Was steht morgen im Kalender?", failed: false },
+  ];
+  const history = (): DictationHistoryView => ({ entries: dictations, persistent: true });
 
   const api: KiraLocalApi = {
     getState: notInPreview,
@@ -247,10 +253,16 @@ export function installQuickMock(params: URLSearchParams): void {
       // Für Bildschirmfotos: gewünschte Höhe ablesbar (z. B. per --dump-dom).
       document.documentElement.dataset.mockHeight = String(height);
     },
-    dictationHistory: notInPreview,
-    copyDictation: notInPreview,
-    deleteDictation: notInPreview,
-    clearDictationHistory: notInPreview,
+    dictationHistory: async () => history(),
+    copyDictation: async (entryId) => console.info("[Vorschau] Diktat kopiert", entryId),
+    deleteDictation: async (entryId) => {
+      dictations = dictations.filter((d) => d.id !== entryId);
+      return history();
+    },
+    clearDictationHistory: async () => {
+      dictations = [];
+      return history();
+    },
     quickToggleDictation: async () => {
       const active = !state.dictation.active;
       set({ ...state, dictation: { ...state.dictation, active, partial: active ? "" : state.dictation.partial, level: 0 } });

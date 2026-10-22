@@ -285,7 +285,7 @@ html.quick body {
   height: 24px;
   min-width: 0;
   max-width: 200px;
-  padding: 0 9px;
+  padding: 0 8px;
   border-radius: 999px;
   font-size: var(--q-fs-meta);
   line-height: 1;
@@ -988,7 +988,7 @@ html.quick body {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-height: 30px;
   padding-top: 8px;
   border-top: 1px solid var(--q-rule);
@@ -1001,25 +1001,66 @@ html.quick body {
 .q-foot [role="tablist"] {
   -webkit-app-region: no-drag;
 }
+/* Owner-Befund 22.10.2026: „esc schließen“ wurde mitten im Wort abgeschnitten.
+   `.q-keys` bekommt nur den Platz, der neben Ansichten und Knöpfen übrig ist
+   (flex-basis 0 – die Breite hängt nicht vom Inhalt ab); was hineinpasst,
+   misst useFitHints.ts: erst fallen die Wörter weg, dann ganze Hinweise.
+   Zur Sicherheit bricht ein Hinweis, der trotzdem nicht passt, ganz in eine
+   unsichtbare zweite Zeile um – nie ein halbes Wort. */
 .q-keys {
-  flex: 1 1 auto;
+  position: relative;
+  flex: 1 1 0;
   display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   align-items: center;
-  gap: 12px;
+  gap: 0 10px;
+  height: 20px;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
 }
-.q-keys > span {
+.q-hint {
+  flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
+  height: 20px;
 }
+/* Wort ohne Platz: unsichtbar, aber vorgelesen (Tastenkappe + title bleiben). */
+.q-hint-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* Lineal: alle Hinweise in voller Länge, unsichtbar, nimmt keinen Platz ein. */
+.q-keys-ruler {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: inherit;
+  width: max-content;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* Rechts schrumpft nur der Status-Chip (Ellipse) – und erst, wenn die
+   Hinweise schon ganz weg sind. Knöpfe behalten ihre Größe. */
 .q-foot-right {
-  flex: none;
+  flex: 0 1 auto;
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+.q-foot-right > * {
+  flex: none;
+}
+.q-foot-right > .q-status {
+  flex: 0 1 auto;
 }
 
 /* ── Bewegung ────────────────────────────────────────────────────────── */
@@ -1201,7 +1242,7 @@ html.quick body {
   all: unset;
   box-sizing: border-box;
   height: 22px;
-  padding: 0 10px;
+  padding: 0 9px;
   border-radius: 7px;
   font-size: var(--q-fs-meta);
   font-weight: 500;

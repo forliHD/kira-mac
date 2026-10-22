@@ -233,6 +233,31 @@ export function footerHints(view: "chat" | "dictations", hasSession: boolean, se
   return hints;
 }
 
+export interface HintFit {
+  /** Wie viele Hinweise (von vorn) sichtbar sind. */
+  count: number;
+  /** false = nur die Tastenkappen, die Wörter stehen in title/Vorlesetext. */
+  labels: boolean;
+}
+
+/**
+ * Was von den Hinweisen in die Fußleiste passt – nie ein halbes Wort
+ * (Owner-Befund 22.10.2026: „esc schließ…“ unter dem Mülleimer). Erst fallen
+ * die Wörter weg, dann ganze Hinweise von hinten. `full`/`caps` sind die
+ * gemessenen Breiten je Hinweis mit bzw. ohne Wort, `gap` der Abstand
+ * dazwischen, `available` die freie Breite.
+ */
+export function fitHints(full: readonly number[], caps: readonly number[], gap: number, available: number): HintFit {
+  // Halbe Pixel aus dem Runden der Messung sollen keinen Hinweis kosten.
+  const room = available + 0.5;
+  const width = (widths: readonly number[], n: number): number => widths.slice(0, n).reduce((sum, w) => sum + w, 0) + gap * Math.max(0, n - 1);
+  if (width(full, full.length) <= room) return { count: full.length, labels: true };
+  for (let n = caps.length; n > 0; n--) {
+    if (width(caps, n) <= room) return { count: n, labels: false };
+  }
+  return { count: 0, labels: false };
+}
+
 const MODIFIER_GLYPHS: Record<string, string> = {
   control: "⌃",
   ctrl: "⌃",
