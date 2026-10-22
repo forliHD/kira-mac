@@ -61,6 +61,7 @@ import {
   suggestionsFor,
 } from "./logic";
 import { MarkdownView } from "./MarkdownView";
+import { useFitHints } from "./useFitHints";
 import { errorText, useQuickState } from "./useQuickState";
 import { updateFade, useReportHeight } from "./useReportHeight";
 
@@ -121,6 +122,8 @@ export function App(): ReactNode {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const followRef = useRef(true);
   const caretRef = useRef<number | null>(null);
+  const keysRef = useRef<HTMLDivElement>(null);
+  const rulerRef = useRef<HTMLDivElement>(null);
 
   const messages = state?.messages ?? [];
   const hasMessages = messages.length > 0;
@@ -438,6 +441,7 @@ export function App(): ReactNode {
   const partial = dictating ? partialPreview(dictation?.partial ?? "") : "";
   const partialInField = dictating && draft === "";
   const hints = footerHints(view, sessionId !== null, prefs.sendKey);
+  const hintFit = useFitHints(keysRef, rulerRef, hints.length, hints.map((h) => `${h.keys} ${h.label}`).join("|"));
   const dictEmpty = view === "dictations" && dictations !== null && filteredDictations.length === 0;
 
   return (
@@ -633,12 +637,21 @@ export function App(): ReactNode {
             Diktate
           </button>
         </div>
-        <div className="q-keys">
-          {hints.map((h) => (
-            <span key={h.keys}>
-              <Kbd>{h.keys}</Kbd> {h.label}
+        <div className="q-keys" ref={keysRef}>
+          {hints.slice(0, hintFit.count).map((h) => (
+            <span key={h.keys} className="q-hint" title={hintFit.labels ? undefined : `${h.keys} ${h.label}`}>
+              <Kbd>{h.keys}</Kbd>
+              <span className={hintFit.labels ? undefined : "q-hint-hidden"}>{h.label}</span>
             </span>
           ))}
+          <div className="q-keys-ruler" ref={rulerRef} aria-hidden="true">
+            {hints.map((h) => (
+              <span key={h.keys} className="q-hint">
+                <Kbd>{h.keys}</Kbd>
+                <span>{h.label}</span>
+              </span>
+            ))}
+          </div>
         </div>
         <div className="q-foot-right">
           {view === "chat" && (hasMessages || sessionId !== null) ? (

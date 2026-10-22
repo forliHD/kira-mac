@@ -6,6 +6,18 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-10-22
+
+### Behoben
+- **Fußleiste des Schnellfensters schnitt Hinweise mitten im Wort ab**
+  (Owner-Befund 22.10.2026: auf „Diktate“ stand „esc schließ…“ halb hinter
+  dem Mülleimer). Die Tastenhinweise bekommen jetzt nur den Platz neben
+  Ansichten und Knöpfen; reicht er nicht, fallen erst die Wörter weg (die
+  Tastenkappen bleiben, das Wort steht im Tooltip und wird vorgelesen), dann
+  ganze Hinweise von hinten – nie ein halbes Wort. Der Status-Chip kürzt
+  per Ellipse erst danach, die Knöpfe schrumpfen nie. Etwas engere Abstände,
+  damit auf „Diktate“ bei 680 px alle drei Hinweise mit Wort passen.
+
 ## [0.6.3] - 2026-10-22
 
 ### Sicherheit
