@@ -54,6 +54,7 @@ import {
   keyAction,
   micLevel,
   moveSelection,
+  revealScrollTop,
   partialPreview,
   quickStage,
   statusChip,
@@ -188,10 +189,29 @@ export function App(): ReactNode {
   const filteredDictations = useMemo(() => filterDictations(dictations ?? [], dictQuery), [dictations, dictQuery]);
   const selectedDictation = filteredDictations[Math.min(dictSel, filteredDictations.length - 1)] ?? null;
 
-  // Ausgewählte Karte sichtbar halten (↑/↓).
+  // Ausgewählte Karte sichtbar halten – nur nach ↑/↓ oder Suche, nie beim
+  // Überfahren mit der Maus. Owner-Befund 22.10.2026: `onMouseEnter` wählte
+  // die Karte, `scrollIntoView` zog eine halb sichtbare Karte ganz ins Bild –
+  // die Liste rutschte unter dem Zeiger weg (und wählte die nächste Karte).
+  const revealSelRef = useRef(false);
+  const selectDictation = useCallback((index: number, reveal: boolean) => {
+    revealSelRef.current = reveal;
+    setDictSel(index);
+  }, []);
+  const hoverDictation = useCallback((index: number) => selectDictation(index, false), [selectDictation]);
   useLayoutEffect(() => {
-    if (view !== "dictations" || !selectedDictation) return;
-    document.getElementById(dictationItemId(selectedDictation))?.scrollIntoView({ block: "nearest" });
+    const reveal = revealSelRef.current;
+    revealSelRef.current = false;
+    const thread = threadRef.current;
+    if (!reveal || view !== "dictations" || !selectedDictation || !thread) return;
+    const card = document.getElementById(dictationItemId(selectedDictation));
+    if (!card) return;
+    // Nur der Verlauf scrollt: scrollIntoView verschob auch die Wurzel (overflow: hidden).
+    const box = thread.getBoundingClientRect();
+    const rect = card.getBoundingClientRect();
+    const top = rect.top - box.top + thread.scrollTop;
+    const next = revealScrollTop(thread.scrollTop, thread.clientHeight, top, top + rect.height);
+    if (next !== null) thread.scrollTop = next;
   }, [view, selectedDictation]);
 
   // Schreibmarke nach programmgesteuerter Änderung (Diktat, Vorschlag) setzen.
@@ -381,6 +401,7 @@ export function App(): ReactNode {
     if (view === "dictations") {
       if ((k.key === "ArrowDown" || k.key === "ArrowUp") && !k.metaKey && !k.altKey && !k.ctrlKey && !k.shiftKey) {
         event.preventDefault();
+        revealSelRef.current = true;
         setDictSel((i) => moveSelection(Math.min(i, filteredDictations.length - 1), k.key === "ArrowDown" ? 1 : -1, filteredDictations.length));
         return;
       }
@@ -476,7 +497,7 @@ export function App(): ReactNode {
               selected={Math.min(dictSel, filteredDictations.length - 1)}
               copiedId={copiedId}
               now={now}
-              onSelect={setDictSel}
+              onSelect={hoverDictation}
               onCopy={copyDictation}
               onToChat={dictationToChat}
               onReinsert={reinsertDictation}
@@ -528,7 +549,7 @@ export function App(): ReactNode {
             onChange={(event) => {
               if (view === "dictations") {
                 setDictQuery(event.target.value);
-                setDictSel(0);
+                selectDictation(0, true);
               } else {
                 setDraft(event.target.value);
               }

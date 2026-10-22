@@ -204,6 +204,19 @@ export function moveSelection(index: number, delta: number, length: number): num
 }
 
 /**
+ * Ausgewählte Karte im Verlauf sichtbar machen: neue `scrollTop` oder null,
+ * wenn sie schon ganz sichtbar ist. `top`/`bottom` relativ zum Inhalt des
+ * Verlaufs. Ist die Karte höher als der Bereich, zählt ihr Anfang. Ersetzt
+ * `scrollIntoView`, das auch die Wurzel (overflow: hidden) und die Seite
+ * verschob.
+ */
+export function revealScrollTop(scrollTop: number, viewHeight: number, top: number, bottom: number): number | null {
+  if (top < scrollTop || bottom - top > viewHeight) return top === scrollTop ? null : Math.max(0, Math.floor(top));
+  if (bottom > scrollTop + viewHeight) return Math.ceil(bottom - viewHeight);
+  return null;
+}
+
+/**
  * Sendetaste je Einstellung: ↩ ohne Modifikator (⇧↩ = Zeile) oder ⌘↩
  * (↩ = Zeile). Eine IME-Bestätigung sendet nie.
  */

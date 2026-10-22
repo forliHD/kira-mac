@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -21,6 +23,7 @@ import {
   moveSelection,
   partialPreview,
   quickStage,
+  revealScrollTop,
   shortHost,
   shouldReport,
   statusChip,
@@ -187,6 +190,26 @@ describe("Diktate-Ansicht", () => {
     expect(moveSelection(2, 1, 3)).toBe(2);
     expect(moveSelection(1, 1, 3)).toBe(2);
     expect(moveSelection(0, 1, 0)).toBe(-1);
+  });
+
+  it("Auswahl sichtbar machen: nur der nötige Weg, sichtbare Karten bleiben stehen", () => {
+    // Bereich 0…300 sichtbar.
+    expect(revealScrollTop(0, 300, 20, 120)).toBeNull();
+    expect(revealScrollTop(100, 300, 40, 140)).toBe(40); // oben angeschnitten
+    expect(revealScrollTop(0, 300, 250, 350)).toBe(50); // unten angeschnitten
+    expect(revealScrollTop(0, 300, 100, 500)).toBe(100); // höher als der Bereich: Anfang zählt
+    expect(revealScrollTop(100, 300, 100, 500)).toBeNull();
+    expect(revealScrollTop(0, 300, -3, 80)).toBe(0);
+  });
+
+  it("Hover in den Diktaten ändert keine Größe und keine Lage", () => {
+    const css = readFileSync(new URL("../src/renderer/quick/quick.css", import.meta.url), "utf8");
+    const rules = [...css.matchAll(/([^{}]*\.q-dict[^{}]*:hover[^{}]*)\{([^}]*)\}/g)];
+    expect(rules.length).toBeGreaterThan(0);
+    for (const [, selector, body] of rules) {
+      const props = [...body!.matchAll(/([a-z-]+)\s*:/g)].map((m) => m[1]);
+      for (const prop of props) expect(`${selector!.trim()} → ${prop}`).toMatch(/→ (color|background|background-color|filter|opacity|box-shadow|outline|outline-color|border-color|text-decoration-color)$/);
+    }
   });
 });
 

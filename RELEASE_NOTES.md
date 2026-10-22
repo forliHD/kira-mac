@@ -1,3 +1,14 @@
+## KIRA für Mac 0.6.6
+
+**Behoben**
+
+- Schnellfenster: Wechselt man von „Diktate“ zurück zu „Chat“, solange noch
+  kein Gespräch läuft, wird das Fenster wieder so klein wie die leere Leiste.
+  Vorher blieb es groß.
+- Schnellfenster: Die Liste der Diktate verrutscht nicht mehr, wenn man mit
+  der Maus über die Einträge fährt. Mit ↑/↓ und bei der Suche bleibt der
+  gewählte Eintrag weiter im Bild.
+
 ## KIRA für Mac 0.6.5
 
 **Sicherheit**

@@ -5,6 +5,9 @@
 // Gewünscht ist trotzdem die volle Höhe: sichtbare Höhe + weggescrollter Rest.
 // Ein ResizeObserver auf Wurzel, Nachrichtenbereich und dessen Inhalt löst
 // die Messung aus, gebündelt auf einen Frame; gemeldet wird nur bei > 1 px.
+// In der Leiste hat die Wurzel keine feste Höhe (nur `max-height`), die
+// Messung hängt also nicht an der aktuellen Fensterhöhe: auch im noch großen
+// Fenster (zurück aus Stufe B) kommt die kleinere Leistenhöhe an.
 
 import { type RefObject, useLayoutEffect } from "react";
 
@@ -44,9 +47,11 @@ export function useReportHeight(refs: HeightRefs, report: (height: number) => vo
     }
     let frame = 0;
     let last: number | null = null;
+    let disposed = false;
 
     const measure = (): void => {
       frame = 0;
+      if (disposed) return;
       const thread = refs.thread.current;
       const visible = thread !== null && !thread.hidden;
       if (visible && refs.follow.current) thread.scrollTop = thread.scrollHeight;
@@ -58,7 +63,7 @@ export function useReportHeight(refs: HeightRefs, report: (height: number) => vo
       if (visible) updateFade(thread);
     };
     const schedule = (): void => {
-      if (!frame) frame = requestAnimationFrame(measure);
+      if (!frame && !disposed) frame = requestAnimationFrame(measure);
     };
 
     const observer = new ResizeObserver(schedule);
@@ -66,9 +71,12 @@ export function useReportHeight(refs: HeightRefs, report: (height: number) => vo
     if (refs.thread.current) observer.observe(refs.thread.current);
     if (refs.content.current) observer.observe(refs.content.current);
     // Schriften laden nach: dann ändern sich Zeilenhöhen ohne Größenänderung der Wurzel.
+    // Kommt das erst nach dem Aufräumen (schon Stufe B), nichts mehr messen –
+    // sonst ginge die Gesprächshöhe als Höhe der Leiste an den Hauptprozess.
     void document.fonts?.ready.then(schedule);
     schedule();
     return () => {
+      disposed = true;
       observer.disconnect();
       if (frame) cancelAnimationFrame(frame);
     };
