@@ -6,6 +6,31 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-10-22
+
+### Behoben
+- **Schnellfenster blieb nach „Diktate“ groß** (Owner-Befund 22.10.2026:
+  zurück auf „Chat“ ohne Nachrichten behielt das Fenster die Gesprächshöhe).
+  Ursache im Hauptprozess: Stufe B setzt per `setMinimumSize` die
+  Mindesthöhe 420; der Rückweg in die Leiste nahm nur `setResizable(false)`
+  zurück, und `setBounds` hält sich an Mindest- und Höchstgröße – die
+  Leistenhöhe wurde auf 420 hochgezogen, jede neue Messung ebenso.
+  `windows/quick.ts` setzt in der Leiste die Grenzen wieder auf die der
+  Leiste (`applyFixed`, auch beim Öffnen). Die Höhenmessung der Seite misst
+  nach dem Aufräumen nicht mehr (spät geladene Schriften hätten sonst die
+  Gesprächshöhe als Leistenhöhe melden können). Test:
+  `tests/quick-window.test.ts` (die Attrappe begrenzt `setBounds` wie
+  Electron).
+- **Diktate-Liste rutschte beim Überfahren mit der Maus** (Owner-Befund
+  22.10.2026). Ursache: `onMouseEnter` wählte die Karte, und die Auswahl
+  rief `scrollIntoView({ block: "nearest" })` – eine halb sichtbare Karte
+  wurde ganz ins Bild gezogen, die Liste verschob sich unter dem Zeiger
+  (und `scrollIntoView` verschob auch die Wurzel mit `overflow: hidden`).
+  Jetzt scrollt die Auswahl nur nach ↑/↓ oder Suche, und nur der Verlauf
+  selbst (`revealScrollTop` in `quick/logic.ts`). Ein Test wacht darüber,
+  dass `:hover`-Regeln der Diktate nur Farbe, Hintergrund und Schatten
+  ändern.
+
 ## [0.6.5] - 2026-10-22
 
 ### Sicherheit

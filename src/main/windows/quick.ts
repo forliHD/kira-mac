@@ -20,7 +20,7 @@ import { scoped } from "../log";
 import { localPageUrl } from "../paths";
 import { localWebPreferences, openLocalLink } from "./common";
 import { guardLocalPage } from "./local-guard";
-import { QUICK_TALL_MIN, QUICK_WIDTH, displayKey, quickHeight, quickLeft, quickMaxHeight, quickTallHeight, quickTop } from "./quick-geometry";
+import { QUICK_MIN_HEIGHT, QUICK_TALL_MIN, QUICK_WIDTH, displayKey, quickHeight, quickLeft, quickMaxHeight, quickTallHeight, quickTop } from "./quick-geometry";
 
 const log = scoped("quick-window");
 
@@ -143,7 +143,7 @@ export class QuickWindowController {
       this.applyResizable(win, area, top);
       this.setBounds(win, { x: bounds.x, y: this.topFor(area, height), width: QUICK_WIDTH, height }, true);
     } else {
-      win.setResizable(false);
+      this.applyFixed(win, area, top);
       const height = quickHeight(area, top, this.barHeight);
       this.setBounds(win, { x: bounds.x, y: this.topFor(area, height), width: QUICK_WIDTH, height }, true);
     }
@@ -186,6 +186,18 @@ export class QuickWindowController {
     win.setMinimumSize(QUICK_WIDTH, Math.min(QUICK_TALL_MIN, max));
     win.setMaximumSize(QUICK_WIDTH, Math.max(max, Math.min(QUICK_TALL_MIN, max)));
     win.setResizable(true);
+  }
+
+  /**
+   * Leiste: nicht ziehbar, Grenzen wieder die der Leiste. Owner-Befund
+   * 22.10.2026: `setResizable(false)` allein ließ die Mindesthöhe der Stufe B
+   * (QUICK_TALL_MIN) stehen, und `setBounds` hält sich an Mindest- und
+   * Höchstgröße – von „Diktate“ zurück zum leeren Chat blieb das Fenster groß.
+   */
+  private applyFixed(win: BrowserWindow, area: Electron.Rectangle, top: number): void {
+    win.setResizable(false);
+    win.setMinimumSize(QUICK_WIDTH, QUICK_MIN_HEIGHT);
+    win.setMaximumSize(QUICK_WIDTH, quickMaxHeight(area, top));
   }
 
   private setBounds(win: BrowserWindow, bounds: Electron.Rectangle, animate: boolean): void {
@@ -280,7 +292,7 @@ export class QuickWindowController {
     this.anchorTop = anchor;
     const height = this.tall ? this.tallHeight(display, anchor) : quickHeight(area, anchor, this.barHeight);
     if (this.tall) this.applyResizable(win, area, anchor);
-    else win.setResizable(false);
+    else this.applyFixed(win, area, anchor);
     this.setBounds(win, { x: quickLeft(area), y: this.topFor(area, height), width: QUICK_WIDTH, height }, false);
   }
 }

@@ -54,7 +54,18 @@ class FakeWindow {
   getBounds(): Bounds {
     return { ...this.bounds };
   }
+  /** Wie Electron (NativeWindowMac::SetBounds): die Größe hält Mindest- und Höchstgröße ein (0 = ohne Grenze). */
   setBounds(bounds: Bounds, animate?: boolean): void {
+    let { width, height } = bounds;
+    if (this.min) {
+      width = Math.max(width, this.min[0]!);
+      height = Math.max(height, this.min[1]!);
+    }
+    if (this.max) {
+      if (this.max[0]) width = Math.min(width, this.max[0]);
+      if (this.max[1]) height = Math.min(height, this.max[1]);
+    }
+    bounds = { ...bounds, width, height };
     this.bounds = { ...bounds };
     this.boundsCalls.push({ bounds: { ...bounds }, animate });
   }
@@ -152,6 +163,28 @@ describe("Schnellfenster: zwei Stufen", () => {
     controller.setTall(false);
     expect(w.resizable).toBe(false);
     expect(w.bounds.height).toBe(900); // zuletzt gemeldete Inhaltshöhe der Leiste
+  });
+
+  it("zurück in die Leiste (Diktate → leerer Chat): Mindesthöhe der Gesprächsstufe fällt, das Fenster schrumpft", () => {
+    // Owner-Befund 22.10.2026: setResizable(false) allein ließ die Mindesthöhe
+    // 420 stehen, setBounds blieb daran hängen – das Fenster blieb groß.
+    const { controller, win } = build();
+    controller.show();
+    const w = win();
+    controller.resize(176); // leerer Chat: Leiste mit Vorschlägen
+    controller.setTall(true); // ⌘2 Diktate
+    expect(w.bounds.height).toBe(648);
+    controller.setTall(false); // ⌘1 Chat, noch keine Nachricht
+    expect(w.bounds.height).toBe(176);
+    expect(w.min).toEqual([680, 132]);
+    expect(w.max).toEqual([680, MAX]);
+    // Die frische Messung der Leiste darf auch kleiner werden.
+    controller.resize(150);
+    expect(w.bounds.height).toBe(150);
+    // Auch beim nächsten Öffnen gelten die Grenzen der Leiste.
+    controller.show();
+    expect(w.min).toEqual([680, 132]);
+    expect(w.bounds.height).toBe(150);
   });
 
   it("gemerkte Höhe des Bildschirms gewinnt, Ziehen am unteren Rand meldet sie, andere Kanten sind gesperrt", () => {
