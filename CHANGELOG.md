@@ -6,6 +6,15 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-10-22
+
+### Sicherheit
+- **Electron 44.5.1 → 44.9.3** ([#11](https://github.com/forliHD/kira-mac/pull/11)).
+  Schließt die seit 44.5.1 veröffentlichten Sicherheitslücken in Chromium und
+  Electron. Keine funktionalen Änderungen; der Helfer bleibt bei 0.6.2.
+  Hinweis: Electron 44.9.3 bringt noch Node.js 24.22.0 mit; die Node-Fixes
+  vom Oktober 2026 (24.22.1) folgen mit dem nächsten Electron-Release.
+
 ## [0.6.2] - 2026-10-21
 
 ### Behoben

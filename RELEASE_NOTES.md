@@ -1,3 +1,11 @@
+## KIRA für Mac 0.6.3
+
+**Sicherheit**
+
+- Electron auf 44.9.3 aktualisiert (vorher 44.5.1). Das schließt die
+  inzwischen bekannten Sicherheitslücken in Chromium und Electron. Sonst
+  ändert sich nichts.
+
 ## KIRA für Mac 0.6.2
 
 **Behoben**
