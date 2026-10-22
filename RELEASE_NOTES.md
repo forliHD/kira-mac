@@ -1,3 +1,10 @@
+## KIRA für Mac 0.6.5
+
+**Sicherheit**
+
+- Werkzeuge, mit denen die App gebaut wird, auf Stände ohne bekannte
+  Sicherheitslücken gehoben. In der App selbst ändert sich nichts.
+
 ## KIRA für Mac 0.6.4
 
 **Behoben**
