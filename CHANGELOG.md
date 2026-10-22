@@ -6,6 +6,31 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-10-22
+
+### Sicherheit
+- **Abhängigkeiten der Build-Werkzeuge aktualisiert** (`npm audit`: vorher
+  2 hoch, 4 mittel, 1 niedrig laut Dependabot, jetzt 0). Betroffen sind nur
+  devDependencies (vite, electron-builder); nichts davon steckt in der
+  gepackten App, deren Laufzeit-Abhängigkeiten (electron-log,
+  electron-updater, electron-liquid-glass) bleiben unverändert.
+  - **vite 7.3.6 → 7.3.7**: GHSA-587h-7wmj-h5pm (hoch),
+    GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw, GHSA-rq7h-c2jc-7f22 (mittel),
+    GHSA-9jrq-w75r-8gcw (niedrig). Betrifft den Entwicklungsserver
+    (`npm run dev`).
+  - **http-cache-semantics 4.2.0 → 4.3.0** (über electron-builder →
+    @electron/get → got → cacheable-request): GHSA-ch52-4w7c-c8xp (hoch).
+    Nur das Lockfile, liegt im erlaubten Bereich `^4`.
+  - **global-agent 3.0.0 → 4.1.3 per `overrides`** (nur unter
+    `@electron/get`): sprintf-js 1.1.3 (GHSA-hp3w-g68c-fv3c, mittel) hat
+    keine behobene Version und kam über global-agent 3 → roarr. global-agent
+    4 braucht weder roarr noch sprintf-js und exportiert weiter
+    `bootstrap()` – das Einzige, was @electron/get aufruft
+    (`require('global-agent').bootstrap()` für Proxys beim Electron-Download).
+    Die Override kann wieder raus, sobald electron-builder ein @electron/get
+    ohne global-agent 3 mitbringt. Kein Major-Sprung bei Electron oder
+    electron-builder.
+
 ## [0.6.4] - 2026-10-22
 
 ### Behoben
