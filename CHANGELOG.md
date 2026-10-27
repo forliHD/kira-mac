@@ -6,6 +6,17 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-10-27
+
+### Sicherheit
+- **Electron 44.9.3 → 44.10.0.** Electron 44.10.0 bringt Node.js 24.22.1 mit
+  und schließt damit die Node-Sicherheitslücken vom Oktober 2026, darunter
+  den Brotli-Decoder-Pufferüberlauf
+  [CVE-2026-111497](https://nvd.nist.gov/vuln/detail/CVE-2026-111497)
+  (kritisch, seit 27.10.2026 im CISA-KEV-Katalog als aktiv ausgenutzt).
+  Außerdem Electron-Fixes für fehlerhafte asar-Archive und Lücken in der
+  Sperrliste der File System Access API. Keine funktionalen Änderungen.
+
 ## [0.6.6] - 2026-10-22
 
 ### Behoben
