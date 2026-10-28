@@ -1,3 +1,11 @@
+## KIRA für Mac 0.6.7
+
+**Sicherheit**
+
+- Electron auf 44.10.0 gehoben. Damit ist eine aktiv ausgenutzte
+  Sicherheitslücke im Brotli-Entpacker von Node.js geschlossen. In der App
+  ändert sich sonst nichts.
+
 ## KIRA für Mac 0.6.6
 
 **Behoben**

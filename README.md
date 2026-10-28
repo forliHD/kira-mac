@@ -163,7 +163,7 @@ und jedem Push auf `main`: Abhängigkeiten, Typprüfung, Lint, JavaScript-Tests,
 des Helfers, `electron-builder`.
 
 Ein Push auf `main` legt danach den GitHub-Release an, sofern `v<Version>`
-noch nicht existiert. `0.6.6` ist die nächste Version; `v0.6.5` bleibt der
+noch nicht existiert. `0.6.7` ist die nächste Version; `v0.6.6` bleibt der
 bisherige Release. Notizen kommen aus dem Abschnitt dieser Version in
 `CHANGELOG.md`, sonst aus `RELEASE_NOTES.md`. `workflow_dispatch` auf `main`
 macht dasselbe. Pull Requests aus diesem Repo signieren und notarisieren mit,
