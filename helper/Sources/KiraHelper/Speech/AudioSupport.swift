@@ -4,23 +4,163 @@ import Foundation
 // Gemeinsame Audio-Bausteine für Spracherkennung und Systemton-Aufnahme.
 // Hier fließen Audiodaten durch — sie werden nie protokolliert.
 
+/// Wie das Mikrofon geöffnet wird (Plan 21.10.2026, Phase 2): ein bestimmtes
+/// Gerät (UID, sonst das Systemstandard-Mikrofon) und Apples Sprachfilter
+/// (Voice Processing: Echo-Unterdrückung, Rauschfilter, Pegelregelung).
+struct MicrophoneOptions: Sendable, Equatable {
+    var deviceUID: String? = nil
+    var voiceProcessing: Bool = false
+}
+
+/// Was `prepare` tatsächlich erreicht hat – fürs Protokoll und die Pille.
+struct MicrophoneReport: Sendable, Equatable {
+    var voiceProcessing: Bool
+    /// Name des genutzten Geräts (nil = Systemstandard oder unbekannt).
+    var device: String?
+
+    var json: JSONValue {
+        ["voiceProcessing": .bool(voiceProcessing), "device": .optionalString(device)]
+    }
+}
+
 /// Mikrofon-Aufnahme über einen `AVAudioEngine`-Input-Tap. Der Handler
 /// bekommt jeden Puffer im nativen Format des Eingabegeräts auf dem
 /// Audio-Thread; er muss schnell zurückkehren.
+///
+/// Reihenfolge: `prepare(options:)` wählt Gerät und Sprachfilter und liefert
+/// den Bericht (das Format ändert sich mit dem Sprachfilter!), dann baut der
+/// Aufrufer seinen Konverter aus `inputFormat`, dann `start(handler:)`.
+///
+/// Es gibt EINE Engine je Prozess (`shared`), und sie bleibt zwischen zwei
+/// Diktaten warm: `stop()` nimmt nur den Tap weg und hält die Engine an,
+/// Gerät und Sprachfilter bleiben eingestellt. Messung 21.10.2026 (Apple
+/// Silicon, Owner-Befund „Mikrofon wird vorbereitet“ dauert lange): den
+/// Sprachfilter erstmals einschalten 1,0–1,2 s, erster Start einer neuen
+/// Engine 0,3 s (ohne Filter 0,8 s), Neustart der warmen Engine 55–95 ms.
+/// Eine angehaltene Engine hält das Gerät nicht offen
+/// (`kAudioDevicePropertyDeviceIsRunningSomewhere` = 0, kein orangefarbener
+/// Punkt). `prepare` mit den gleichen Einstellungen kostet nichts; andere
+/// Einstellungen bauen die Engine neu (ein Gerät „Systemstandard“ darf nicht
+/// auf dem alten Gerät kleben bleiben). `audio.warm` ruft `prepare` schon vor
+/// dem ersten Diktat, ohne das Mikrofon zu öffnen.
 final class MicrophoneCapture: @unchecked Sendable {
-    private let engine = AVAudioEngine()
+    static let shared = MicrophoneCapture()
+
+    /// Ergebnis von `prepare`.
+    struct Prepared: Sendable, Equatable {
+        enum State: String, Sendable {
+            /// Engine trug die Einstellungen schon – nichts zu tun.
+            case warm
+            /// Engine (neu) eingerichtet.
+            case configured
+            /// Aufnahme läuft gerade mit anderen Einstellungen; nichts geändert.
+            case busy
+        }
+
+        var report: MicrophoneReport
+        var state: State
+        /// Dauer der Einrichtung in Millisekunden (0 bei `warm`/`busy`).
+        var ms: Int
+
+        var json: JSONValue {
+            ["state": .string(state.rawValue), "ms": .int(ms), "microphone": report.json]
+        }
+    }
+
+    private var engine = AVAudioEngine()
     private let lock = NSLock()
     private var running = false
+    /// Einstellungen, die die Engine gerade trägt (nil = neu einrichten).
+    private var configured: MicrophoneOptions?
+    private var observer: NSObjectProtocol?
+    private(set) var report = MicrophoneReport(voiceProcessing: false, device: nil)
+
+    init() {
+        observe(engine)
+    }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
 
     /// Natives Format des Eingabegeräts (Abtastrate 0 = kein Gerät).
     var inputFormat: AVAudioFormat {
         engine.inputNode.outputFormat(forBus: 0)
     }
 
+    /// Trägt die Engine gerade diese Einstellungen (und läuft nicht)?
+    func isWarm(for options: MicrophoneOptions) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !running && configured == options
+    }
+
+    /// Gerät und Sprachfilter einstellen. Scheitert der Sprachfilter (bekannt:
+    /// Aggregat-Gerät, Fehler -10876 auf manchen Macs), läuft es ohne weiter.
+    /// Gleiche Einstellungen wie zuletzt: sofort zurück (warm).
+    @discardableResult
+    func prepare(options: MicrophoneOptions) -> Prepared {
+        lock.lock()
+        defer { lock.unlock() }
+        if configured == options {
+            return Prepared(report: report, state: .warm, ms: 0)
+        }
+        guard !running else {
+            return Prepared(report: report, state: .busy, ms: 0)
+        }
+        let clock = ContinuousClock()
+        let t0 = clock.now
+        if configured != nil {
+            // Andere Einstellungen: frische Engine, damit „Systemstandard“ wieder
+            // dem System folgt und kein Filterzustand hängen bleibt.
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            engine = AVAudioEngine()
+            observe(engine)
+        }
+        var report = MicrophoneReport(voiceProcessing: false, device: nil)
+        let input = engine.inputNode
+        if let uid = options.deviceUID {
+            if let device = AudioInputDevices.device(forUID: uid), let unit = input.audioUnit {
+                var deviceID = device.id
+                let status = AudioUnitSetProperty(
+                    unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &deviceID,
+                    UInt32(MemoryLayout<AudioDeviceID>.size))
+                if status == noErr {
+                    report.device = device.name
+                } else {
+                    HelperLog.warn("Mikrofon „\(device.name)“ ließ sich nicht wählen (\(status)); Systemstandard.")
+                }
+            } else {
+                HelperLog.warn("Mikrofon mit UID \(uid) nicht gefunden; Systemstandard.")
+            }
+        }
+        if options.voiceProcessing {
+            do {
+                try input.setVoiceProcessingEnabled(true)
+                report.voiceProcessing = true
+                // Anderen Ton nur leicht dämpfen – das Diktat soll Musik nicht abwürgen.
+                input.voiceProcessingOtherAudioDuckingConfiguration = AVAudioVoiceProcessingOtherAudioDuckingConfiguration(
+                    enableAdvancedDucking: false, duckingLevel: .min)
+            } catch {
+                HelperLog.warn("Sprachfilter nicht verfügbar: \(HelperError.describe(error)); Aufnahme ohne.")
+                try? input.setVoiceProcessingEnabled(false)
+            }
+        } else if input.isVoiceProcessingEnabled {
+            try? input.setVoiceProcessingEnabled(false)
+        }
+        // Ressourcen jetzt belegen, nicht erst beim Start (Mikrofon bleibt zu).
+        engine.prepare()
+        configured = options
+        self.report = report
+        return Prepared(report: report, state: .configured, ms: Int((clock.now - t0) / .milliseconds(1)))
+    }
+
     func start(handler: @escaping @Sendable (AVAudioPCMBuffer) -> Void) throws {
         lock.lock()
         defer { lock.unlock() }
-        guard !running else { return }
+        guard !running else {
+            throw HelperError(.sttFailed, "Das Mikrofon ist schon in Gebrauch.")
+        }
 
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
@@ -42,6 +182,7 @@ final class MicrophoneCapture: @unchecked Sendable {
         running = true
     }
 
+    /// Hält die Aufnahme an; die Engine bleibt eingerichtet (warm).
     func stop() {
         lock.lock()
         defer { lock.unlock() }
@@ -49,6 +190,29 @@ final class MicrophoneCapture: @unchecked Sendable {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         running = false
+    }
+
+    private func observe(_ engine: AVAudioEngine) {
+        observer = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+        ) { [weak self] _ in
+            // Nicht unter dem Lock des Auslösers arbeiten (kommt u. U. aus start/stop).
+            DispatchQueue.global().async { self?.configurationChanged() }
+        }
+    }
+
+    /// Gerät gewechselt (Headset dazu/weg, Systemstandard geändert): die
+    /// Engine beim nächsten `prepare` neu einrichten. Läuft gerade eine
+    /// Aufnahme, läuft sie weiter (wie vor 0.6.2); nur protokollieren.
+    private func configurationChanged() {
+        lock.lock()
+        defer { lock.unlock() }
+        configured = nil
+        if running {
+            HelperLog.warn("Audio-Gerät während der Aufnahme gewechselt – Mikrofon wird beim nächsten Diktat neu eingerichtet.")
+        } else {
+            HelperLog.info("Audio-Gerät gewechselt – Mikrofon wird beim nächsten Diktat neu eingerichtet.")
+        }
     }
 }
 
@@ -121,6 +285,12 @@ enum LevelReporter {
 
 /// Konvertiert Puffer vom Geräteformat in das Zielformat (Abtastrate, Kanäle,
 /// Sample-Typ) mit einem fortlaufenden `AVAudioConverter`.
+///
+/// Live-Befund 21.10.2026 (0.6.0): Mit Apples Sprachfilter (Voice Processing)
+/// liefert der Tap Puffer in einem ANDEREN Format als `inputNode.outputFormat`
+/// vor dem Start meldete – der feste Konverter schwieg, die Erkennung bekam
+/// nichts. Der Konverter folgt deshalb dem Format jedes Puffers und baut sich
+/// bei einem Wechsel neu (einmal protokolliert, nie Audiodaten).
 final class BufferConverter: @unchecked Sendable {
     private final class InputBox: @unchecked Sendable {
         let buffer: AVAudioPCMBuffer
@@ -128,23 +298,117 @@ final class BufferConverter: @unchecked Sendable {
         init(_ buffer: AVAudioPCMBuffer) { self.buffer = buffer }
     }
 
-    private let converter: AVAudioConverter?
+    private let lock = NSLock()
+    private var converter: AVAudioConverter?
+    private var inputFormat: AVAudioFormat
     private let outputFormat: AVAudioFormat
 
     init(from input: AVAudioFormat, to output: AVAudioFormat) throws {
         outputFormat = output
-        if input == output {
-            converter = nil
-        } else {
-            guard let converter = AVAudioConverter(from: input, to: output) else {
-                throw HelperError(.sttFailed, "Audioformat kann nicht konvertiert werden.")
+        inputFormat = input
+        converter = try Self.make(from: input, to: output)
+    }
+
+    private static func make(from input: AVAudioFormat, to output: AVAudioFormat) throws -> AVAudioConverter? {
+        if input == output { return nil }
+        guard let converter = AVAudioConverter(from: input, to: output) else {
+            throw HelperError(.sttFailed, "Audioformat kann nicht konvertiert werden.")
+        }
+        converter.primeMethod = .none
+        return converter
+    }
+
+    static func describe(_ f: AVAudioFormat) -> String {
+        "\(Int(f.sampleRate)) Hz, \(f.channelCount) Kanal/Kanäle, \(f.commonFormat.rawValue)\(f.isInterleaved ? " interleaved" : "")"
+    }
+
+    /// Einmal je Prozess, nicht je Diktat.
+    nonisolated(unsafe) private static var channelsLogged = false
+
+    /// Mehrkanalige Eingaben (der Sprachfilter liefert z. B. 9 Kanäle) selbst
+    /// auf Mono mischen – `AVAudioConverter` lieferte dafür leere Puffer.
+    static func mono(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        let channels = Int(buffer.format.channelCount)
+        let frames = Int(buffer.frameLength)
+        guard channels > 1, frames > 0,
+            let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: buffer.format.sampleRate, channels: 1, interleaved: false),
+            let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)),
+            let dst = out.floatChannelData?[0]
+        else { return nil }
+        out.frameLength = AVAudioFrameCount(frames)
+        let scale = 1 / Float(channels)
+        if let src = buffer.floatChannelData {
+            if buffer.format.isInterleaved {
+                let base = src[0]
+                for i in 0..<frames {
+                    var sum: Float = 0
+                    for c in 0..<channels { sum += base[i * channels + c] }
+                    dst[i] = sum * scale
+                }
+            } else {
+                for i in 0..<frames { dst[i] = 0 }
+                for c in 0..<channels {
+                    let ch = src[c]
+                    for i in 0..<frames { dst[i] += ch[i] * scale }
+                }
             }
-            converter.primeMethod = .none
-            self.converter = converter
+            return out
+        }
+        if let src = buffer.int16ChannelData {
+            let norm = scale / 32768
+            if buffer.format.isInterleaved {
+                let base = src[0]
+                for i in 0..<frames {
+                    var sum: Float = 0
+                    for c in 0..<channels { sum += Float(base[i * channels + c]) }
+                    dst[i] = sum * norm
+                }
+            } else {
+                for i in 0..<frames { dst[i] = 0 }
+                for c in 0..<channels {
+                    let ch = src[c]
+                    for i in 0..<frames { dst[i] += Float(ch[i]) * norm }
+                }
+            }
+            return out
+        }
+        return nil
+    }
+
+    /// Pegel je Kanal (RMS), nur Zahlen – einmal protokolliert, um zu sehen, wo die Stimme liegt.
+    private static func channelLevels(_ buffer: AVAudioPCMBuffer) -> [String] {
+        let channels = Int(buffer.format.channelCount)
+        let frames = Int(buffer.frameLength)
+        guard let src = buffer.floatChannelData, frames > 0 else { return [] }
+        return (0..<channels).map { c in
+            var sum: Float = 0
+            if buffer.format.isInterleaved {
+                for i in 0..<frames { let v = src[0][i * channels + c]; sum += v * v }
+            } else {
+                for i in 0..<frames { let v = src[c][i]; sum += v * v }
+            }
+            return String(format: "%.4f", (sum / Float(frames)).squareRoot())
         }
     }
 
-    func convert(_ buffer: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer? {
+    func convert(_ raw: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer? {
+        var buffer = raw
+        if raw.format.channelCount > 1 {
+            if !Self.channelsLogged, LevelMeter.rms(of: raw) > 0.01 {
+                Self.channelsLogged = true
+                HelperLog.info("Kanalpegel der Eingabe: \(Self.channelLevels(raw).joined(separator: " "))")
+            }
+            if let mixed = Self.mono(raw) { buffer = mixed }
+        }
+        let converter: AVAudioConverter?
+        lock.lock()
+        if buffer.format != inputFormat {
+            HelperLog.info("Eingabeformat gewechselt: \(Self.describe(inputFormat)) → \(Self.describe(buffer.format)); Konverter neu.")
+            inputFormat = buffer.format
+            self.converter = try Self.make(from: buffer.format, to: outputFormat)
+        }
+        converter = self.converter
+        lock.unlock()
         guard let converter else { return buffer }
         let ratio = outputFormat.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up)) + 64
@@ -249,5 +513,77 @@ func withTimeout<T: Sendable>(
                 continuation.resume(throwing: TimeoutError())
             }
         }
+    }
+}
+
+// MARK: - Eingabegeräte (CoreAudio)
+
+struct AudioInputDevice: Sendable, Equatable {
+    let id: AudioDeviceID
+    let uid: String
+    let name: String
+    let isDefault: Bool
+
+    var json: JSONValue {
+        ["uid": .string(uid), "name": .string(name), "default": .bool(isDefault)]
+    }
+}
+
+/// Liste der Mikrofone (Geräte mit Eingabekanälen) und Auflösung einer UID.
+enum AudioInputDevices {
+    private static func address(_ selector: AudioObjectPropertySelector, scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal)
+        -> AudioObjectPropertyAddress
+    {
+        AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+    }
+
+    private static func string(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
+        var addr = address(selector)
+        var size = UInt32(MemoryLayout<CFString?>.size)
+        var value: Unmanaged<CFString>?
+        let status = withUnsafeMutablePointer(to: &value) { pointer in
+            AudioObjectGetPropertyData(id, &addr, 0, nil, &size, pointer)
+        }
+        guard status == noErr, let value else { return nil }
+        return value.takeRetainedValue() as String
+    }
+
+    private static func inputChannels(_ id: AudioObjectID) -> Int {
+        var addr = address(kAudioDevicePropertyStreamConfiguration, scope: kAudioObjectPropertyScopeInput)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(id, &addr, 0, nil, &size) == noErr, size > 0 else { return 0 }
+        let raw = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { raw.deallocate() }
+        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, raw) == noErr else { return 0 }
+        let list = UnsafeMutableAudioBufferListPointer(raw.assumingMemoryBound(to: AudioBufferList.self))
+        return list.reduce(0) { $0 + Int($1.mNumberChannels) }
+    }
+
+    static func defaultInputID() -> AudioDeviceID? {
+        var addr = address(kAudioHardwarePropertyDefaultInputDevice)
+        var id = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &id) == noErr, id != 0
+        else { return nil }
+        return id
+    }
+
+    static func list() -> [AudioInputDevice] {
+        var addr = address(kAudioHardwarePropertyDevices)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr else { return [] }
+        let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+        var ids = [AudioDeviceID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids) == noErr else { return [] }
+        let defaultID = defaultInputID()
+        return ids.compactMap { id in
+            guard inputChannels(id) > 0, let uid = string(id, kAudioDevicePropertyDeviceUID) else { return nil }
+            let name = string(id, kAudioObjectPropertyName) ?? uid
+            return AudioInputDevice(id: id, uid: uid, name: name, isDefault: id == defaultID)
+        }
+    }
+
+    static func device(forUID uid: String) -> AudioInputDevice? {
+        list().first { $0.uid == uid }
     }
 }

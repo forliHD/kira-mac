@@ -17,14 +17,43 @@ final class TextInserter {
 
     nonisolated init() {}
 
+    /// Programm-Symbole als PNG (Base64), je Bundle einmal gerendert.
+    private var iconCache: [String: String] = [:]
+
     func frontmost() -> JSONValue {
         guard let app = NSWorkspace.shared.frontmostApplication else {
-            return ["bundleId": .null, "name": .null]
+            return ["bundleId": .null, "name": .null, "icon": .null]
         }
         return [
             "bundleId": .optionalString(app.bundleIdentifier),
             "name": .optionalString(app.localizedName),
+            "icon": .optionalString(icon(for: app)),
         ]
+    }
+
+    /// Symbol des Programms, 64 × 64 px (32 pt @2x), für die Diktat-Pille.
+    private func icon(for app: NSRunningApplication) -> String? {
+        let key = app.bundleIdentifier ?? app.localizedName ?? ""
+        if let cached = iconCache[key] { return cached }
+        guard let image = app.icon, let png = Self.pngBase64(image, pixels: 64) else { return nil }
+        if !key.isEmpty { iconCache[key] = png }
+        return png
+    }
+
+    static func pngBase64(_ image: NSImage, pixels: Int) -> String? {
+        guard
+            let rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels, bitsPerSample: 8, samplesPerPixel: 4,
+                hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+        else { return nil }
+        rep.size = NSSize(width: pixels, height: pixels)
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        guard let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        NSGraphicsContext.current = context
+        context.imageInterpolation = .high
+        image.draw(in: NSRect(x: 0, y: 0, width: pixels, height: pixels), from: .zero, operation: .copy, fraction: 1)
+        return rep.representation(using: .png, properties: [:])?.base64EncodedString()
     }
 
     func insert(text: String, mode: Mode) async throws -> JSONValue {
@@ -56,6 +85,36 @@ final class TextInserter {
             try await insertViaPasteboard(text)
             return ["method": "paste"]
         }
+    }
+
+    // MARK: Wörterbuch
+
+    /// `text.knownWords`: welche der Wörter das Systemwörterbuch der Sprache
+    /// kennt (`NSSpellChecker`). Für die Nachkorrektur der Hülle (seit 0.4.0):
+    /// ein bekanntes Wort („Kita“) wird bei bloßer Buchstabenähnlichkeit nicht
+    /// zu einem Begriff (KIRA). Die Wörter werden weder protokolliert noch
+    /// gespeichert.
+    func knownWords(locale: String, words: [String]) -> JSONValue {
+        let checker = NSSpellChecker.shared
+        let language = Self.spellLanguage(for: locale, available: checker.availableLanguages)
+        var known: [String] = []
+        for word in words.prefix(200) where !word.isEmpty {
+            let range = checker.checkSpelling(
+                of: word, startingAt: 0, language: language, wrap: false, inSpellDocumentWithTag: 0, wordCount: nil)
+            if range.location == NSNotFound { known.append(word) }
+        }
+        return ["known": .strings(known), "language": .optionalString(language)]
+    }
+
+    /// „de-DE“ → „de_DE“, wenn der Prüfer die Variante kennt, sonst „de“ (oder
+    /// eine andere Variante der Sprache); nil = der Prüfer wählt selbst.
+    nonisolated static func spellLanguage(for locale: String, available: [String]) -> String? {
+        let underscored = locale.replacingOccurrences(of: "-", with: "_")
+        if available.contains(underscored) { return underscored }
+        let base = String(locale.split(whereSeparator: { $0 == "-" || $0 == "_" }).first ?? Substring(""))
+        guard !base.isEmpty else { return nil }
+        if available.contains(base) { return base }
+        return available.first { $0.hasPrefix(base + "_") }
     }
 
     // MARK: Accessibility
@@ -210,6 +269,11 @@ enum TextCommands {
         }
         table["text.frontmost"] = { _ in
             await services.text.frontmost()
+        }
+        table["text.knownWords"] = { request in
+            let locale = try request.params.optionalString("locale") ?? SpeechCommands.defaultLocale()
+            let words = try request.params.stringArray("words")
+            return await services.text.knownWords(locale: locale, words: words)
         }
     }
 }

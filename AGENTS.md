@@ -6,9 +6,14 @@
 
 Electron-Hülle (TypeScript strict, `electron-vite`) um das KIRA-Dashboard
 plus Swift-Helfer `helper/` für Apple-Schnittstellen. Owner: Lucas (einziger
-Entwickler). Kein App Store, kein CI: alles baut lokal auf dem Mac des Owners
-(macOS 27, Apple Silicon, Xcode 27, Node 22). Verteilung als DMG/ZIP über
-GitHub Releases `forliHD/kira-mac`, Auto-Update per `electron-updater`.
+Entwickler). Kein App Store. CI ist `.github/workflows/ci.yml` auf `xcode-27`
+(Apple Silicon, macOS-SDK 27): Typen, Lint, Tests, Swift-Helfer, Paket.
+Ein Push auf `main` veröffentlicht `v` + Version aus `package.json`, wenn
+dieser Release noch fehlt. Signatur nur mit `MACOS_CERT_P12_BASE64` und
+`MACOS_CERT_PASSWORD` (Developer ID Application), Notarisierung zusätzlich
+mit `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`. Ohne Zertifikat bleibt das
+Paket unsigniert. Verteilung als DMG/ZIP über GitHub Releases
+`forliHD/kira-mac`, Auto-Update per `electron-updater`.
 
 Sprache: alles für Menschen (UI, Menüs, Fehler, Doku, Commit-Texte) auf
 Deutsch; Bezeichner, Dateinamen, Konfig-Schlüssel auf Englisch. Kommentare
@@ -99,7 +104,8 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
   gebauten App (`Resources/helper/kira-helper`), nicht zum Repo.
 - **`npm run dist` nicht in Agenten-Läufen**: braucht Developer-ID-Zertifikat
   und Notarisierungs-Umgebung; ohne diese scheitert es oder erzeugt ein
-  unsigniertes Paket, das Gatekeeper ablehnt.
+  unsigniertes Paket, das Gatekeeper ablehnt. Das Produktionspaket baut
+  `.github/workflows/ci.yml` auf `xcode-27`.
 - **`electron-updater` nur gepackt**: in `dev` meldet `updater.ts` den Status
   `unsupported`. Nicht „reparieren“.
 - **`src/shared/dictationText.js` nie von Hand ändern** – Kopie aus dem
@@ -217,6 +223,105 @@ Vor jedem Abschluss: `npm run typecheck && npm test && npm run lint && npm run b
 - **Mitteilungs-Stream ohne Anmeldung wartet** (`LOGIN_WAIT_MS`, 5 min) auf
   `loginChanged()` statt im Takt anzufragen; `reconnectNow()` (Minuten-Prüfung)
   weckt ihn nicht, ein stehender Stream übersteht Token-Erneuerungen.
+
+- **Erkennung ohne `.fastResults`** (seit 0.4.0, `AnalyzerModels.stream`):
+  Apple: „faster but also less accurate results“. Die Pille braucht nur
+  `volatileResults`. Nicht wieder einschalten, ohne es mit dem Diktat-Test zu
+  messen (`flushMs` in `dictation_session`).
+- **`contextualStrings` wirken beim `SpeechTranscriber` nicht** (Apple-Forum
+  801877, Apple_Agent 09/2025 – nur `DictationTranscriber` nimmt sie). Die
+  Hülle übergibt sie weiter (Legacy-Pfad, mögliche spätere Engine), verlässt
+  sich aber nicht darauf: `src/main/dictation-correct.ts` korrigiert jedes
+  Final gegen die Begriffe (lautgleich → Stufe 1, Tippfehler ≤ 1 ab 4 bzw.
+  ≤ 2 ab 8 Zeichen → Stufe 2). Regeln, die bleiben müssen: Sperrliste
+  häufiger Wörter; Stufe-2-Treffer nie für Wörter, die `text.knownWords`
+  (NSSpellChecker) kennt – Live 21.10.2026: „Kita“, „Reiter“, „Musterfirma“
+  sind bekannt, „Tira“, „Lugas“ nicht; Gleichstand zweier Begriffe → nichts;
+  Zahlen und Wörter < 3 Zeichen nie. Neue Lautregeln mit Positiv- UND
+  Negativfall in `tests/dictation-correct.test.ts`. Die Wörterbuch-Frage ist
+  asynchron (1,5 s Limit, Cache 2.000 Wörter) – `GlobalDictation.finish()`
+  wartet auf laufende `insertFinal`, sonst fehlt der letzte Satz.
+- **Diktat-Ziel `test`** (`DictationTarget`, Senke wie das Schnellfenster, kein
+  HUD, keine Bedienungshilfen): `src/main/dictation-test.ts` baut die Vorlage,
+  sammelt die Finals und wertet beim Übergang nach `idle` aus (`wer.ts`,
+  `dictation-test.ts` in `shared/`). Test-Diktate gehen nie in den Verlauf.
+  Ergebnisse in `config.dictationTests` (nur Zahlen/Einstellungen, höchstens
+  fünf). Vorlagen-Text ändern = alte Ergebnisse nicht mehr vergleichbar – im
+  CHANGELOG nennen.
+- **Wortschatz-Cache** (`vocabulary.bin`, `createVocabularyStore` in index.ts,
+  derselbe Schlüsselbund-Codec wie der Verlauf): `contextualStrings()` nimmt
+  den gespeicherten Stand, wenn der Server null liefert (keine Sitzung,
+  offline) – auch wenn er älter als eine Stunde ist. Nie Klartext auf die
+  Platte; ohne Codec (unverpackt) nur im Speicher.
+
+- **Schnellfenster in zwei Stufen** (seit 0.5.0): `quickStage()` in
+  `quick/logic.ts` entscheidet (leer = Leiste, Nachrichten/Diktate = hoch);
+  die Seite meldet es mit `quickSetTall`, `windows/quick.ts` setzt EINMAL die
+  Gesprächshöhe (`quickTallHeight`: Anteil oder gemerkte Höhe des Bildschirms)
+  und ignoriert `quickResize` in Stufe B. Ziehen nur am unteren Rand:
+  `will-resize` lehnt alle anderen Kanten ab, `resized` meldet die Höhe – aber
+  nicht während der eigenen `setBounds`-Animation (`settingBounds`, 400 ms).
+  Reihenfolge Verlauf/Eingabe/Fußleiste über CSS `order` an `.qw.is-tall`,
+  NICHT über die DOM-Reihenfolge – sonst baut React die Eingabe neu und der
+  Fokus geht beim Stufenwechsel verloren. Höhenmessung (`useReportHeight`) nur
+  in der Leiste (`enabled`). Keine Kopfzeile: `.q-foot` ist der Zieh-Bereich
+  (`-webkit-app-region: drag`, Knöpfe `no-drag`). Tests:
+  `tests/quick-window.test.ts`, `tests/quick-geometry.test.ts`,
+  `tests/quick-logic.test.ts`.
+- **Einstellungen `config.quick`** (`src/shared/quick-settings.ts` prüft, kein
+  Electron): `sendKey` ändert auch, was ⌘↩ bedeutet (`keyAction`/`isSubmitKey`
+  nehmen die Einstellung). `afterSend: "hide"` blendet sofort aus und meldet
+  die fertige Antwort als Mitteilung (`quickSend` in index.ts). `resetAfterMin`
+  greift beim Öffnen (`onShown`) über `QuickChat.lastActivityAt`. Das
+  Erscheinungsbild folgt dem System (nativeTheme gilt für alle Fenster, auch das
+  Dashboard) – keine eigene Wahl anbieten.
+- **„Erneut einsetzen“** (`reinsertDictation`): Fenster ausblenden, 250 ms
+  warten, dann `text.insert` – vorher hätte das Panel den Fokus; der Text
+  landet im Programm, das vor dem Schnellfenster vorn war.
+
+- **Mikrofon und Sprachfilter** (seit 0.6.0): `MicrophoneCapture.prepare(options:)`
+  stellt Gerät (`kAudioOutputUnitProperty_CurrentDevice` am Input-Unit) und
+  Apples Voice Processing (`setVoiceProcessingEnabled`, Ducking `.min`) ein
+  und MUSS vor dem `BufferConverter` laufen – der Sprachfilter ändert das
+  Eingabeformat. Scheitert der Filter, läuft es ohne (`MicrophoneReport`);
+  nie als Fehler an den Menschen. **Live-Befund 21.10.2026 (0.6.0):** mit dem
+  Filter liefert der Tap 48 kHz × 9 Kanäle (dasselbe Signal auf allen), und
+  `AVAudioConverter` 9→1 gab leere Puffer zurück – kein Fehler, kein Text.
+  `BufferConverter.convert` mischt daher mehrkanalige Puffer selbst auf Mono
+  (`BufferConverter.mono`) und baut den Konverter bei einem Formatwechsel neu;
+  nie wieder einen festen Konverter aus dem Format VOR `engine.start()`
+  vertrauen. Nachstellen ohne App: `scripts/stt-probe.py` (Helfer per
+  stdin, `say` über die Lautsprecher) – mit Filter kommt wegen der
+  Echo-Unterdrückung nur Bruchstück-Text, das ist erwartet.
+  `audio.inputs` listet Geräte mit
+  Eingabekanälen (CoreAudio); die Hülle fragt es in `helperStatus` mit ab
+  (ältere Helfer → leere Liste). `text.frontmost` liefert `icon` (PNG 64 px,
+  je Bundle gecacht) – nie protokollieren.
+- **Warme Audio-Engine** (seit 0.6.2, Owner-Befund 21.10.2026: „Mikrofon wird
+  vorbereitet“ stand ~1,5 s, Satzanfänge fehlten): `MicrophoneCapture.shared`
+  ist die EINE Engine je Helfer-Prozess. `stop()` nimmt nur den Tap weg und
+  hält sie an (Mikrofon zu, kein orangefarbener Punkt), Gerät und Sprachfilter
+  bleiben. Messung: Sprachfilter erstmals einschalten 1,0–1,2 s, warmer
+  Neustart 50–80 ms; vorher baute jeder Stream eine neue Engine und zahlte das
+  jedes Mal. `prepare(options:)` mit gleichen Optionen ist gratis (`warm`),
+  andere Optionen bauen die Engine neu (ein „Systemstandard“-Gerät darf nicht
+  auf dem alten Gerät kleben bleiben), während einer Aufnahme wird nichts
+  umgestellt (`busy`); ein Gerätewechsel (`AVAudioEngineConfigurationChange`)
+  setzt `configured = nil`. `audio.warm` (Hülle: `GlobalDictation.warm()` bei
+  Helfer-`info` und nach Änderung von Mikrofon/Sprachfilter) richtet ein, ohne
+  das Mikrofon zu öffnen – nur mit erteilter Freigabe, nie eine Systemfrage von
+  dort. Reihenfolge in `AnalyzerStream.start`: Mikrofon ZUERST, dann
+  `prepareToAnalyze`/`start` – der `AsyncStream` puffert unbegrenzt, Audio aus
+  der Vorbereitung geht nicht verloren. Nie wieder die Erkennung vor dem
+  Mikrofon aufsetzen. Zeiten: Helfer-Log „Diktat-Start: …“, `stt.start`-Antwort
+  `timing`, Hülle `dictation_start`/`dictation_session.startMs` – alles ohne
+  Text. Nachstellen: `scripts/stt-probe.py stream 0|1` zeigt die Zeile;
+  `echo '{"id":"w","cmd":"audio.warm","params":{"voiceProcessing":true}}' | kira-helper`.
+- **Pillen-Rückmeldung**: `GlobalDictation.finish()` zeigt beim Einsetzen-Ziel
+  „Eingefügt · n Zeichen“ (`inserted`, `INSERTED_LINGER_MS`) bzw. den Fehler
+  mit Hinweis auf den Verlauf (4 s) und blendet erst danach aus; Senken
+  (Schnellfenster, Diktat-Test) sind davon unberührt. `HudState.progress`
+  (0…1) trägt den Modell-Download, `appIcon` das Symbol.
 
 ## Offene Punkte (Stand 0.1.0)
 

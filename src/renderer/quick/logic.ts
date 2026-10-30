@@ -4,7 +4,7 @@
 
 import { insertAtCaret } from "../../shared/dictationText.js";
 import { FN_LABEL, isFnHotkey } from "../../shared/hotkey";
-import { type DictationEntry, type QuickMessage, type QuickState, type QuickTool } from "../../shared/local-api";
+import { type DictationEntry, type QuickMessage, type QuickSendKey, type QuickState, type QuickTool } from "../../shared/local-api";
 
 export type Tone = "ok" | "warn" | "err" | "idle";
 export type QuickMode = QuickState["mode"];
@@ -22,6 +22,38 @@ export function connectionPill(state: Pick<QuickState, "mode" | "connection"> | 
     default:
       return { tone: "err", text: "Offline" };
   }
+}
+
+/**
+ * Kurzer Name der Instanz für die Fußleiste: „kira-dev.it-reiser.cloud“ →
+ * „kira-dev“; zweiteilige Namen und Adressen bleiben ganz.
+ */
+export function shortHost(label: string): string {
+  const t = label.trim();
+  const parts = t.split(".");
+  if (parts.length >= 3 && parts[0] && !/^\d+$/.test(parts[0])) return parts[0];
+  return t;
+}
+
+/** Status in der Fußleiste (Phase 3): Punkt + kurzer Text, die Erklärung als Tooltip. */
+export function statusChip(state: Pick<QuickState, "mode" | "connection"> | null): { tone: Tone; text: string; title: string } {
+  if (!state) return { tone: "idle", text: "Verbinde…", title: "Verbindung zum KIRA-Server wird aufgebaut." };
+  switch (state.mode) {
+    case "server": {
+      const label = state.connection.label.trim();
+      return { tone: "ok", text: label ? shortHost(label) : "Verbunden", title: `Verbunden${label ? ` · ${label}` : ""} · Antworten landen im Chat-Verlauf.` };
+    }
+    case "local":
+      return { tone: "warn", text: "Apple-Modell", title: "Offline · das Apple-Sprachmodell auf diesem Mac antwortet, nichts wird gespeichert." };
+    default:
+      return { tone: "err", text: "Offline", title: "Keine Verbindung zu KIRA." };
+  }
+}
+
+/** Welche Stufe das Fenster hat: die Leiste (leer) oder die Gesprächshöhe (Chat mit Nachrichten, Diktate). */
+export function quickStage(view: "chat" | "dictations", hasMessages: boolean, busy: boolean): "bar" | "tall" {
+  if (view === "dictations") return "tall";
+  return hasMessages || busy ? "tall" : "bar";
 }
 
 /** Pille rechts in der Fußzeile: wohin die Antworten gehen. */
@@ -82,15 +114,18 @@ export interface KeyInfo {
 export type QuickKeyAction = "hide" | "open-main" | "reset" | "view-chat" | "view-dictations" | null;
 
 /**
- * Tasten am Wurzelelement. Bewusst eng: nur Esc, ⌘↩ und ⌘N; alles andere
- * (auch ⌘⇧D fürs globale Diktat, ⌘C/⌘V/⌘A) läuft unverändert weiter.
+ * Tasten am Wurzelelement. Bewusst eng: nur Esc, „Im Hauptfenster“ und ⌘N;
+ * alles andere (auch ⌘⇧D fürs globale Diktat, ⌘C/⌘V/⌘A) läuft unverändert
+ * weiter. Sendet ⌘↩ (Einstellung), öffnet ⌘⇧↩ das Hauptfenster.
  */
-export function keyAction(k: KeyInfo, ctx: { hasSession: boolean }): QuickKeyAction {
+export function keyAction(k: KeyInfo, ctx: { hasSession: boolean; sendKey?: QuickSendKey }): QuickKeyAction {
   if (k.isComposing) return null;
   const plain = !k.metaKey && !k.ctrlKey && !k.altKey && !k.shiftKey;
   const cmdOnly = k.metaKey && !k.ctrlKey && !k.altKey && !k.shiftKey;
+  const cmdShift = k.metaKey && !k.ctrlKey && !k.altKey && k.shiftKey;
   if (k.key === "Escape" && plain) return "hide";
-  if (k.key === "Enter" && cmdOnly) return ctx.hasSession ? "open-main" : null;
+  const openMain = ctx.sendKey === "cmd-enter" ? cmdShift : cmdOnly;
+  if (k.key === "Enter" && openMain) return ctx.hasSession ? "open-main" : null;
   if ((k.key === "n" || k.key === "N") && cmdOnly) return "reset";
   // Ansicht wechseln: ⌘1 Chat, ⌘2 Diktate (Owner-Wunsch 02.10.2026).
   if (k.key === "1" && cmdOnly) return "view-chat";
@@ -124,6 +159,43 @@ export function dictationTime(at: number, now: number = Date.now()): string {
   return `${date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })} ${time}`;
 }
 
+/** Uhrzeit innerhalb einer Tagesgruppe: „gerade eben“, „vor 4 Min.“, sonst „13:52“. */
+export function dictationClock(at: number, now: number = Date.now()): string {
+  const diff = now - at;
+  if (diff < 60_000) return "gerade eben";
+  if (diff < 60 * 60_000) return `vor ${Math.floor(diff / 60_000)} Min.`;
+  return new Date(at).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+}
+
+export interface DictationGroup {
+  key: string;
+  /** „Heute“, „Gestern“, sonst „Mo., 28.09.“ */
+  label: string;
+  entries: DictationEntry[];
+}
+
+/** Diktate nach Tagen gruppiert (Reihenfolge der Einträge bleibt: neueste zuerst). */
+export function groupDictations(entries: readonly DictationEntry[], now: number = Date.now()): DictationGroup[] {
+  const day = (ms: number): number => {
+    const d = new Date(ms);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  };
+  const today = day(now);
+  const groups: DictationGroup[] = [];
+  for (const entry of entries) {
+    const key = String(day(entry.at));
+    let group = groups[groups.length - 1];
+    if (!group || group.key !== key) {
+      const days = Math.round((today - day(entry.at)) / 86_400_000);
+      const label = days === 0 ? "Heute" : days === 1 ? "Gestern" : new Date(entry.at).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" });
+      group = { key, label, entries: [] };
+      groups.push(group);
+    }
+    group.entries.push(entry);
+  }
+  return groups;
+}
+
 /** Auswahl mit ↑/↓: bleibt im Bereich, ohne Einträge -1. */
 export function moveSelection(index: number, delta: number, length: number): number {
   if (length <= 0) return -1;
@@ -131,9 +203,72 @@ export function moveSelection(index: number, delta: number, length: number): num
   return Math.max(0, Math.min(length - 1, index + delta));
 }
 
-/** ↩ ohne Umschalt/Modifikator sendet; ⇧↩ (und IME-Bestätigung) nicht. */
-export function isSubmitKey(k: KeyInfo): boolean {
-  return k.key === "Enter" && !k.isComposing && !k.shiftKey && !k.metaKey && !k.ctrlKey && !k.altKey;
+/**
+ * Ausgewählte Karte im Verlauf sichtbar machen: neue `scrollTop` oder null,
+ * wenn sie schon ganz sichtbar ist. `top`/`bottom` relativ zum Inhalt des
+ * Verlaufs. Ist die Karte höher als der Bereich, zählt ihr Anfang. Ersetzt
+ * `scrollIntoView`, das auch die Wurzel (overflow: hidden) und die Seite
+ * verschob.
+ */
+export function revealScrollTop(scrollTop: number, viewHeight: number, top: number, bottom: number): number | null {
+  if (top < scrollTop || bottom - top > viewHeight) return top === scrollTop ? null : Math.max(0, Math.floor(top));
+  if (bottom > scrollTop + viewHeight) return Math.ceil(bottom - viewHeight);
+  return null;
+}
+
+/**
+ * Sendetaste je Einstellung: ↩ ohne Modifikator (⇧↩ = Zeile) oder ⌘↩
+ * (↩ = Zeile). Eine IME-Bestätigung sendet nie.
+ */
+export function isSubmitKey(k: KeyInfo, sendKey: QuickSendKey = "enter"): boolean {
+  if (k.key !== "Enter" || k.isComposing || k.ctrlKey || k.altKey) return false;
+  if (sendKey === "cmd-enter") return k.metaKey && !k.shiftKey;
+  return !k.shiftKey && !k.metaKey;
+}
+
+/** Tastenhinweise der Fußleiste: Taste(n) + Wort. */
+export interface KeyHint {
+  keys: string;
+  label: string;
+}
+
+export function footerHints(view: "chat" | "dictations", hasSession: boolean, sendKey: QuickSendKey = "enter"): KeyHint[] {
+  if (view === "dictations") {
+    return [
+      { keys: "↩", label: "kopieren" },
+      { keys: "⌘↩", label: "in den Chat" },
+      { keys: "esc", label: "schließen" },
+    ];
+  }
+  const hints: KeyHint[] = [{ keys: sendKey === "cmd-enter" ? "⌘↩" : "↩", label: "senden" }];
+  if (hasSession) hints.push({ keys: sendKey === "cmd-enter" ? "⌘⇧↩" : "⌘↩", label: "Hauptfenster" });
+  hints.push({ keys: "esc", label: "schließen" });
+  return hints;
+}
+
+export interface HintFit {
+  /** Wie viele Hinweise (von vorn) sichtbar sind. */
+  count: number;
+  /** false = nur die Tastenkappen, die Wörter stehen in title/Vorlesetext. */
+  labels: boolean;
+}
+
+/**
+ * Was von den Hinweisen in die Fußleiste passt – nie ein halbes Wort
+ * (Owner-Befund 22.10.2026: „esc schließ…“ unter dem Mülleimer). Erst fallen
+ * die Wörter weg, dann ganze Hinweise von hinten. `full`/`caps` sind die
+ * gemessenen Breiten je Hinweis mit bzw. ohne Wort, `gap` der Abstand
+ * dazwischen, `available` die freie Breite.
+ */
+export function fitHints(full: readonly number[], caps: readonly number[], gap: number, available: number): HintFit {
+  // Halbe Pixel aus dem Runden der Messung sollen keinen Hinweis kosten.
+  const room = available + 0.5;
+  const width = (widths: readonly number[], n: number): number => widths.slice(0, n).reduce((sum, w) => sum + w, 0) + gap * Math.max(0, n - 1);
+  if (width(full, full.length) <= room) return { count: full.length, labels: true };
+  for (let n = caps.length; n > 0; n--) {
+    if (width(caps, n) <= room) return { count: n, labels: false };
+  }
+  return { count: 0, labels: false };
 }
 
 const MODIFIER_GLYPHS: Record<string, string> = {

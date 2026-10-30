@@ -3,7 +3,7 @@ import Foundation
 /// Versions- und Chip-Erkennung für `info`.
 enum SystemInfo {
     /// Version des Helfers (unabhängig von der App-Version der Hülle).
-    static let helperVersion = "0.3.8"
+    static let helperVersion = "0.6.2"
 
     /// macOS-Version als „27.0.1“.
     static var macOSVersion: String {
@@ -27,6 +27,17 @@ enum SystemInfo {
             return true
         #else
             return false
+        #endif
+    }
+
+    /// `arm64` oder `x86_64` — für die Diagnose, warum ein Modell fehlt.
+    static var arch: String {
+        #if arch(arm64)
+            return "arm64"
+        #elseif arch(x86_64)
+            return "x86_64"
+        #else
+            return "unknown"
         #endif
     }
 

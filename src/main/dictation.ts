@@ -1,14 +1,18 @@
 // Globales Diktat: Hotkey schaltet um, der Helfer erkennt auf dem Apple-Chip
-// (`stt.start`), jedes `stt.final` läuft durch die Diktierbefehle und wird mit
+// (`stt.start`), jedes `stt.final` läuft durch die Nachkorrektur gegen den
+// Wortschatz (dictation-correct.ts) und die Diktierbefehle und wird mit
 // `text.insert` in das vorderste Programm gesetzt. Das HUD zeigt Pegel,
 // flüchtigen Text und das Zielprogramm. Ohne Apple-Spracherkennung gibt es
 // einen klaren Hinweis mit Grund – keinen Rückfall auf den Server (Owner-
 // Entscheid: Audio verlässt beim globalen Diktat den Mac nie).
+// Zwei weitere Ziele teilen sich den Stream: das Schnellfenster und der
+// Diktat-Test (Senken ohne HUD, ohne Bedienungshilfen).
 // Kein Electron-Import: Helfer, Server-Zugriff und HUD werden injiziert
 // (tests/dictation.test.ts).
 
 import { EventEmitter } from "node:events";
 
+import { needsAssetDownload } from "../shared/dictation-model";
 import { applyDictationCommands, joinDictation } from "../shared/dictationText.js";
 import {
   type FrontmostApp,
@@ -17,11 +21,18 @@ import {
   type HelperSttStatus,
   type PermissionsStatus,
   type SttEnded,
+  type SttStartResult,
 } from "../shared/helper-types";
 import { type HudState } from "../shared/local-api";
 import { type Logger, silentLogger } from "../shared/logger";
+import { type CorrectionResult, type TermIndex, buildTermIndex, candidateWords, correctWithVocabulary } from "./dictation-correct";
 
 export const DICTATION_STREAM_ID = "dictation";
+/** Wörterbuch-Antworten des Helfers (`text.knownWords`) bleiben so lange im Speicher. */
+export const KNOWN_WORDS_CACHE_MAX = 2_000;
+const KNOWN_WORDS_TIMEOUT_MS = 1_500;
+/** Wie lange „Eingefügt · n Zeichen“ in der Pille steht. */
+export const INSERTED_LINGER_MS = 900;
 export const VOCABULARY_TTL_MS = 60 * 60 * 1000; // stündlich erneuern
 export const ASSISTANT_NAME = "KIRA";
 
@@ -48,13 +59,27 @@ export interface DictationHud {
   update(state: HudState): void;
 }
 
-/** Wohin erkannter Text geht: ins vorderste Programm oder ins Schnellfenster. */
-export type DictationTarget = "insert" | "quick";
+/** Wohin erkannter Text geht: ins vorderste Programm, ins Schnellfenster oder in den Diktat-Test. */
+export type DictationTarget = "insert" | "quick" | "test";
 
-/** Diktat ins Schnellfenster: kein HUD, keine Bedienungshilfen-Freigabe nötig. */
-export interface DictationQuickSink {
+/** Senke ohne HUD und ohne Bedienungshilfen-Freigabe: Schnellfenster und Diktat-Test. */
+export interface DictationSink {
   update(state: { active: boolean; level: number; partial: string; reason: string | null }): void;
   insert(text: string): void;
+}
+
+/** @deprecated Name aus 0.3.x – heute `DictationSink`. */
+export type DictationQuickSink = DictationSink;
+
+/** Zuletzt geholter Wortschatz – bleibt verschlüsselt auf der Platte, damit er offline da ist (M4). */
+export interface StoredVocabulary {
+  terms: string[];
+  fetchedAt: number;
+}
+
+export interface VocabularyStore {
+  load(): StoredVocabulary | null;
+  save(vocabulary: StoredVocabulary): void;
 }
 
 export interface DictationOptions {
@@ -63,9 +88,20 @@ export interface DictationOptions {
   hud: DictationHud;
   /** Ziel beim Start, wenn `toggle()` ohne Ziel gerufen wird (Standard: insert). */
   getTarget?: () => DictationTarget;
-  quick?: DictationQuickSink;
+  quick?: DictationSink;
+  test?: DictationSink;
   getLocale: () => string;
   getCommandsEnabled: () => boolean;
+  /** Nachkorrektur gegen den Wortschatz (Standard an). */
+  getCorrectionEnabled?: () => boolean;
+  /** Mikrofon (UID oder null = Systemstandard) und Apples Sprachfilter für `stt.start` (Helfer ≥ 0.6.0). */
+  getInput?: () => { device: string | null; voiceProcessing: boolean };
+  vocabularyStore?: VocabularyStore;
+  /**
+   * Lädt ein fehlendes Diktat-Modell (geteilt mit Einstellungen und Dashboard).
+   * Fortschritt 0…1. Fehlt der Haken, ruft das Diktat selbst `stt.prepare`.
+   */
+  ensureAssets?: (locale: string, onProgress: (fraction: number) => void) => Promise<void>;
   log?: Logger;
   now?: () => number;
   /** Wie lange ein Fehlerhinweis im HUD stehen bleibt. */
@@ -77,11 +113,17 @@ export type DictationState = "idle" | "starting" | "listening" | "stopping";
 /** Ein fertiges Diktat (Start bis Ende) für den Verlauf (dictation-history.ts). */
 export interface DictationSession {
   startedAt: number;
+  /** Vom Tastendruck bis „hört zu“ in ms (null = nie so weit gekommen). */
+  startMs: number | null;
   app: string | null;
   target: DictationTarget;
   text: string;
   /** Mindestens ein Satz ließ sich nicht einsetzen. */
   failed: boolean;
+  /** Fertige Stücke des Helfers (`stt.final`). */
+  finals: number;
+  /** Ersetzungen der Nachkorrektur. */
+  replacements: number;
 }
 
 export interface DictationEvents {
@@ -137,17 +179,30 @@ export function pieceToInsert(previousTail: string, text: string): string {
   return joined.slice(previousTail.length);
 }
 
+function isStoredVocabulary(v: unknown): v is StoredVocabulary {
+  if (!v || typeof v !== "object") return false;
+  const s = v as Record<string, unknown>;
+  return Array.isArray(s.terms) && s.terms.every((t) => typeof t === "string") && typeof s.fetchedAt === "number";
+}
+
 export class GlobalDictation extends EventEmitter<DictationEvents> {
   private readonly helper: DictationHelper;
   private readonly server: DictationServer;
   private readonly hud: DictationHud;
   private readonly getLocale: () => string;
   private readonly getCommandsEnabled: () => boolean;
+  private readonly getCorrectionEnabled: (() => boolean) | undefined;
+  private readonly getInput: (() => { device: string | null; voiceProcessing: boolean }) | undefined;
+  /** Was die Aufnahme laut Helfer nutzt (Sprachfilter, Gerät) – fürs Protokoll. */
+  private microphone: { voiceProcessing: boolean; device: string | null } | null = null;
+  private readonly vocabularyStore: VocabularyStore | undefined;
   private readonly log: Logger;
   private readonly now: () => number;
   private readonly errorLingerMs: number;
   private readonly getTarget: (() => DictationTarget) | undefined;
-  private readonly quick: DictationQuickSink | undefined;
+  private readonly quick: DictationSink | undefined;
+  private readonly test: DictationSink | undefined;
+  private readonly ensureAssets: ((locale: string, onProgress: (fraction: number) => void) => Promise<void>) | undefined;
   private target: DictationTarget = "insert";
 
   private state: DictationState = "idle";
@@ -157,13 +212,29 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
   private sttStarting = false;
   /** Abgebrochen (`cancel`): ausstehende `stt.final` nicht mehr einsetzen. */
   private discard = false;
-  private vocabulary: { terms: string[]; fetchedAt: number } | null = null;
+  private vocabulary: StoredVocabulary | null = null;
+  private storeChecked = false;
+  /** Begriffe des laufenden Diktats (für die Nachkorrektur) und ihr Index. */
+  private terms: string[] = [ASSISTANT_NAME];
+  private index: TermIndex | null = null;
+  /** Engine laut Antwort auf `stt.start` („analyzer“, „legacy“) – fürs Protokoll und den Diktat-Test. */
+  private engine: string | null = null;
+  /** Wort (klein) → kennt es das Systemwörterbuch? (`text.knownWords`, nie protokolliert) */
+  private readonly knownWords = new Map<string, boolean>();
   private previousTail = "";
   /** Das laufende Diktat für den Verlauf (wird in finish() gemeldet). */
   private session: DictationSession | null = null;
-  private hudState: HudState = { phase: "starting", level: 0, partial: "", app: null, message: null };
+  /** Zeitpunkt des `stt.stop` – bis `stt.ended` spült der Helfer noch (Messwert). */
+  private stopAt: number | null = null;
+  private hudState: HudState = { phase: "starting", level: 0, partial: "", app: null, appIcon: null, message: null, progress: null };
   private readonly onHelperEvent = (ev: HelperEvent): void => this.handleHelperEvent(ev);
   private hideTimer: NodeJS.Timeout | null = null;
+  /**
+   * Laufende `insertFinal`-Aufrufe: Die Wörterbuch-Frage (`text.knownWords`)
+   * wartet, `stt.ended` kann vorher kommen – das Ende wartet auf sie, sonst
+   * fehlt der letzte Satz im Verlauf und im Diktat-Test.
+   */
+  private readonly inflight = new Set<Promise<void>>();
 
   constructor(options: DictationOptions) {
     super();
@@ -172,11 +243,16 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     this.hud = options.hud;
     this.getLocale = options.getLocale;
     this.getCommandsEnabled = options.getCommandsEnabled;
+    this.getCorrectionEnabled = options.getCorrectionEnabled;
+    this.getInput = options.getInput;
+    this.vocabularyStore = options.vocabularyStore;
     this.log = options.log ?? silentLogger;
     this.now = options.now ?? (() => Date.now());
     this.errorLingerMs = options.errorLingerMs ?? 4_000;
     this.getTarget = options.getTarget;
     this.quick = options.quick;
+    this.test = options.test;
+    this.ensureAssets = options.ensureAssets;
     this.helper.on("event", this.onHelperEvent);
   }
 
@@ -186,6 +262,11 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
 
   get currentTarget(): DictationTarget {
     return this.target;
+  }
+
+  /** Engine des letzten Starts (null, solange keiner lief oder der Helfer keine nannte). */
+  get lastEngine(): string | null {
+    return this.engine;
   }
 
   dispose(): void {
@@ -224,46 +305,109 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     if (this.state !== "idle") return;
     const generation = ++this.generation;
     const wanted = target ?? this.getTarget?.() ?? "insert";
-    this.target = wanted === "quick" && this.quick ? "quick" : "insert";
+    this.target = wanted === "quick" && this.quick ? "quick" : wanted === "test" && this.test ? "test" : "insert";
     this.discard = false;
     this.setState("starting");
     this.clearHideTimer();
     this.previousTail = "";
-    this.session = { startedAt: this.now(), app: null, target: this.target, text: "", failed: false };
-    this.setHud({ phase: "starting", level: 0, partial: "", app: null, message: null });
+    this.stopAt = null;
+    this.session = { startedAt: this.now(), startMs: null, app: null, target: this.target, text: "", failed: false, finals: 0, replacements: 0 };
+    this.setHud({ phase: "starting", level: 0, partial: "", app: null, appIcon: null, message: null, progress: null });
     if (this.target === "insert") this.hud.show();
 
     // Nach jedem Warten: wurde inzwischen gestoppt/abgebrochen (z. B. fn
     // nur kurz gehalten), hat stop()/cancel() schon aufgeräumt.
-    const avail = await this.availability();
-    if (generation !== this.generation) return;
-    if (!avail.ok) {
-      this.failStart(avail.reason);
-      return;
-    }
-    const perm = await this.ensurePermissions();
-    if (generation !== this.generation) return;
-    if (perm) {
-      this.failStart(perm);
-      return;
-    }
-
-    const [front, contextualStrings] = await Promise.all([
+    // Modellstand, Freigaben, vorderstes Programm und Wortschatz hängen nicht
+    // voneinander ab – parallel (0.6.2). Nacheinander kosteten sie 100–150 ms,
+    // bevor das Mikrofon überhaupt öffnete (Owner-Befund 21.10.2026: Anfänge
+    // des Diktats fehlten).
+    const t0 = this.now();
+    const checks = await Promise.all([
+      this.availability(),
+      this.ensurePermissions(),
       this.target === "insert" ? this.frontmost() : Promise.resolve(null),
       this.contextualStrings(),
     ]);
     if (generation !== this.generation) return;
-    this.setHud({ app: this.target === "quick" ? "KIRA" : (front?.name ?? null) });
-    if (this.session) this.session.app = this.target === "quick" ? "KIRA" : (front?.name ?? null);
+    let avail = checks[0];
+    const perm = checks[1];
+    const front = checks[2];
+    const contextualStrings = checks[3];
+    const checksMs = this.now() - t0;
+    if (!avail.ok && avail.status && needsAssetDownload(avail.status)) {
+      // Ohne dieses Laden bleibt der Stand für immer „fehlt“: die Hülle hat
+      // `stt.prepare` früher nie aufgerufen, der Knopf in den Einstellungen
+      // hat nur neu gelesen.
+      const locale = this.getLocale();
+      this.setHud({ phase: "starting", message: "Diktat-Modell wird geladen…", progress: 0 });
+      try {
+        const ensure =
+          this.ensureAssets ??
+          (async (code: string, onProgress: (fraction: number) => void): Promise<void> => {
+            const onEvent = (ev: HelperEvent): void => {
+              if (ev.event !== "stt.progress") return;
+              const data = (ev.data && typeof ev.data === "object" ? ev.data : {}) as Record<string, unknown>;
+              if (typeof data.fraction === "number" && (data.locale === undefined || data.locale === code)) onProgress(data.fraction);
+            };
+            this.helper.on("event", onEvent);
+            try {
+              await this.helper.request("stt.prepare", { locale: code });
+            } finally {
+              this.helper.off("event", onEvent);
+            }
+          });
+        await ensure(locale, (fraction) => {
+          if (generation !== this.generation) return;
+          const pct = Math.max(0, Math.min(100, Math.round(fraction * 100)));
+          this.setHud({ message: `Diktat-Modell wird geladen… ${pct} %`, progress: Math.max(0, Math.min(1, fraction)) });
+        });
+      } catch (err) {
+        if (generation !== this.generation) return;
+        this.setHud({ progress: null });
+        this.failStart(err instanceof Error ? err.message : String(err));
+        return;
+      }
+      if (generation !== this.generation) return;
+      this.setHud({ message: null, progress: null });
+      avail = await this.availability();
+      if (generation !== this.generation) return;
+    }
+    if (!avail.ok) {
+      this.failStart(avail.reason);
+      return;
+    }
+    if (perm) {
+      this.failStart(perm);
+      return;
+    }
+    this.terms = contextualStrings;
+    this.index = null;
+    const app = this.target === "quick" ? "KIRA" : this.target === "test" ? "Diktat-Test" : (front?.name ?? null);
+    this.setHud({ app, appIcon: this.target === "insert" && typeof front?.icon === "string" ? front.icon : null });
+    if (this.session) this.session.app = app;
 
     this.sttStarting = true;
+    const tStt = this.now();
+    let helperTiming: SttStartResult["timing"] | null = null;
     try {
-      await this.helper.request("stt.start", {
+      const params: Record<string, unknown> = {
         stream: DICTATION_STREAM_ID,
         locale: this.getLocale(),
         contextualStrings,
         source: "microphone",
-      });
+      };
+      const input = this.getInput?.();
+      if (input) {
+        params.voiceProcessing = input.voiceProcessing;
+        if (input.device) params.device = input.device;
+      }
+      const res = await this.helper.request<SttStartResult>("stt.start", params);
+      this.engine = typeof res?.engine === "string" ? res.engine : null;
+      helperTiming = res?.timing && typeof res.timing === "object" ? res.timing : null;
+      this.microphone =
+        res?.microphone && typeof res.microphone === "object"
+          ? { voiceProcessing: res.microphone.voiceProcessing === true, device: typeof res.microphone.device === "string" ? res.microphone.device : null }
+          : null;
     } catch (err) {
       this.sttStarting = false;
       // Wer schon gestoppt hat, will keine Fehlermeldung mehr sehen.
@@ -277,8 +421,41 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       await this.requestStop();
       return;
     }
+    const totalMs = this.now() - t0;
+    if (this.session) this.session.startMs = totalMs;
+    // Startphasen (nur Zeiten, nie Text): Hülle bis stt.start, stt.start selbst,
+    // und was der Helfer darin maß (`timing`, Helfer ≥ 0.6.2).
+    this.log.info("dictation_start", {
+      target: this.target,
+      engine: this.engine,
+      checksMs,
+      sttStartMs: this.now() - tStt,
+      totalMs,
+      helper: helperTiming,
+    });
     this.setState("listening");
     this.setHud({ phase: "listening" });
+  }
+
+  /**
+   * Mikrofon vorwärmen (`audio.warm`, Helfer ≥ 0.6.2): Gerät und Sprachfilter
+   * schon einstellen, ohne das Mikrofon zu öffnen – das erste Diktat startet
+   * dann in ~50 ms statt ~1,3 s. Beim Helfer-Start und nach jeder Änderung
+   * der Diktat-Einstellungen; nie während eines Diktats. Ältere Helfer kennen
+   * das Kommando nicht – dann still.
+   */
+  async warm(): Promise<void> {
+    if (!this.helper.running || this.state !== "idle") return;
+    const input = this.getInput?.();
+    if (!input) return;
+    const params: Record<string, unknown> = { voiceProcessing: input.voiceProcessing };
+    if (input.device) params.device = input.device;
+    try {
+      const r = await this.helper.request<{ state?: string; ms?: number }>("audio.warm", params);
+      this.log.info("dictation_warm", { state: typeof r?.state === "string" ? r.state : null, ms: typeof r?.ms === "number" ? r.ms : null });
+    } catch (err) {
+      this.log.debug("dictation_warm_failed", { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   /** Beenden: noch ausstehender Text wird eingesetzt. */
@@ -327,6 +504,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
 
   private async requestStop(): Promise<void> {
     const generation = this.generation;
+    this.stopAt = this.now();
     try {
       await this.helper.request("stt.stop", { stream: DICTATION_STREAM_ID });
     } catch (err) {
@@ -339,16 +517,37 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     }, 3_000).unref?.();
   }
 
+  /** Die Senke des laufenden Ziels (Schnellfenster, Diktat-Test) – null beim Einsetzen ins Programm. */
+  private sink(): DictationSink | null {
+    if (this.target === "quick") return this.quick ?? null;
+    if (this.target === "test") return this.test ?? null;
+    return null;
+  }
+
   /** Abbruch: Pille sofort weg, Schnellfenster wieder ruhig – ohne Meldung. */
   private dismiss(): void {
     this.clearHideTimer();
     this.hudState = { ...this.hudState, phase: "stopping", level: 0, partial: "", message: null };
-    if (this.target === "quick") this.quick?.update({ active: false, level: 0, partial: "", reason: null });
+    const sink = this.sink();
+    if (sink) sink.update({ active: false, level: 0, partial: "", reason: null });
     else this.hud.hide();
   }
 
-  /** Die Begriffe: Cache für eine Stunde, Server-Fehler ergeben die Mindestliste. */
+  /**
+   * Die Begriffe: Cache für eine Stunde, danach frisch vom Server. Scheitert
+   * das (offline, keine Sitzung), gilt der zuletzt gespeicherte Wortschatz
+   * weiter – erst ohne jeden Stand bleibt die Mindestliste („KIRA“).
+   */
   async contextualStrings(): Promise<string[]> {
+    if (!this.vocabulary && this.vocabularyStore && !this.storeChecked) {
+      this.storeChecked = true;
+      try {
+        const stored = this.vocabularyStore.load();
+        if (isStoredVocabulary(stored) && stored.terms.length > 0) this.vocabulary = stored;
+      } catch (err) {
+        this.log.warn("dictation_vocabulary_store_failed", { error: err instanceof Error ? err.message : String(err) });
+      }
+    }
     const cached = this.vocabulary;
     if (cached && this.now() - cached.fetchedAt < VOCABULARY_TTL_MS) return cached.terms;
     let vocabulary: string | null = null;
@@ -358,14 +557,85 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     } catch (err) {
       this.log.warn("dictation_vocabulary_failed", { error: err instanceof Error ? err.message : String(err) });
     }
+    if (vocabulary === null && displayName === null) {
+      if (cached) {
+        this.log.info("dictation_vocabulary_stale", { terms: cached.terms.length, ageMin: Math.round((this.now() - cached.fetchedAt) / 60_000) });
+        return cached.terms;
+      }
+      return buildContextualStrings(null, null);
+    }
     const terms = buildContextualStrings(displayName, vocabulary);
-    if (vocabulary !== null || displayName !== null) this.vocabulary = { terms, fetchedAt: this.now() };
+    this.vocabulary = { terms, fetchedAt: this.now() };
+    try {
+      this.vocabularyStore?.save(this.vocabulary);
+    } catch (err) {
+      this.log.warn("dictation_vocabulary_store_failed", { error: err instanceof Error ? err.message : String(err) });
+    }
     return terms;
   }
 
-  /** Erzwingt eine Erneuerung beim nächsten Start (z. B. nach Sitzungswechsel). */
+  /** Erzwingt eine Erneuerung beim nächsten Start (z. B. nach Sitzungswechsel); der gespeicherte Stand bleibt als Rückfall. */
   invalidateVocabulary(): void {
     this.vocabulary = null;
+    this.storeChecked = false;
+  }
+
+  /** Für die Einstellungen: wie viele Begriffe, von wann (null = noch nie geholt). */
+  vocabularyInfo(): { count: number; fetchedAt: number } | null {
+    const v = this.vocabulary ?? (this.vocabularyStore ? this.vocabularyStore.load() : null);
+    if (!isStoredVocabulary(v)) return null;
+    return { count: v.terms.length, fetchedAt: v.fetchedAt };
+  }
+
+  /**
+   * Nachkorrektur gegen den Wortschatz (auch für `transcribe` des Dashboards):
+   * ohne `terms` die Begriffe des laufenden bzw. letzten Diktats.
+   */
+  correctText(raw: string, terms?: readonly string[]): CorrectionResult {
+    if (this.getCorrectionEnabled?.() === false) return { text: raw, replacements: 0 };
+    return correctWithVocabulary(raw, this.termIndex(terms), { knownWords: this.knownSet() });
+  }
+
+  /**
+   * Wie `correctText`, fragt aber vorher das Systemwörterbuch des Helfers
+   * nach den Wörtern, die nur über einen Tippfehler-Treffer ersetzt würden –
+   * bekannte Wörter („Kita“) bleiben dann stehen. Antwortet der Helfer nicht
+   * rechtzeitig, gilt die eingebaute Sperrliste allein.
+   */
+  async correctTextAsync(raw: string, terms?: readonly string[]): Promise<CorrectionResult> {
+    if (this.getCorrectionEnabled?.() === false) return { text: raw, replacements: 0 };
+    const index = this.termIndex(terms);
+    const candidates = candidateWords(raw, index).filter((w) => !this.knownWords.has(w.toLowerCase()));
+    if (candidates.length > 0 && this.helper.running) {
+      try {
+        const res = await this.helper.request<{ known?: unknown }>("text.knownWords", { locale: this.getLocale(), words: candidates }, KNOWN_WORDS_TIMEOUT_MS);
+        const known = new Set(Array.isArray(res?.known) ? res.known.filter((w): w is string => typeof w === "string").map((w) => w.toLowerCase()) : []);
+        for (const w of candidates) this.remember(w.toLowerCase(), known.has(w.toLowerCase()));
+      } catch (err) {
+        this.log.warn("dictation_known_words_failed", { error: err instanceof Error ? err.message : String(err), words: candidates.length });
+      }
+    }
+    return correctWithVocabulary(raw, index, { knownWords: this.knownSet() });
+  }
+
+  private termIndex(terms?: readonly string[]): TermIndex {
+    if (terms) return buildTermIndex(terms);
+    this.index ??= buildTermIndex(this.terms);
+    return this.index;
+  }
+
+  private knownSet(): ReadonlySet<string> {
+    const out = new Set<string>();
+    for (const [word, known] of this.knownWords) if (known) out.add(word);
+    return out;
+  }
+
+  private remember(word: string, known: boolean): void {
+    if (this.knownWords.size >= KNOWN_WORDS_CACHE_MAX) {
+      const first = this.knownWords.keys().next().value;
+      if (first !== undefined) this.knownWords.delete(first);
+    }
+    this.knownWords.set(word, known);
   }
 
   private async ensurePermissions(): Promise<string | null> {
@@ -389,8 +659,8 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     if (status.speech !== "granted" && status.speech !== "notRequired") {
       return "Spracherkennungs-Freigabe fehlt (Systemeinstellungen → Datenschutz & Sicherheit → Spracherkennung).";
     }
-    // Ins Schnellfenster setzt KIRA selbst ein – dafür braucht es keine Bedienungshilfen.
-    if (this.target === "quick") return null;
+    // Ins Schnellfenster und in den Diktat-Test setzt KIRA selbst ein – dafür braucht es keine Bedienungshilfen.
+    if (this.target !== "insert") return null;
     if (!status.accessibility) {
       // Einsetzen per Accessibility UND per ⌘V-CGEvent braucht die Bedienungshilfen-Freigabe.
       void this.helper.request("permissions.request", { kind: "accessibility" }).catch(() => null);
@@ -419,10 +689,12 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       case "stt.partial":
         this.setHud({ partial: typeof data.text === "string" ? data.text : "" });
         break;
-      case "stt.final":
+      case "stt.final": {
         if (this.discard) break; // abgebrochen: nichts mehr einsetzen
-        void this.insertFinal(typeof data.text === "string" ? data.text : "");
+        const job: Promise<void> = this.insertFinal(typeof data.text === "string" ? data.text : "").finally(() => this.inflight.delete(job));
+        this.inflight.add(job);
         break;
+      }
       case "stt.ended": {
         const ended = data as unknown as SttEnded;
         if (this.discard) {
@@ -445,7 +717,14 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       this.log.info("dictation_final_skipped", { reason: "punctuation", chars: raw.trim().length });
       return;
     }
-    const { text, op } = applyDictationCommands(raw, { enabled: this.getCommandsEnabled() });
+    // Erst der Wortschatz („Tira“ → KIRA), dann die Diktierbefehle („Punkt“).
+    const corrected = await this.correctTextAsync(raw);
+    if (this.discard) return; // während der Wörterbuch-Frage abgebrochen
+    if (this.session) {
+      this.session.finals++;
+      this.session.replacements += corrected.replacements;
+    }
+    const { text, op } = applyDictationCommands(corrected.text, { enabled: this.getCommandsEnabled() });
     if (op === "undo") {
       // In fremden Programmen gibt es kein verlässliches Rückgängig der
       // letzten Äußerung – wir weisen nur hin, statt etwas Falsches zu löschen.
@@ -456,11 +735,12 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
     // Zuerst in den Verlauf – vor jedem Warten, damit der Text auch dann
     // gesichert ist, wenn das Einsetzen scheitert oder das Diktat gleich endet.
     if (this.session) this.session.text = joinDictation(this.session.text, text);
-    if (this.target === "quick" && this.quick) {
+    const sink = this.sink();
+    if (sink) {
       // Die Seite fügt an der Cursorposition ein und kümmert sich um Leerzeichen.
-      this.quick.insert(text);
+      sink.insert(text);
       this.setHud({ partial: "", message: null });
-      this.emit("inserted", { text, method: "quick" });
+      this.emit("inserted", { text, method: this.target });
       return;
     }
     const piece = pieceToInsert(this.previousTail, text);
@@ -470,7 +750,7 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
       this.previousTail = piece.slice(-2);
       this.setHud({ partial: "", message: null });
       // Nur Methode und Länge – nie der Text (Protokoll-Regel).
-      this.log.info("dictation_inserted", { method: res?.method ?? "?", chars: piece.length });
+      this.log.info("dictation_inserted", { method: res?.method ?? "?", chars: piece.length, replacements: corrected.replacements });
       this.emit("inserted", { text: piece, method: res?.method ?? "?" });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -481,28 +761,68 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
   }
 
   private failStart(reason: string): void {
-    this.log.info("dictation_unavailable", { reason });
+    this.log.info("dictation_unavailable", { reason, target: this.target });
     this.setHud({ phase: "unavailable", message: reason, level: 0, partial: "" });
     this.emit("unavailable", reason);
+    this.session = null;
     this.setState("idle");
     this.scheduleHide(this.errorLingerMs);
   }
 
   private finish(linger = false): void {
+    if (this.inflight.size > 0) {
+      void Promise.allSettled([...this.inflight]).then(() => this.finish(linger));
+      return;
+    }
     this.sttStarting = false;
     const session = this.session;
     this.session = null;
+    const now = this.now();
+    if (session) {
+      // Messwerte (Plan 21.10.2026, M5): Zähler und Zeiten, nie Text.
+      this.log.info("dictation_session", {
+        target: session.target,
+        app: session.target === "insert" ? session.app : null,
+        locale: this.getLocale(),
+        engine: this.engine,
+        durationMs: Math.max(0, now - session.startedAt),
+        startMs: session.startMs,
+        flushMs: this.stopAt === null ? null : Math.max(0, now - this.stopAt),
+        finals: session.finals,
+        chars: session.text.length,
+        replacements: session.replacements,
+        failed: session.failed,
+        voiceProcessing: this.microphone?.voiceProcessing ?? null,
+        device: this.microphone?.device ?? null,
+      });
+    }
     if (session && session.text.trim()) this.emit("session", session);
     this.setState("idle");
-    if (this.target === "quick") {
-      this.quick?.update({ active: false, level: 0, partial: "", reason: linger ? this.hudState.message : null });
+    const sink = this.sink();
+    if (sink) {
+      sink.update({ active: false, level: 0, partial: "", reason: linger ? this.hudState.message : null });
       return;
     }
-    if (linger) this.scheduleHide(this.errorLingerMs);
-    else {
-      this.clearHideTimer();
-      this.hud.hide();
+    if (linger) {
+      this.scheduleHide(this.errorLingerMs);
+      return;
     }
+    // Rückmeldung in der Pille (Phase 2): „Eingefügt · n Zeichen“ kurz, ein
+    // gescheitertes Einsetzen bleibt lesbar stehen – vorher verschwand die Pille
+    // sofort, und man wusste nicht, ob der Satz angekommen war.
+    const text = session?.text.trim() ?? "";
+    if (session && text && session.failed) {
+      this.setHud({ phase: "error", level: 0, partial: "", message: "Nicht eingefügt – der Text steht im Diktat-Verlauf (⌥␣, dann ⌘2)." });
+      this.scheduleHide(this.errorLingerMs);
+      return;
+    }
+    if (session && text) {
+      this.setHud({ phase: "inserted", level: 0, partial: "", message: `Eingefügt · ${text.length} ${text.length === 1 ? "Zeichen" : "Zeichen"}` });
+      this.scheduleHide(INSERTED_LINGER_MS);
+      return;
+    }
+    this.clearHideTimer();
+    this.hud.hide();
   }
 
   private scheduleHide(ms: number): void {
@@ -529,11 +849,12 @@ export class GlobalDictation extends EventEmitter<DictationEvents> {
 
   private setHud(patch: Partial<HudState>): void {
     this.hudState = { ...this.hudState, ...patch };
-    if (this.target === "quick" && this.quick) {
+    const sink = this.sink();
+    if (sink) {
       const s = this.hudState;
       const active = s.phase === "starting" || s.phase === "listening";
       const problem = s.phase === "unavailable" || s.phase === "error";
-      this.quick.update({ active, level: s.level, partial: s.partial, reason: problem ? s.message : null });
+      sink.update({ active, level: s.level, partial: s.partial, reason: problem ? s.message : null });
       return;
     }
     this.hud.update(this.hudState);

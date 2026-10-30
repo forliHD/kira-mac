@@ -252,3 +252,42 @@ body[data-page="hud"][data-reduced-transparency="true"] {
     transition: none;
   }
 }
+
+/* ── Phase 2 (0.6.0): Programm-Symbol, Bestätigung, Fortschritt ─────── */
+.hud-appicon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+.hud-orb-core.is-done {
+  color: #04121b;
+  background: linear-gradient(180deg, #6ee7b7, #10b981);
+  box-shadow:
+    0 8px 22px -8px rgba(16, 185, 129, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.hud[data-phase="inserted"] .hud-bars {
+  opacity: 0.3;
+}
+.hud-line.is-done {
+  color: var(--g-ok);
+}
+.hud-progress {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  height: 3px;
+  margin-top: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1);
+}
+.hud-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--g-accent-400);
+  transition: width 0.2s ease-out;
+}

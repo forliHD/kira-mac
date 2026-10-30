@@ -20,9 +20,80 @@ enum SpeechEngine: String, Sendable {
     }
 }
 
+/// Dieselbe `SpeechTranscriber`-Konfiguration für Status, Download und
+/// Erkennung. `AssetInventory` hängt am Modul: `preset: .transcription` und
+/// der Options-Initialisierer sind verschiedene Assets. Status mit dem Preset
+/// sagte deshalb „fehlt“, während die Erkennung ein anderes Modul prüfte –
+/// und ein Download des Presets befriedigte den Stream nicht.
+@available(macOS 26, *)
+enum AnalyzerModels {
+    /// Nur `volatileResults`: die flüchtigen Ergebnisse speisen die Vorschau in
+    /// der Pille; die Finals werden eingesetzt und sollen stimmen. `.fastResults`
+    /// (bis 0.3.9) „biases the transcriber towards responsiveness, yielding
+    /// faster but also less accurate results“ (Apple) – Plan 21.10.2026, M1.
+    static func stream(locale: Locale) -> SpeechTranscriber {
+        SpeechTranscriber(
+            locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults],
+            attributeOptions: [])
+    }
+
+    static func file(locale: Locale) -> SpeechTranscriber {
+        SpeechTranscriber(
+            locale: locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: [])
+    }
+
+    static func all(locale: Locale) -> [SpeechTranscriber] {
+        [stream(locale: locale), file(locale: locale)]
+    }
+}
+
+/// KVO-Fortschritt eines Downloads, threadsicher, ohne den Actor zu blockieren.
+final class DownloadFractionBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var fraction = 0.0
+
+    func set(_ value: Double) {
+        lock.lock()
+        fraction = value
+        lock.unlock()
+    }
+
+    func get() -> Double {
+        lock.lock()
+        defer { lock.unlock() }
+        return fraction
+    }
+}
+
+/// Dauer der Startphasen eines Streams in Millisekunden – nur Zahlen, für das
+/// Protokoll der Hülle (`dictation_start`). Owner-Befund 21.10.2026: „Mikrofon
+/// wird vorbereitet“ stand lange, Satzanfänge fehlten.
+struct StartTiming: Sendable, Equatable {
+    /// Modellprüfung und Audioformat.
+    var checksMs: Int
+    /// Mikrofon einrichten und öffnen.
+    var microphoneMs: Int
+    /// Erkennung vorbereiten und starten.
+    var recognizerMs: Int
+    var totalMs: Int
+    /// Die Audio-Engine trug die Einstellungen schon (warm).
+    var warm: Bool
+
+    var json: JSONValue {
+        [
+            "checksMs": .int(checksMs), "microphoneMs": .int(microphoneMs), "recognizerMs": .int(recognizerMs),
+            "totalMs": .int(totalMs), "warm": .bool(warm),
+        ]
+    }
+}
+
 /// Ein laufender Erkennungs-Stream (eine Kennung, eine Mikrofonquelle).
 protocol SpeechStream: AnyObject, Sendable {
     var id: String { get }
+    /// Gerät und Sprachfilter, mit denen die Aufnahme läuft.
+    var microphone: MicrophoneReport { get }
+    /// Dauer der Startphasen (nil, wenn die Engine sie nicht misst).
+    var timing: StartTiming? { get }
     /// Spült die Erkennung, sendet ausstehende `stt.final`, dann `stt.ended(stopped)`.
     func stop() async
     /// Bricht sofort ab und sendet `stt.ended` mit dem genannten Grund.
@@ -90,30 +161,74 @@ actor SpeechService {
 
     func status(locale localeId: String) async -> JSONValue {
         guard let engine = engine() else {
-            return Self.statusValue(
-                available: false, engine: nil, assets: "missing",
-                reason:
-                    "Dieses macOS bietet keine Spracherkennung auf dem Gerät (ab macOS 26 über SpeechAnalyzer, darunter über ein On-Device-Diktatpaket).")
+            return self.report(
+                available: false, engine: nil, assets: "missing", code: "unsupported_os",
+                downloadable: false, locale: localeId, assetState: "none", progress: nil,
+                reason: Self.noEngineReason())
         }
         switch engine {
         case .analyzer:
             if #available(macOS 26, *) {
                 return await analyzerStatus(localeId: localeId)
             }
-            return Self.statusValue(available: false, engine: nil, assets: "missing", reason: "Nicht verfügbar.")
+            return self.report(
+                available: false, engine: nil, assets: "missing", code: "unsupported_os",
+                downloadable: false, locale: localeId, assetState: "none", progress: nil,
+                reason: Self.noEngineReason())
         case .legacy:
             return legacyStatus(localeId: localeId)
         }
     }
 
-    private static func statusValue(available: Bool, engine: String?, assets: String, reason: String?)
-        -> JSONValue
-    {
-        [
+    /// Warum es auf diesem Mac gar keine On-Device-Erkennung gibt – mit
+    /// Version, Chip und Architektur, damit das Protokoll die Ursache zeigt.
+    private static func noEngineReason() -> String {
+        let os = SystemInfo.macOSVersion
+        let arch = SystemInfo.arch
+        let chip = SystemInfo.chip
+        if !SystemInfo.isAppleSilicon {
+            return "Diktat-Modell fehlt: Dieser Mac (\(chip), \(arch), macOS \(os)) hat keinen Apple-Chip. Die Erkennung auf dem Gerät braucht Apple Silicon."
+        }
+        if !SystemInfo.isAtLeast(major: 26) {
+            return "Diktat-Modell fehlt: macOS \(os) (\(chip), \(arch)) kann das Modell nicht selbst laden. Unter Systemeinstellungen → Tastatur → Diktat die Sprache hinzufügen. Der automatische Download gibt es ab macOS 26."
+        }
+        return "Diktat-Modell fehlt: SpeechAnalyzer ist auf diesem Mac nicht verfügbar (macOS \(os), \(chip), \(arch)). Häufig: Apple Intelligence ist aus, der Mac ist für das Modell zu alt, oder eine Geräteverwaltung sperrt die Spracherkennung."
+    }
+
+    private func report(
+        available: Bool, engine: String?, assets: String, code: String, downloadable: Bool,
+        locale: String, assetState: String, progress: Double?, reason: String?
+    ) -> JSONValue {
+        let speech = permissions.speechStatus(analyzerEngine: engine == "analyzer").rawValue
+        let microphone = permissions.microphoneStatus().rawValue
+        let preferred = Locale.preferredLanguages.prefix(3).joined(separator: ",")
+        // Jeder nicht bereite Stand ins Protokoll: auf dem betroffenen Mac
+        // sieht man OS, Chip, Sprache und den Rohzustand des Modells.
+        if !available {
+            HelperLog.info(
+                "stt_status locale=\(locale) engine=\(engine ?? "none") assets=\(assets) code=\(code) assetState=\(assetState) os=\(SystemInfo.macOSVersion) arch=\(SystemInfo.arch) chip=\(SystemInfo.chip) speech=\(speech) mic=\(microphone) preferred=\(preferred) downloadable=\(downloadable)"
+            )
+        }
+        return [
             "available": .bool(available),
             "engine": .optionalString(engine),
             "assets": .string(assets),
             "reason": .optionalString(reason),
+            "code": .string(code),
+            "downloadable": .bool(downloadable),
+            "locale": .string(locale),
+            "progress": progress.map { .double($0) } ?? .null,
+            "diagnostics": [
+                "macos": .string(SystemInfo.macOSVersion),
+                "arch": .string(SystemInfo.arch),
+                "chip": .string(SystemInfo.chip),
+                "locale": .string(locale),
+                "preferred": .string(preferred),
+                "assetState": .string(assetState),
+                "speech": .string(speech),
+                "microphone": .string(microphone),
+                "downloadable": .bool(downloadable),
+            ],
         ]
     }
 
@@ -121,96 +236,235 @@ actor SpeechService {
     private func analyzerStatus(localeId: String) async -> JSONValue {
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: localeId))
         else {
-            return Self.statusValue(
-                available: false, engine: "analyzer", assets: "missing",
-                reason: "Die Sprache „\(localeId)“ wird von der Spracherkennung nicht unterstützt.")
+            return self.report(
+                available: false, engine: "analyzer", assets: "missing", code: "unsupported_locale",
+                downloadable: false, locale: localeId, assetState: "unsupported", progress: nil,
+                reason: "Diktat-Modell fehlt: Die Sprache „\(localeId)“ wird von der Spracherkennung nicht unterstützt. Wähle unter Einstellungen → Diktat eine angebotene Sprache.")
         }
-        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
-        switch await AssetInventory.status(forModules: [transcriber]) {
-        case .installed:
-            return Self.statusValue(available: true, engine: "analyzer", assets: "installed", reason: nil)
-        case .downloading:
-            return Self.statusValue(
-                available: false, engine: "analyzer", assets: "downloading",
-                reason: "Das Sprachmodell für „\(localeId)“ wird gerade geladen.")
-        case .supported:
-            return Self.statusValue(
-                available: false, engine: "analyzer", assets: "missing",
-                reason: "Das Sprachmodell für „\(localeId)“ ist nicht installiert – „stt.prepare“ lädt es herunter.")
-        case .unsupported:
-            return Self.statusValue(
-                available: false, engine: "analyzer", assets: "missing",
-                reason: "Die Sprache „\(localeId)“ wird von der Spracherkennung nicht unterstützt.")
-        @unknown default:
-            return Self.statusValue(
-                available: false, engine: "analyzer", assets: "missing", reason: "Unbekannter Modellzustand.")
+        // Reservieren lädt nicht, holt aber ein schon vorhandenes System-Modell
+        // in den Status „installed“. Sonst bleibt der Stand auf „supported“
+        // (fehlt), obwohl macOS die Sprache längst diktiert.
+        var states = await Self.assetStates(locale: locale)
+        if states.stream != .installed || states.file != .installed {
+            do {
+                _ = try await AssetInventory.reserve(locale: locale)
+            } catch {
+                HelperLog.warn("Sprache \(localeId) konnte nicht reserviert werden: \(SpeechDownloadError.explain(error, locale: localeId))")
+            }
+            states = await Self.assetStates(locale: locale)
+        }
+        let assetState = states.label
+        if states.stream == .installed && states.file == .installed {
+            return self.report(
+                available: true, engine: "analyzer", assets: "installed", code: "ok",
+                downloadable: true, locale: localeId, assetState: assetState, progress: nil, reason: nil)
+        }
+        if states.stream == .unsupported || states.file == .unsupported {
+            return self.report(
+                available: false, engine: "analyzer", assets: "missing", code: "unsupported_locale",
+                downloadable: false, locale: localeId, assetState: assetState, progress: nil,
+                reason: "Diktat-Modell fehlt: Die Sprache „\(localeId)“ wird von der Spracherkennung nicht unterstützt.")
+        }
+        if states.stream == .downloading || states.file == .downloading {
+            return self.report(
+                available: false, engine: "analyzer", assets: "downloading", code: "downloading",
+                downloadable: true, locale: localeId, assetState: assetState, progress: nil,
+                reason: "Diktat-Modell für „\(localeId)“ wird geladen.")
+        }
+        return self.report(
+            available: false, engine: "analyzer", assets: "missing", code: "assets_missing",
+            downloadable: true, locale: localeId, assetState: assetState, progress: nil,
+            reason: "Diktat-Modell fehlt: Für „\(localeId)“ ist auf diesem Mac noch keines installiert.")
+    }
+
+    @available(macOS 26, *)
+    private static func assetStates(locale: Locale) async -> (stream: AssetInventory.Status, file: AssetInventory.Status, label: String) {
+        let stream = await AssetInventory.status(forModules: [AnalyzerModels.stream(locale: locale)])
+        let file = await AssetInventory.status(forModules: [AnalyzerModels.file(locale: locale)])
+        let label = stream == file ? Self.assetStateName(stream) : "stream=\(Self.assetStateName(stream)),file=\(Self.assetStateName(file))"
+        return (stream, file, label)
+    }
+
+    @available(macOS 26, *)
+    private static func assetStateName(_ status: AssetInventory.Status) -> String {
+        switch status {
+        case .installed: return "installed"
+        case .downloading: return "downloading"
+        case .supported: return "supported"
+        case .unsupported: return "unsupported"
+        @unknown default: return "unknown"
         }
     }
 
     private func legacyStatus(localeId: String) -> JSONValue {
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: localeId)) else {
-            return Self.statusValue(
-                available: false, engine: "legacy", assets: "missing",
-                reason: "Die Sprache „\(localeId)“ wird von der Spracherkennung nicht unterstützt.")
+            return self.report(
+                available: false, engine: "legacy", assets: "missing", code: "unsupported_locale",
+                downloadable: false, locale: localeId, assetState: "unsupported", progress: nil,
+                reason: "Diktat-Modell fehlt: Die Sprache „\(localeId)“ wird von der Spracherkennung nicht unterstützt.")
         }
         guard recognizer.supportsOnDeviceRecognition else {
-            return Self.statusValue(
-                available: false, engine: "legacy", assets: "missing",
-                reason:
-                    "Für „\(localeId)“ gibt es kein Modell auf dem Gerät. Bitte die Sprache unter Systemeinstellungen → Tastatur → Diktat hinzufügen.")
+            return self.report(
+                available: false, engine: "legacy", assets: "missing", code: "assets_missing",
+                downloadable: false, locale: localeId, assetState: "missing", progress: nil,
+                reason: "Diktat-Modell fehlt: Für „\(localeId)“ gibt es auf diesem macOS keinen Download aus der App. Bitte die Sprache unter Systemeinstellungen → Tastatur → Diktat hinzufügen.")
         }
         guard recognizer.isAvailable else {
-            return Self.statusValue(
-                available: false, engine: "legacy", assets: "installed",
+            return self.report(
+                available: false, engine: "legacy", assets: "installed", code: "unavailable",
+                downloadable: false, locale: localeId, assetState: "installed", progress: nil,
                 reason: "Die Spracherkennung ist gerade nicht verfügbar.")
         }
-        return Self.statusValue(available: true, engine: "legacy", assets: "installed", reason: nil)
+        return self.report(
+            available: true, engine: "legacy", assets: "installed", code: "ok",
+            downloadable: false, locale: localeId, assetState: "installed", progress: nil, reason: nil)
     }
 
     func prepare(locale localeId: String) async throws -> JSONValue {
         guard let engine = engine() else {
-            throw HelperError(.sttUnavailable, "Dieses macOS bietet keine Spracherkennung auf dem Gerät.")
+            throw HelperError(.sttUnavailable, Self.noEngineReason(), reason: "unsupported_os")
         }
         switch engine {
         case .analyzer:
             if #available(macOS 26, *) {
                 let locale = try await Self.resolveAnalyzerLocale(localeId)
-                let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
-                if await AssetInventory.status(forModules: [transcriber]) == .installed {
-                    return ["assets": "installed"]
-                }
-                do {
-                    _ = try await AssetInventory.reserve(locale: locale)
-                } catch {
-                    HelperLog.warn("Sprache konnte nicht reserviert werden: \(HelperError.describe(error))")
-                }
-                do {
-                    guard let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber])
-                    else {
-                        return ["assets": "installed"]
-                    }
-                    HelperLog.info("Lade Sprachmodell für \(locale.identifier(.bcp47)) …")
-                    try await request.downloadAndInstall()
-                } catch {
-                    throw HelperError(
-                        .sttAssetsMissing,
-                        "Das Sprachmodell für „\(localeId)“ konnte nicht geladen werden: \(HelperError.describe(error))")
-                }
-                HelperLog.info("Sprachmodell für \(locale.identifier(.bcp47)) installiert.")
+                try await installAnalyzerAssets(locale: locale, localeId: localeId)
                 return ["assets": "installed"]
             }
-            throw HelperError(.sttUnavailable, "Nicht verfügbar.")
+            throw HelperError(.sttUnavailable, Self.noEngineReason(), reason: "unsupported_os")
         case .legacy:
             guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: localeId)) else {
-                throw HelperError(.sttUnavailable, "Die Sprache „\(localeId)“ wird nicht unterstützt.")
+                throw HelperError(.sttUnavailable, "Die Sprache „\(localeId)“ wird nicht unterstützt.", reason: "unsupported_locale")
             }
             guard recognizer.supportsOnDeviceRecognition else {
                 throw HelperError(
                     .sttAssetsMissing,
-                    "Für „\(localeId)“ gibt es kein Modell auf dem Gerät. Bitte die Sprache unter Systemeinstellungen → Tastatur → Diktat hinzufügen; ein Download aus dem Helfer ist auf diesem macOS nicht möglich.")
+                    "Diktat-Modell fehlt: Für „\(localeId)“ gibt es auf diesem macOS keinen Download aus der App. Bitte die Sprache unter Systemeinstellungen → Tastatur → Diktat hinzufügen.",
+                    reason: "unsupported_os")
             }
             return ["assets": "installed"]
         }
+    }
+
+    /// Lädt Stream- und Datei-Modul. Ein `nil` von `assetInstallationRequest`
+    /// heißt nur „nichts zu tun“, wenn der Stand danach wirklich `installed`
+    /// ist – sonst ist das der Fehler, nicht ein Erfolg.
+    @available(macOS 26, *)
+    private func installAnalyzerAssets(locale: Locale, localeId: String) async throws {
+        if await Self.bothInstalled(locale) { return }
+        do {
+            _ = try await AssetInventory.reserve(locale: locale)
+        } catch {
+            HelperLog.warn("Sprache \(localeId) konnte nicht reserviert werden: \(SpeechDownloadError.explain(error, locale: localeId))")
+        }
+        if await Self.bothInstalled(locale) {
+            HelperLog.info("stt_status Diktat-Modell für \(localeId) war nach dem Reservieren schon vorhanden.")
+            return
+        }
+        let modules = AnalyzerModels.all(locale: locale)
+        do {
+            guard let request = try await AssetInventory.assetInstallationRequest(supporting: modules) else {
+                try await noInstallationRequest(locale: locale, localeId: localeId)
+                return
+            }
+            try await download(request, locale: locale, localeId: localeId)
+        } catch let error as HelperError {
+            throw error
+        } catch {
+            throw HelperError(.sttAssetsMissing, SpeechDownloadError.explain(error, locale: localeId), reason: SpeechDownloadError.reasonCode(error))
+        }
+    }
+
+    /// `nil` bedeutet „bereits da“ nur, wenn der Stand das danach bestätigt.
+    @available(macOS 26, *)
+    private func noInstallationRequest(locale: Locale, localeId: String) async throws {
+        if await Self.bothInstalled(locale) { return }
+        let states = await Self.assetStates(locale: locale)
+        if states.stream == .downloading || states.file == .downloading {
+            try await waitUntilInstalled(locale: locale, localeId: localeId)
+            return
+        }
+        throw HelperError(
+            .sttAssetsMissing,
+            "Diktat-Modell fehlt: Apple hat für „\(localeId)“ keinen Download erzeugt (Modellzustand \(states.label), macOS \(SystemInfo.macOSVersion), \(SystemInfo.arch), \(SystemInfo.chip)). Prüfe die Sprache und ob eine Geräteverwaltung den Modell-Download sperrt.",
+            reason: "no_request")
+    }
+
+    @available(macOS 26, *)
+    private func download(
+        _ request: AssetInstallationRequest, locale: Locale, localeId: String
+    ) async throws {
+        HelperLog.info("stt_status Lade Diktat-Modell für \(localeId) …")
+        let box = DownloadFractionBox()
+        let observation = request.progress.observe(\.fractionCompleted, options: [.initial, .new]) { progress, _ in
+            box.set(progress.fractionCompleted)
+        }
+        let writer = self.writer
+        let pump = Task {
+            var last = -1.0
+            while !Task.isCancelled {
+                let fraction = min(1, max(0, box.get()))
+                if last < 0 || fraction - last >= 0.01 {
+                    last = fraction
+                    await writer.send(Event(
+                        "stt.progress",
+                        data: ["locale": .string(localeId), "fraction": .double(fraction)]))
+                }
+                try? await Task.sleep(for: .milliseconds(400))
+            }
+        }
+        defer {
+            pump.cancel()
+            observation.invalidate()
+        }
+        do {
+            try await request.downloadAndInstall()
+        } catch let error as HelperError {
+            throw error
+        } catch {
+            throw HelperError(.sttAssetsMissing, SpeechDownloadError.explain(error, locale: localeId), reason: SpeechDownloadError.reasonCode(error))
+        }
+        guard await Self.bothInstalled(locale) else {
+            let states = await Self.assetStates(locale: locale)
+            throw HelperError(
+                .sttAssetsMissing,
+                "Das Diktat-Modell für „\(localeId)“ ist nach dem Download nicht installiert (Zustand \(states.label), macOS \(SystemInfo.macOSVersion), \(SystemInfo.arch)).",
+                reason: "not_installed")
+        }
+        HelperLog.info("stt_status Diktat-Modell für \(localeId) installiert.")
+    }
+
+    @available(macOS 26, *)
+    private static func bothInstalled(_ locale: Locale) async -> Bool {
+        let states = await assetStates(locale: locale)
+        return states.stream == .installed && states.file == .installed
+    }
+
+    /// Ein schon laufender System-Download: warten, statt einen zweiten zu starten.
+    @available(macOS 26, *)
+    private func waitUntilInstalled(locale: Locale, localeId: String) async throws {
+        let deadline = ContinuousClock.now + .seconds(600)
+        while ContinuousClock.now < deadline {
+            let states = await Self.assetStates(locale: locale)
+            if states.stream == .installed && states.file == .installed { return }
+            if states.stream == .unsupported || states.file == .unsupported {
+                throw HelperError(
+                    .sttUnavailable,
+                    "Diktat-Modell fehlt: Die Sprache „\(localeId)“ wird von der Spracherkennung nicht unterstützt.",
+                    reason: "unsupported_locale")
+            }
+            if states.stream != .downloading && states.file != .downloading {
+                throw HelperError(
+                    .sttAssetsMissing,
+                    "Das Diktat-Modell für „\(localeId)“ wird nicht mehr geladen (Zustand \(states.label)).",
+                    reason: "failed")
+            }
+            try await Task.sleep(for: .seconds(1))
+        }
+        throw HelperError(
+            .sttAssetsMissing,
+            "Das Diktat-Modell für „\(localeId)“ wurde nicht fertig geladen (Zeitüberschreitung).",
+            reason: "failed")
     }
 
     @available(macOS 26, *)
@@ -277,12 +531,11 @@ actor SpeechService {
             throw HelperError(.sttFailed, "Die Audiodatei konnte nicht gelesen werden: \(HelperError.describe(error))")
         }
 
-        let transcriber = SpeechTranscriber(
-            locale: locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: [])
+        let transcriber = AnalyzerModels.file(locale: locale)
         guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
             throw HelperError(
                 .sttAssetsMissing,
-                "Das Sprachmodell für „\(locale.identifier(.bcp47))“ ist nicht installiert – bitte „stt.prepare“ ausführen.")
+                "Diktat-Modell fehlt: Für „\(locale.identifier(.bcp47))“ ist noch keines installiert.")
         }
 
         // Ergebnisse vor dem Start der Analyse abonnieren, damit nichts verloren geht.
@@ -349,6 +602,8 @@ actor SpeechService {
         request.requiresOnDeviceRecognition = true
         request.shouldReportPartialResults = false
         request.taskHint = .dictation
+        // Ohne das kommt auf macOS 14/15 Text ohne Punkt und Komma (Standard aus).
+        request.addsPunctuation = true
         if !contextualStrings.isEmpty {
             request.contextualStrings = contextualStrings
         }
@@ -388,9 +643,10 @@ actor SpeechService {
 
     // MARK: stt.start / stt.stop
 
-    func start(stream id: String, locale localeId: String, contextualStrings: [String], source: String)
-        async throws -> JSONValue
-    {
+    func start(
+        stream id: String, locale localeId: String, contextualStrings: [String], source: String,
+        input: MicrophoneOptions = MicrophoneOptions()
+    ) async throws -> JSONValue {
         guard source == "microphone" else {
             throw HelperError.badParams("Unbekannte Quelle „\(source)“ (erlaubt: microphone).")
         }
@@ -417,11 +673,11 @@ actor SpeechService {
             }
             let locale = try await Self.resolveAnalyzerLocale(localeId)
             stream = try await AnalyzerStream.start(
-                id: id, locale: locale, contextualStrings: contextualStrings, writer: writer, onEnded: onEnded)
+                id: id, locale: locale, contextualStrings: contextualStrings, input: input, writer: writer, onEnded: onEnded)
         case .legacy:
             try await permissions.ensureSpeechAuthorization()
             stream = try LegacyStream.start(
-                id: id, locale: Locale(identifier: localeId), contextualStrings: contextualStrings,
+                id: id, locale: Locale(identifier: localeId), contextualStrings: contextualStrings, input: input,
                 writer: writer, onEnded: onEnded)
         }
 
@@ -431,7 +687,34 @@ actor SpeechService {
             await raced.cancel(reason: "replaced")
         }
         streams[id] = stream
-        return ["started": true, "engine": .string(engine.rawValue)]
+        var result: [String: JSONValue] = ["started": true, "engine": .string(engine.rawValue)]
+        result["microphone"] = stream.microphone.json
+        if let timing = stream.timing {
+            result["timing"] = timing.json
+        }
+        return .object(result)
+    }
+
+    // MARK: audio.warm
+
+    /// Mikrofon vorwärmen: Gerät und Sprachfilter einstellen, ohne das
+    /// Mikrofon zu öffnen (Hülle: beim Helfer-Start und nach jeder Änderung
+    /// der Diktat-Einstellungen). Ohne erteilte Mikrofon-Freigabe passiert
+    /// nichts – die Systemfrage stellt erst das Diktat selbst. Die Einrichtung
+    /// (bis ~1,2 s) läuft abseits des Actors, damit `stt.status` & Co.
+    /// währenddessen nicht warten.
+    func warmMicrophone(_ options: MicrophoneOptions) async -> JSONValue {
+        guard permissions.microphoneStatus() == .granted else {
+            return ["state": "permission", "ms": 0]
+        }
+        let prepared = await Task.detached(priority: .utility) {
+            MicrophoneCapture.shared.prepare(options: options)
+        }.value
+        if prepared.state == .configured {
+            HelperLog.info(
+                "Mikrofon vorgewärmt in \(prepared.ms) ms; Sprachfilter \(prepared.report.voiceProcessing ? "an" : "aus")")
+        }
+        return prepared.json
     }
 
     func stop(stream id: String) async throws -> JSONValue {
@@ -502,12 +785,15 @@ final class AnalyzerStream: SpeechStream, @unchecked Sendable {
     private let transcriber: SpeechTranscriber
     private let analyzer: SpeechAnalyzer
     private let continuation: AsyncStream<AnalyzerInput>.Continuation
-    private let mic = MicrophoneCapture()
+    private let mic = MicrophoneCapture.shared
+    private(set) var timing: StartTiming?
     private let meter = LevelMeter()
     private let ended = OnceFlag()
     private let onEnded: @Sendable (String, ObjectIdentifier) -> Void
     private var resultsTask: Task<Void, Never>?
     private var levelTask: Task<Void, Never>?
+
+    var microphone: MicrophoneReport { mic.report }
 
     private init(
         id: String, writer: OutputWriter, transcriber: SpeechTranscriber, analyzer: SpeechAnalyzer,
@@ -523,16 +809,17 @@ final class AnalyzerStream: SpeechStream, @unchecked Sendable {
     }
 
     static func start(
-        id: String, locale: Locale, contextualStrings: [String], writer: OutputWriter,
+        id: String, locale: Locale, contextualStrings: [String], input: MicrophoneOptions, writer: OutputWriter,
         onEnded: @escaping @Sendable (String, ObjectIdentifier) -> Void
     ) async throws -> AnalyzerStream {
-        let transcriber = SpeechTranscriber(
-            locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults, .fastResults],
-            attributeOptions: [])
+        let clock = ContinuousClock()
+        let t0 = clock.now
+        func ms(_ since: ContinuousClock.Instant) -> Int { Int((clock.now - since) / .milliseconds(1)) }
+        let transcriber = AnalyzerModels.stream(locale: locale)
         guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
             throw HelperError(
                 .sttAssetsMissing,
-                "Das Sprachmodell für „\(locale.identifier(.bcp47))“ ist nicht installiert – bitte „stt.prepare“ ausführen.")
+                "Diktat-Modell fehlt: Für „\(locale.identifier(.bcp47))“ ist noch keines installiert.")
         }
         guard let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
         else {
@@ -549,32 +836,25 @@ final class AnalyzerStream: SpeechStream, @unchecked Sendable {
         let stream = AnalyzerStream(
             id: id, writer: writer, transcriber: transcriber, analyzer: analyzer, continuation: continuation,
             onEnded: onEnded)
+        let checksMs = ms(t0)
 
-        do {
-            try await analyzer.setContext(context)
-            try await analyzer.prepareToAnalyze(in: analyzerFormat)
-        } catch {
-            continuation.finish()
-            throw HelperError(.sttFailed, "Erkennung konnte nicht vorbereitet werden: \(HelperError.describe(error))")
-        }
-
-        stream.resultsTask = Task { await stream.consumeResults() }
-
-        do {
-            try await analyzer.start(inputSequence: inputSequence)
-        } catch {
-            continuation.finish()
-            stream.resultsTask?.cancel()
-            throw HelperError(.sttFailed, "Erkennung konnte nicht gestartet werden: \(HelperError.describe(error))")
-        }
-
+        // Mikrofon ZUERST (0.6.2): Was der Mensch sagt, während die Erkennung
+        // noch vorbereitet wird, wartet gepuffert im AsyncStream (unbegrenzt)
+        // und wird nach `analyzer.start` nachgeholt – keine fehlenden
+        // Satzanfänge mehr. Gerät und Sprachfilter VOR dem Konverter: der
+        // Sprachfilter ändert das Eingabeformat.
         let mic = stream.mic
         let meter = stream.meter
+        let tMic = clock.now
+        let prepared = mic.prepare(options: input)
+        let report = prepared.report
+        HelperLog.info(
+            "Mikrofon: \(BufferConverter.describe(mic.inputFormat)) → Erkennung \(BufferConverter.describe(analyzerFormat)); Sprachfilter \(report.voiceProcessing ? "an" : "aus")\(prepared.state == .warm ? " (warm)" : "")")
         let converter: BufferConverter
         do {
             converter = try BufferConverter(from: mic.inputFormat, to: analyzerFormat)
         } catch {
-            await stream.cancel(reason: "error", message: "Audioformat kann nicht konvertiert werden.", notify: false)
+            continuation.finish()
             throw error
         }
         let conversionFailed = OnceFlag()
@@ -592,12 +872,41 @@ final class AnalyzerStream: SpeechStream, @unchecked Sendable {
                 }
             }
         } catch {
-            await stream.cancel(reason: "error", message: nil, notify: false)
+            continuation.finish()
             throw error
         }
+        let microphoneMs = ms(tMic)
+
+        let tRecognizer = clock.now
+        do {
+            try await analyzer.setContext(context)
+            try await analyzer.prepareToAnalyze(in: analyzerFormat)
+        } catch {
+            mic.stop()
+            continuation.finish()
+            throw HelperError(.sttFailed, "Erkennung konnte nicht vorbereitet werden: \(HelperError.describe(error))")
+        }
+
+        stream.resultsTask = Task { await stream.consumeResults() }
+
+        do {
+            try await analyzer.start(inputSequence: inputSequence)
+        } catch {
+            mic.stop()
+            continuation.finish()
+            stream.resultsTask?.cancel()
+            throw HelperError(.sttFailed, "Erkennung konnte nicht gestartet werden: \(HelperError.describe(error))")
+        }
+        let recognizerMs = ms(tRecognizer)
 
         stream.levelTask = LevelReporter.start(
             event: "stt.level", stream: id, meter: meter, writer: writer, intervalMs: 100)
+        let timing = StartTiming(
+            checksMs: checksMs, microphoneMs: microphoneMs, recognizerMs: recognizerMs, totalMs: ms(t0),
+            warm: prepared.state == .warm)
+        stream.timing = timing
+        HelperLog.info(
+            "Diktat-Start: Prüfung \(timing.checksMs) ms, Mikrofon \(timing.microphoneMs) ms (\(timing.warm ? "warm" : "kalt")), Erkennung \(timing.recognizerMs) ms, gesamt \(timing.totalMs) ms")
         return stream
     }
 
@@ -668,7 +977,8 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
     private let emitter: SerialEmitter
     private let recognizer: SFSpeechRecognizer
     private let request: SFSpeechAudioBufferRecognitionRequest
-    private let mic = MicrophoneCapture()
+    private let mic = MicrophoneCapture.shared
+    private(set) var timing: StartTiming?
     private let meter = LevelMeter()
     private let ended = OnceFlag()
     private let onEnded: @Sendable (String, ObjectIdentifier) -> Void
@@ -678,6 +988,8 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
     private var completed = false
     private var stopping = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    var microphone: MicrophoneReport { mic.report }
 
     private init(
         id: String, writer: OutputWriter, recognizer: SFSpeechRecognizer,
@@ -693,7 +1005,7 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
     }
 
     static func start(
-        id: String, locale: Locale, contextualStrings: [String], writer: OutputWriter,
+        id: String, locale: Locale, contextualStrings: [String], input: MicrophoneOptions, writer: OutputWriter,
         onEnded: @escaping @Sendable (String, ObjectIdentifier) -> Void
     ) throws -> LegacyStream {
         guard let recognizer = SFSpeechRecognizer(locale: locale) else {
@@ -712,6 +1024,7 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
         request.shouldReportPartialResults = true
         request.requiresOnDeviceRecognition = true
         request.taskHint = .dictation
+        request.addsPunctuation = true
         if !contextualStrings.isEmpty {
             request.contextualStrings = contextualStrings
         }
@@ -725,6 +1038,9 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
         stream.lock.unlock()
 
         let meter = stream.meter
+        let clock = ContinuousClock()
+        let tMic = clock.now
+        let prepared = stream.mic.prepare(options: input)
         do {
             try stream.mic.start { buffer in
                 meter.update(buffer)
@@ -734,8 +1050,13 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
             task.cancel()
             throw error
         }
+        let microphoneMs = Int((clock.now - tMic) / .milliseconds(1))
         stream.levelTask = LevelReporter.start(
             event: "stt.level", stream: id, meter: meter, writer: writer, intervalMs: 100)
+        stream.timing = StartTiming(
+            checksMs: 0, microphoneMs: microphoneMs, recognizerMs: 0, totalMs: microphoneMs,
+            warm: prepared.state == .warm)
+        HelperLog.info("Diktat-Start (Legacy): Mikrofon \(microphoneMs) ms (\(prepared.state == .warm ? "warm" : "kalt"))")
         return stream
     }
 
@@ -786,9 +1107,11 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
     }
 
     func stop() async {
+        // self.task: der lokale Name würde die Eigenschaft verdecken (Swift 6.3
+        // bricht dann mit „cannot reference invalid declaration“ ab).
         let task = lock.withLock {
             stopping = true
-            return task
+            return self.task
         }
         mic.stop()
         levelTask?.cancel()
@@ -805,7 +1128,7 @@ final class LegacyStream: SpeechStream, @unchecked Sendable {
     func cancel(reason: String) async {
         let task = lock.withLock {
             stopping = true
-            return task
+            return self.task
         }
         mic.stop()
         levelTask?.cancel()
@@ -849,8 +1172,22 @@ enum SpeechCommands {
             let locale = try request.params.optionalString("locale") ?? defaultLocale()
             let contextual = try request.params.stringArray("contextualStrings")
             let source = try request.params.optionalString("source") ?? "microphone"
+            let input = MicrophoneOptions(
+                deviceUID: try request.params.optionalString("device"),
+                voiceProcessing: try request.params.optionalBool("voiceProcessing") ?? false)
             return try await services.speech.start(
-                stream: stream, locale: locale, contextualStrings: contextual, source: source)
+                stream: stream, locale: locale, contextualStrings: contextual, source: source, input: input)
+        }
+        // Mikrofone dieses Macs (Einstellungen → Diktat → Mikrofon).
+        table["audio.inputs"] = { _ in
+            ["devices": .array(AudioInputDevices.list().map(\.json))]
+        }
+        // Mikrofon vorwärmen (seit 0.6.2), siehe SpeechService.warmMicrophone.
+        table["audio.warm"] = { request in
+            let input = MicrophoneOptions(
+                deviceUID: try request.params.optionalString("device"),
+                voiceProcessing: try request.params.optionalBool("voiceProcessing") ?? false)
+            return await services.speech.warmMicrophone(input)
         }
         table["stt.stop"] = { request in
             let stream = try request.params.string("stream")

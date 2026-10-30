@@ -6,7 +6,7 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import { updateShort } from "../lib/format";
-import { IconGear, IconGlobe, IconInfo, IconKeyboard, IconMic, IconShield } from "../lib/icons";
+import { IconChat, IconGear, IconGlobe, IconInfo, IconKeyboard, IconMic, IconShield } from "../lib/icons";
 import { localApi, useLocalState } from "../lib/useLocalState";
 import { GlassCard, InfoNote, SectionHeader, Spinner, StatusDot, cx } from "../lib/ui";
 import { AboutSection } from "./AboutSection";
@@ -15,6 +15,7 @@ import { GeneralSection } from "./GeneralSection";
 import { HotkeySection } from "./HotkeySection";
 import { InstanceSection } from "./InstanceSection";
 import { PermissionsSection } from "./PermissionsSection";
+import { QuickSection } from "./QuickSection";
 import { type HotkeyName, type SectionId, type SectionProps, sectionFromName, sectionFromQuery } from "./shared";
 
 const SECTIONS: Array<{ id: SectionId; label: string; icon: ReactNode; title: string; subtitle: string }> = [
@@ -31,6 +32,13 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: ReactNode; title: st
     icon: <IconKeyboard size={16} />,
     title: "Tastenkürzel",
     subtitle: "Gelten in jedem Programm, auch wenn KIRA im Hintergrund läuft.",
+  },
+  {
+    id: "schnellfenster",
+    label: "Schnellfenster",
+    icon: <IconChat size={16} />,
+    title: "Schnellfenster",
+    subtitle: "Das Fenster auf ⌥ Leertaste: Lage, Höhe im Gespräch, Senden, Verhalten nach dem Senden.",
   },
   {
     id: "diktat",
@@ -68,6 +76,8 @@ function SectionBody({ id, props, focusHotkey }: { id: SectionId; props: Section
       return <InstanceSection {...props} />;
     case "kuerzel":
       return <HotkeySection {...props} focusHotkey={focusHotkey} />;
+    case "schnellfenster":
+      return <QuickSection {...props} />;
     case "diktat":
       return <DictationSection {...props} />;
     case "berechtigungen":

@@ -6,6 +6,291 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-10-27
+
+### Sicherheit
+- **Electron 44.9.3 → 44.10.0.** Electron 44.10.0 bringt Node.js 24.22.1 mit
+  und schließt damit die Node-Sicherheitslücken vom Oktober 2026, darunter
+  den Brotli-Decoder-Pufferüberlauf
+  [CVE-2026-111497](https://nvd.nist.gov/vuln/detail/CVE-2026-111497)
+  (kritisch, seit 27.10.2026 im CISA-KEV-Katalog als aktiv ausgenutzt).
+  Außerdem Electron-Fixes für fehlerhafte asar-Archive und Lücken in der
+  Sperrliste der File System Access API. Keine funktionalen Änderungen.
+
+## [0.6.6] - 2026-10-22
+
+### Behoben
+- **Schnellfenster blieb nach „Diktate“ groß** (Owner-Befund 22.10.2026:
+  zurück auf „Chat“ ohne Nachrichten behielt das Fenster die Gesprächshöhe).
+  Ursache im Hauptprozess: Stufe B setzt per `setMinimumSize` die
+  Mindesthöhe 420; der Rückweg in die Leiste nahm nur `setResizable(false)`
+  zurück, und `setBounds` hält sich an Mindest- und Höchstgröße – die
+  Leistenhöhe wurde auf 420 hochgezogen, jede neue Messung ebenso.
+  `windows/quick.ts` setzt in der Leiste die Grenzen wieder auf die der
+  Leiste (`applyFixed`, auch beim Öffnen). Die Höhenmessung der Seite misst
+  nach dem Aufräumen nicht mehr (spät geladene Schriften hätten sonst die
+  Gesprächshöhe als Leistenhöhe melden können). Test:
+  `tests/quick-window.test.ts` (die Attrappe begrenzt `setBounds` wie
+  Electron).
+- **Diktate-Liste rutschte beim Überfahren mit der Maus** (Owner-Befund
+  22.10.2026). Ursache: `onMouseEnter` wählte die Karte, und die Auswahl
+  rief `scrollIntoView({ block: "nearest" })` – eine halb sichtbare Karte
+  wurde ganz ins Bild gezogen, die Liste verschob sich unter dem Zeiger
+  (und `scrollIntoView` verschob auch die Wurzel mit `overflow: hidden`).
+  Jetzt scrollt die Auswahl nur nach ↑/↓ oder Suche, und nur der Verlauf
+  selbst (`revealScrollTop` in `quick/logic.ts`). Ein Test wacht darüber,
+  dass `:hover`-Regeln der Diktate nur Farbe, Hintergrund und Schatten
+  ändern.
+
+## [0.6.5] - 2026-10-22
+
+### Sicherheit
+- **Abhängigkeiten der Build-Werkzeuge aktualisiert** (`npm audit`: vorher
+  2 hoch, 4 mittel, 1 niedrig laut Dependabot, jetzt 0). Betroffen sind nur
+  devDependencies (vite, electron-builder); nichts davon steckt in der
+  gepackten App, deren Laufzeit-Abhängigkeiten (electron-log,
+  electron-updater, electron-liquid-glass) bleiben unverändert.
+  - **vite 7.3.6 → 7.3.7**: GHSA-587h-7wmj-h5pm (hoch),
+    GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw, GHSA-rq7h-c2jc-7f22 (mittel),
+    GHSA-9jrq-w75r-8gcw (niedrig). Betrifft den Entwicklungsserver
+    (`npm run dev`).
+  - **http-cache-semantics 4.2.0 → 4.3.0** (über electron-builder →
+    @electron/get → got → cacheable-request): GHSA-ch52-4w7c-c8xp (hoch).
+    Nur das Lockfile, liegt im erlaubten Bereich `^4`.
+  - **global-agent 3.0.0 → 4.1.3 per `overrides`** (nur unter
+    `@electron/get`): sprintf-js 1.1.3 (GHSA-hp3w-g68c-fv3c, mittel) hat
+    keine behobene Version und kam über global-agent 3 → roarr. global-agent
+    4 braucht weder roarr noch sprintf-js und exportiert weiter
+    `bootstrap()` – das Einzige, was @electron/get aufruft
+    (`require('global-agent').bootstrap()` für Proxys beim Electron-Download).
+    Die Override kann wieder raus, sobald electron-builder ein @electron/get
+    ohne global-agent 3 mitbringt. Kein Major-Sprung bei Electron oder
+    electron-builder.
+
+## [0.6.4] - 2026-10-22
+
+### Behoben
+- **Fußleiste des Schnellfensters schnitt Hinweise mitten im Wort ab**
+  (Owner-Befund 22.10.2026: auf „Diktate“ stand „esc schließ…“ halb hinter
+  dem Mülleimer). Die Tastenhinweise bekommen jetzt nur den Platz neben
+  Ansichten und Knöpfen; reicht er nicht, fallen erst die Wörter weg (die
+  Tastenkappen bleiben, das Wort steht im Tooltip und wird vorgelesen), dann
+  ganze Hinweise von hinten – nie ein halbes Wort. Der Status-Chip kürzt
+  per Ellipse erst danach, die Knöpfe schrumpfen nie. Etwas engere Abstände,
+  damit auf „Diktate“ bei 680 px alle drei Hinweise mit Wort passen.
+
+## [0.6.3] - 2026-10-22
+
+### Sicherheit
+- **Electron 44.5.1 → 44.9.3** ([#11](https://github.com/forliHD/kira-mac/pull/11)).
+  Schließt die seit 44.5.1 veröffentlichten Sicherheitslücken in Chromium und
+  Electron. Keine funktionalen Änderungen; der Helfer bleibt bei 0.6.2.
+  Hinweis: Electron 44.9.3 bringt noch Node.js 24.22.0 mit; die Node-Fixes
+  vom Oktober 2026 (24.22.1) folgen mit dem nächsten Electron-Release.
+
+## [0.6.2] - 2026-10-21
+
+### Behoben
+- **Diktat-Start dauerte ~1,5 s** (Owner-Befund 21.10.2026: „Mikrofon wird
+  vorbereitet…“ stand lange, die ersten Worte des Diktats fehlten). Gemessen
+  am Helfer: Apples Sprachfilter kostet beim ersten Einschalten je Prozess
+  1,0–1,2 s, und die Audio-Engine wurde für jedes Diktat neu gebaut – jedes
+  Diktat zahlte den Preis erneut (`stt.start` 1,5 s mit Filter, 0,2 s ohne).
+  Jetzt:
+  - **Eine warme Audio-Engine je Helfer.** Nach dem Diktat bleibt sie
+    eingerichtet (Tap weg, Engine angehalten, Mikrofon zu – kein
+    orangefarbener Punkt); der nächste Start kostet 50–80 ms.
+  - **Vorwärmen** (`audio.warm`): Die App stellt Gerät und Sprachfilter beim
+    Helfer-Start und nach jeder Änderung der Diktat-Einstellungen ein, ohne
+    das Mikrofon zu öffnen – auch das erste Diktat nach dem App-Start ist
+    schnell.
+  - **Mikrofon zuerst.** Das Mikrofon öffnet, bevor die Erkennung vorbereitet
+    wird; was in diesen Millisekunden gesagt wird, wartet gepuffert und wird
+    nachgeholt.
+  - Die vier Prüfungen der App vor dem Start (Modell, Freigaben, vorderstes
+    Programm, Wortschatz) laufen parallel statt nacheinander.
+
+  Messung am gebauten Helfer (Apple Silicon, Sprachfilter an): `stt.start`
+  vorher 1.473–1.573 ms, nachher 84–134 ms; erster Start nach `audio.warm`
+  131 ms, ohne Vorwärmen einmalig 1.189 ms. Neu im Protokoll der App:
+  `dictation_start` (Phasen in ms, `helper.timing` vom Helfer) und
+  `dictation_session.startMs` – nur Zeiten, nie Text.
+
+## [0.6.1] - 2026-10-21
+
+### Behoben
+- **Diktat ohne Text seit 0.6.0** (Owner-Befund 21.10.2026, Schnellfenster und
+  globales Diktat: Pegel schlagen aus, nichts wird erkannt). Mit dem
+  Apple-Sprachfilter liefert der Mikrofon-Tap 48 kHz mit **9 Kanälen** (das
+  gefilterte Signal auf jedem Kanal); `AVAudioConverter` von 9 auf 1 Kanal gab
+  leere Puffer an die Erkennung. Der Helfer mischt mehrkanalige Eingaben jetzt
+  selbst auf Mono, der Konverter folgt dem Format jedes Puffers (einmal
+  protokolliert: Formate und Kanalpegel, nie Audio). Reproduziert und geprüft
+  mit `stt.start` am gebauten Helfer: ohne Filter Text, mit Filter vorher
+  nichts, nachher Text. Der Sprachfilter bleibt Standard an; abschaltbar unter
+  Einstellungen → Diktat.
+
+## [0.6.0] - 2026-10-21
+
+Phase 2 des Plans „Schnellfenster & Diktat“ (KIRA-Repo,
+`docs/mac-app-schnellfenster-diktat-plan.md`): das Mikrofon wird wählbar
+und sauberer, die Pille sagt, was passiert ist.
+
+### Hinzugefügt
+- **Apple-Sprachfilter** (Einstellungen → Diktat, Standard an): Echo-
+  Unterdrückung, Rauschfilter und Pegelregelung von macOS (Voice Processing)
+  für die Aufnahme des Diktats; anderer Ton wird dabei nur leicht gedämpft.
+  Geht es auf einem Mac nicht (bekannt: Aggregat-Gerät, Fehler -10876), läuft
+  die Aufnahme ohne weiter – die Antwort auf `stt.start` sagt, was gilt.
+- **Mikrofon wählen** (Einstellungen → Diktat): Liste der Mikrofone dieses
+  Macs, Standard folgt dem System. Neues Helfer-Kommando `audio.inputs`,
+  `stt.start` nimmt `device`/`voiceProcessing` (Protokoll 1, additiv).
+- **Pille:** Symbol des Zielprogramms neben „Diktat in Mail“ (`text.frontmost`
+  liefert `icon`), Fortschrittsbalken beim Modell-Download, am Ende kurz
+  **„Eingefügt · 42 Zeichen“** (900 ms) – und ein gescheitertes Einsetzen
+  bleibt vier Sekunden lesbar stehen („Nicht eingefügt – der Text steht im
+  Diktat-Verlauf“) statt dass die Pille sofort verschwindet.
+- Protokoll: `dictation_session` nennt Sprachfilter und Gerät der Aufnahme.
+
+### Geändert
+- Die Mikrofon-Aufnahme stellt Gerät und Sprachfilter VOR dem Aufbau des
+  Konverters ein (`MicrophoneCapture.prepare`): der Sprachfilter ändert das
+  Eingabeformat.
+
+### Nicht gemacht (bewusst)
+- M14 (einen Analyzer für `stt.file` warmhalten) entfällt zugunsten von
+  Phase 5 (Streaming ins Dashboard).
+
+## [0.5.0] - 2026-10-21
+
+Phase 3 des Plans „Schnellfenster & Diktat“ (KIRA-Repo,
+`docs/mac-app-schnellfenster-diktat-plan.md`; Owner-Entscheid D1/D2 = Ja):
+das Schnellfenster wird vom Spotlight-Feld zum Gespräch.
+
+### Hinzugefügt
+- **Zwei Stufen.** Leer ist das Schnellfenster eine Leiste: Eingabe mit der
+  K-Kachel, Vorschläge, Fußleiste – die Höhe folgt dem Inhalt wie bisher. Mit
+  der ersten Nachricht nimmt es EINMAL die Gesprächshöhe an (Standard 60 % der
+  Arbeitsfläche, mindestens 420 pt), der Verlauf liegt oben und scrollt innen,
+  die Eingabe bleibt unten. Danach springt nichts mehr; der untere Rand lässt
+  sich ziehen, die gezogene Höhe wird je Bildschirm gemerkt (Einstellung).
+  Die Diktate-Ansicht (⌘2) nutzt dieselbe Höhe. Die Oberkante bleibt bei
+  10 %, oder das Fenster sitzt mittig (Einstellung „Lage“).
+- **Einstellungen → Schnellfenster** (neuer Bereich): Lage, Höhe im Gespräch
+  (40–90 %), gezogene Höhe merken (mit „Vergessen“), Textgröße (Klein/
+  Normal/Groß), Senden mit ↩ oder ⌘↩ (dann ↩ = Zeile, „Im Hauptfenster“ auf
+  ⌘⇧↩), nach dem Senden offen lassen oder schließen (die fertige Antwort kommt
+  als Mitteilung, Klick öffnet das Fenster), Gespräch fortsetzen oder neu nach
+  10/30/60 Minuten Ruhe (Standard 30), Vorschläge anzeigen, Mikrofon-Knopf.
+  Das Zahnrad in der Fußleiste öffnet den Bereich.
+- **Diktate-Ansicht:** Tagesgruppen („Heute“, „Gestern“, Datum) mit Uhrzeit je
+  Karte, **Erneut einsetzen** (das Fenster geht zu, der Text landet im
+  Programm, das davor vorn war – Bedienungshilfen nötig), „Verlauf leeren“ in
+  der Fußleiste, schlanke Suche statt der Chat-Eingabe.
+
+### Geändert
+- **Keine Kopfzeile mehr.** Marke und Verbindungsstatus sind ein Punkt auf der
+  K-Kachel in der Eingabe (Tooltip erklärt), die Fußleiste trägt Chat | Diktate,
+  die Tastenhinweise, rechts „Neuer Chat“ und „Im Hauptfenster“ (im Gespräch),
+  den kurzen Instanznamen („kira-dev“ statt des ganzen Hosts) und das Zahnrad.
+  Die Fußleiste ist der Zieh-Bereich des Fensters. Die leere Leiste ist damit
+  rund ein Viertel niedriger als in 0.4.0.
+- Ohne Verbindung steht der Hinweis zum Apple-Modell unter der Eingabe statt
+  der Vorschläge; „Antworten landen im Chat-Verlauf“ ist der Tooltip des Status.
+- Der Stufenwechsel baut die Eingabe nicht neu auf (CSS-Reihenfolge statt
+  neuer Elemente) – Fokus und Schreibmarke bleiben.
+
+### Nicht gemacht (bewusst)
+- Eigenes Erscheinungsbild (Hell/Dunkel) für das Schnellfenster: das Glas
+  zeichnet macOS nach dem System; eine eigene Wahl würde nur den Text umfärben.
+- Programm-Symbole an den Diktate-Karten: kommen mit der Pille in Phase 2.
+
+## [0.4.0] - 2026-10-21
+
+Phase 1 des Plans „Schnellfenster & Diktat“ (KIRA-Repo,
+`docs/mac-app-schnellfenster-diktat-plan.md`): die Erkennung wird ehrlich –
+genauer, mit Wortschatz, offline-fähig und messbar.
+
+### Hinzugefügt
+- **Nachkorrektur gegen den Wortschatz** (Einstellungen → Diktat → „Eigene
+  Begriffe nachkorrigieren“, Standard an). Der Helfer gibt KIRA, deinen Namen
+  und die eigenen Begriffe zwar als `contextualStrings` an Apple, der
+  `SpeechTranscriber` (macOS 26+) wertet sie aber nicht aus (Apple-Forum
+  801877, Apple_Agent 09/2025). Deshalb korrigiert die Hülle jedes fertige
+  Stück selbst: lautgleiche Wörter („Lukas“ → Lucas, „Lugas“ → Lucas) und
+  kleine Tippfehler („Tira“ → KIRA, „Weeber“ → Weber) werden zum Begriff,
+  Groß/Klein wird angeglichen („kira“ → KIRA). Vorsichtig: häufige deutsche
+  Wörter bleiben, Wörter aus dem macOS-Wörterbuch werden bei bloßer
+  Buchstabenähnlichkeit nie ersetzt (neues Helfer-Kommando `text.knownWords`
+  über `NSSpellChecker`, „Kita“ bleibt Kita), zwei gleich gute Begriffe heben
+  sich auf, Zahlen bleiben. Gilt für das globale Diktat, das Schnellfenster
+  und das Dashboard-Diktat über die Hülle. Das Protokoll zählt nur
+  Ersetzungen, nie Text (`src/main/dictation-correct.ts`,
+  `tests/dictation-correct.test.ts`).
+- **Diktat-Test** (Einstellungen → Diktat): drei feste Texte – „Begriffe“
+  (aus KIRA, deinem Namen und deinen Begriffen gebaut), „Zahlen und Daten“,
+  „Freier Text“ (~1 min). Lies vor, „Auswerten“, und die App zeigt die
+  Wortfehlerrate (WER) mit Ersetzungen, zu viel, fehlt, beim Begriffe-Test
+  „Begriffe n von m“, dazu Dauer und die Einstellungen des Laufs (Sprache,
+  Engine, Nachkorrektur, Befehle, Version). Die letzten fünf Ergebnisse bleiben
+  in der Konfiguration – nur Zahlen und Einstellungen, nie der Text; der Ton
+  verlässt den Mac nicht (`src/shared/wer.ts`, `src/shared/dictation-test.ts`,
+  `src/main/dictation-test.ts`).
+- **Wortschatz bleibt auf dem Mac**: Der zuletzt vom Server geholte Wortschatz
+  wird wie der Diktat-Verlauf verschlüsselt gespeichert (`vocabulary.bin`,
+  `safeStorage`, nur gepackt) und gilt offline oder ohne Sitzung weiter;
+  erneuert wird weiter stündlich. Einstellungen → Diktat zeigt Anzahl und
+  Stand.
+- **Messwerte** im Protokoll, nie Text: je Diktat `dictation_session` (Ziel,
+  Programm, Sprache, Engine, Dauer, Spüldauer nach dem Stopp, fertige Stücke,
+  Zeichen, Ersetzungen, Fehler), je Dashboard-Äußerung `transcribe_done`
+  (Dauer, Audiolänge, Verhältnis, Zeichen, Ersetzungen).
+
+### Geändert
+- **Erkennung ohne `.fastResults`.** Der Stream lief mit
+  `[.volatileResults, .fastResults]`; Apple dokumentiert `fastResults` als
+  „biases the transcriber towards responsiveness, yielding faster but also
+  less accurate results“. Die flüchtigen Ergebnisse (`volatileResults`) speisen
+  weiter die Vorschau in der Pille; die Finals, die eingesetzt werden, sind
+  jetzt die genaue Variante. Fällt die Verzögerung auf, misst der Diktat-Test
+  sie (`flushMs` im Protokoll).
+- Zeichensetzung auf dem Rückfall-Pfad (`SFSpeechRecognizer`, macOS 14/15):
+  `addsPunctuation` war nicht gesetzt, Text kam ohne Punkt und Komma.
+- Das Ende eines Diktats wartet auf laufende Wörterbuch-Fragen, damit der
+  letzte Satz weder im Verlauf noch im Diktat-Test fehlt.
+- Helfer-Protokoll (additiv, Version 1): `text.knownWords`
+  (`docs/helper-protocol.md`).
+
+## [0.3.9] - 2026-10-21
+
+### Hinzugefügt
+- GitHub Actions auf `xcode-27` (Apple Silicon, macOS-SDK 27): Abhängigkeiten,
+  Typprüfung, Lint, Tests, Swift-Helfer inklusive der Fehlerzuordnung beim
+  Diktat-Download, Produktionspaket. Ein Push auf `main` legt den
+  GitHub-Release `v<Version>` an (DMG, ZIP, `latest-mac.yml`), wenn es ihn
+  noch nicht gibt. Mit Developer-ID-Zertifikat und App-Store-Connect-Schlüssel
+  wird signiert und notarisiert. Ist das Zertifikat gesetzt, die Signatur
+  oder die Notarisierung aber misslungen, wird nichts veröffentlicht.
+
+### Behoben
+- **Diktat-Modell fehlt, und der Download tat nichts.** Der Helfer konnte das
+  Apple-Modell laden (`stt.prepare`), die Hülle hat ihn aber nie darum gebeten:
+  weder beim Start, noch beim Diktat, noch aus den Einstellungen. „Erneut
+  prüfen“ hat nur denselben Stand noch einmal gelesen. Zusätzlich hat der
+  Helfer den Stand an einer anderen Modell-Konfiguration geprüft als die
+  Erkennung selbst und ein schon vorhandenes System-Modell nicht als
+  installiert erkannt, solange die Sprache nicht reserviert war.
+- Fehlt das Modell und dieser Mac kann es laden (macOS 26, Apple-Chip), startet
+  der Download jetzt von selbst, beim ersten Diktat und über **Modell laden**
+  in den Einstellungen. Fortschritt in der Karte und in der Diktat-Pille.
+  Scheitert er, steht die Ursache dabei (keine Verbindung zu Apple, Zugriff
+  verweigert, Sprache nicht unterstützt, kein Apple-Chip, macOS zu alt,
+  Geräteverwaltung). Danach läuft das Diktat auf dem Gerät – auch ohne
+  Verbindung zum KIRA-Server.
+- Diagnose in Einstellungen → Diktat und im Protokoll (`dictation_model`,
+  `stt_status`): macOS, Architektur, Chip, Sprache, Modellzustand, Mikrofon,
+  Spracherkennung.
+
 ## [0.3.8] - 2026-10-02
 
 ### Geändert

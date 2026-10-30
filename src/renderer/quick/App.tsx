@@ -4,30 +4,38 @@
 // `QuickState` (Ereignis "quick"); diese Seite zeichnet und nimmt Eingaben an.
 // Das Glas kommt vom System (NSGlassEffectView bzw. Vibrancy) – die Seite ist
 // transparent und zeichnet nur Lichtkanten und leicht abgedunkelte Flächen
-// (quick.css). Die Fensterhöhe folgt dem Inhalt (useReportHeight).
+// (quick.css).
+//
+// Zwei Stufen (Phase 3, 0.5.0, Owner-Entscheid D1/D2): Leer ist das Fenster
+// eine Leiste – Eingabe, Vorschläge, Fußleiste; die Höhe folgt dem Inhalt
+// (useReportHeight). Mit der ersten Nachricht (und in der Diktate-Ansicht)
+// nimmt es EINMAL die Gesprächshöhe an (`quickSetTall`), der Verlauf liegt
+// oben und scrollt innen, die Eingabe unten. Keine Kopfzeile mehr: Status als
+// Punkt auf der K-Kachel, Ansichten und Aktionen in der Fußleiste.
 // Zwei Ansichten: Chat (⌘1) und Diktate (⌘2, Dictations.tsx) – in der
 // Diktate-Ansicht wird das Eingabefeld zur Suche.
 
 import { type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { type DictationEntry, type KiraLocalApi, type QuickDictation, type QuickMessage, type QuickTool, type UpdateState } from "../../shared/local-api";
+import { type DictationEntry, type KiraLocalApi, type QuickDictation, type QuickMessage, type QuickPrefs, type QuickTool, type UpdateState } from "../../shared/local-api";
 import { localApi } from "../lib/useLocalState";
 import {
   AlertIcon,
   ArrowUpIcon,
   BrainIcon,
-  BubbleIcon,
   CheckIcon,
   ChevronIcon,
   ChipIcon,
   ComposeIcon,
   CrossIcon,
-  HistoryIcon,
+  GearIcon,
   LockIcon,
   MicIcon,
   OfflineIcon,
   OpenIcon,
+  SearchIcon,
   StopIcon,
+  TrashIcon,
   WaveIcon,
 } from "./icons";
 import { DictationList, dictationItemId } from "./Dictations";
@@ -36,9 +44,8 @@ import {
   LOCAL_NOTE,
   OFFLINE_HINT,
   activityLine,
-  connectionPill,
   filterDictations,
-  footerNote,
+  footerHints,
   formatAccelerator,
   groupTools,
   insertText,
@@ -47,13 +54,19 @@ import {
   keyAction,
   micLevel,
   moveSelection,
+  revealScrollTop,
   partialPreview,
+  quickStage,
+  statusChip,
   stoppedNote,
   suggestionsFor,
 } from "./logic";
 import { MarkdownView } from "./MarkdownView";
+import { useFitHints } from "./useFitHints";
 import { errorText, useQuickState } from "./useQuickState";
 import { updateFade, useReportHeight } from "./useReportHeight";
+
+const DEFAULT_PREFS: QuickPrefs = { textSize: "m", sendKey: "enter", suggestions: true, dictationButton: true };
 
 function keyInfo(event: KeyboardEvent): KeyInfo {
   return {
@@ -110,10 +123,8 @@ export function App(): ReactNode {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const followRef = useRef(true);
   const caretRef = useRef<number | null>(null);
-
-  const heightRefs = useMemo(() => ({ root: rootRef, thread: threadRef, content: logRef, follow: followRef }), []);
-  const reportHeight = useCallback((height: number) => call((api) => api.quickResize(height)), []);
-  useReportHeight(heightRefs, reportHeight);
+  const keysRef = useRef<HTMLDivElement>(null);
+  const rulerRef = useRef<HTMLDivElement>(null);
 
   const messages = state?.messages ?? [];
   const hasMessages = messages.length > 0;
@@ -121,12 +132,22 @@ export function App(): ReactNode {
   const mode = state?.mode ?? null;
   const sessionId = state?.sessionId ?? null;
   const dictation = state?.dictation ?? null;
+  const prefs = state?.prefs ?? DEFAULT_PREFS;
+
+  // Stufe: Leiste (leer) oder Gesprächshöhe (Nachrichten, Diktate). Der
+  // Hauptprozess setzt die Höhe EINMAL und lässt den unteren Rand ziehen.
+  const tall = quickStage(view, hasMessages, busy) === "tall";
+  useEffect(() => {
+    call((api) => api.quickSetTall(tall));
+  }, [tall]);
+
+  const heightRefs = useMemo(() => ({ root: rootRef, thread: threadRef, content: logRef, follow: followRef }), []);
+  const reportHeight = useCallback((height: number) => call((api) => api.quickResize(height)), []);
+  useReportHeight(heightRefs, reportHeight, !tall);
 
   // Owner-Fund 02.10.2026: nach dem Senden blieb die neue Nachricht unten
   // außer Sicht. Folgt der Verlauf dem Ende, nach JEDER Änderung der
-  // Nachrichten (neue Nachricht, Text, Werkzeuge, Denkschritte) ans Ende –
-  // zusätzlich zur Höhenmessung (useReportHeight), die nur auf Größenänderungen
-  // reagiert. tests/quick-scroll.test.tsx
+  // Nachrichten (neue Nachricht, Text, Werkzeuge, Denkschritte) ans Ende.
   const lastMessage = messages[messages.length - 1];
   const scrollKey = `${messages.length}:${lastMessage?.id ?? ""}:${lastMessage?.text.length ?? 0}:${lastMessage?.tools.length ?? 0}:${lastMessage?.reasoning.length ?? 0}:${lastMessage?.status ?? ""}`;
   useLayoutEffect(() => {
@@ -168,10 +189,29 @@ export function App(): ReactNode {
   const filteredDictations = useMemo(() => filterDictations(dictations ?? [], dictQuery), [dictations, dictQuery]);
   const selectedDictation = filteredDictations[Math.min(dictSel, filteredDictations.length - 1)] ?? null;
 
-  // Ausgewählte Karte sichtbar halten (↑/↓).
+  // Ausgewählte Karte sichtbar halten – nur nach ↑/↓ oder Suche, nie beim
+  // Überfahren mit der Maus. Owner-Befund 22.10.2026: `onMouseEnter` wählte
+  // die Karte, `scrollIntoView` zog eine halb sichtbare Karte ganz ins Bild –
+  // die Liste rutschte unter dem Zeiger weg (und wählte die nächste Karte).
+  const revealSelRef = useRef(false);
+  const selectDictation = useCallback((index: number, reveal: boolean) => {
+    revealSelRef.current = reveal;
+    setDictSel(index);
+  }, []);
+  const hoverDictation = useCallback((index: number) => selectDictation(index, false), [selectDictation]);
   useLayoutEffect(() => {
-    if (view !== "dictations" || !selectedDictation) return;
-    document.getElementById(dictationItemId(selectedDictation))?.scrollIntoView({ block: "nearest" });
+    const reveal = revealSelRef.current;
+    revealSelRef.current = false;
+    const thread = threadRef.current;
+    if (!reveal || view !== "dictations" || !selectedDictation || !thread) return;
+    const card = document.getElementById(dictationItemId(selectedDictation));
+    if (!card) return;
+    // Nur der Verlauf scrollt: scrollIntoView verschob auch die Wurzel (overflow: hidden).
+    const box = thread.getBoundingClientRect();
+    const rect = card.getBoundingClientRect();
+    const top = rect.top - box.top + thread.scrollTop;
+    const next = revealScrollTop(thread.scrollTop, thread.clientHeight, top, top + rect.height);
+    if (next !== null) thread.scrollTop = next;
   }, [view, selectedDictation]);
 
   // Schreibmarke nach programmgesteuerter Änderung (Diktat, Vorschlag) setzen.
@@ -254,10 +294,32 @@ export function App(): ReactNode {
     replaceDraft(entry.text, entry.text.length);
   };
 
+  const reinsertDictation = (entry: DictationEntry): void => {
+    setNotice(null);
+    try {
+      localApi()
+        .quickReinsertDictation(entry.id)
+        .catch((err: unknown) => setNotice(errorText(err)));
+    } catch (err) {
+      setNotice(errorText(err));
+    }
+  };
+
   const deleteDictation = (entry: DictationEntry): void => {
     try {
       localApi()
         .deleteDictation(entry.id)
+        .then((result) => setDictations(result.entries))
+        .catch((err: unknown) => setNotice(errorText(err)));
+    } catch (err) {
+      setNotice(errorText(err));
+    }
+  };
+
+  const clearDictations = (): void => {
+    try {
+      localApi()
+        .clearDictationHistory()
         .then((result) => setDictations(result.entries))
         .catch((err: unknown) => setNotice(errorText(err)));
     } catch (err) {
@@ -299,6 +361,7 @@ export function App(): ReactNode {
   };
 
   const openInMain = (): void => call((api) => api.quickOpenInMain());
+  const openSettings = (): void => call((api) => api.openSettings("schnellfenster"));
   const onLink = useCallback((href: string) => call((api) => api.openLink(href)), []);
 
   const toggleDictation = (): void => {
@@ -314,7 +377,7 @@ export function App(): ReactNode {
   };
 
   const onRootKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
-    const action = keyAction(keyInfo(event), { hasSession: sessionId !== null });
+    const action = keyAction(keyInfo(event), { hasSession: sessionId !== null, sendKey: prefs.sendKey });
     if (action) {
       event.preventDefault();
       if (action === "hide") call((api) => api.quickHide());
@@ -338,6 +401,7 @@ export function App(): ReactNode {
     if (view === "dictations") {
       if ((k.key === "ArrowDown" || k.key === "ArrowUp") && !k.metaKey && !k.altKey && !k.ctrlKey && !k.shiftKey) {
         event.preventDefault();
+        revealSelRef.current = true;
         setDictSel((i) => moveSelection(Math.min(i, filteredDictations.length - 1), k.key === "ArrowDown" ? 1 : -1, filteredDictations.length));
         return;
       }
@@ -353,8 +417,9 @@ export function App(): ReactNode {
       }
       return;
     }
-    if (isSubmitKey(k)) {
+    if (isSubmitKey(k, prefs.sendKey)) {
       event.preventDefault();
+      event.stopPropagation();
       submit();
     }
   };
@@ -386,9 +451,8 @@ export function App(): ReactNode {
     updateFade(thread);
   };
 
-  const pill = connectionPill(state);
-  const note = footerNote(mode);
-  const suggestions = suggestionsFor(mode);
+  const chip = statusChip(state);
+  const suggestions = prefs.suggestions ? suggestionsFor(mode) : [];
   const dictationKeys = state?.hotkeys.dictation ? formatAccelerator(state.hotkeys.dictation).join("") : null;
   const canSend = draft.trim() !== "" && state !== null && !busy;
   const shownNotice = notice ?? error;
@@ -397,72 +461,79 @@ export function App(): ReactNode {
   const dictating = dictation?.active ?? false;
   const partial = dictating ? partialPreview(dictation?.partial ?? "") : "";
   const partialInField = dictating && draft === "";
+  const hints = footerHints(view, sessionId !== null, prefs.sendKey);
+  const hintFit = useFitHints(keysRef, rulerRef, hints.length, hints.map((h) => `${h.keys} ${h.label}`).join("|"));
+  const dictEmpty = view === "dictations" && dictations !== null && filteredDictations.length === 0;
 
   return (
-    <main ref={rootRef} className="qw" tabIndex={-1} onKeyDown={onRootKeyDown} onBlur={onRootBlur}>
+    <main
+      ref={rootRef}
+      className={`qw ${tall ? "is-tall" : "is-bar"} view-${view}`}
+      data-text={prefs.textSize}
+      data-stage={tall ? "tall" : "bar"}
+      tabIndex={-1}
+      onKeyDown={onRootKeyDown}
+      onBlur={onRootBlur}
+    >
       <div className="q-specular" aria-hidden="true" />
 
-      <header className="q-head">
-        <div className="q-brand">
-          <span className="q-logo" aria-hidden="true">
-            <BubbleIcon size={16} />
-          </span>
-          <h1 className="q-title">KIRA</h1>
-          <span className="q-pill q-conn" data-tone={pill.tone} role="status" title={pill.text}>
-            <span className="q-dot" aria-hidden="true" />
-            <span className="q-ellipsis">{pill.text}</span>
-          </span>
+      {/* Dieselben Elemente für beide Ansichten: die Höhenmessung (useReportHeight) beobachtet sie. */}
+      <div id="q-thread" ref={threadRef} className="q-thread" hidden={view === "chat" ? !hasMessages : filteredDictations.length === 0} onScroll={onThreadScroll}>
+        <div
+          ref={logRef}
+          className={view === "chat" ? "q-log" : "q-log q-dict-log"}
+          role={view === "chat" ? "log" : undefined}
+          aria-live={view === "chat" ? "polite" : undefined}
+          aria-busy={view === "chat" ? busy : undefined}
+          aria-label={view === "chat" ? "Unterhaltung" : undefined}
+        >
+          {view === "chat" ? (
+            messages.map((message) =>
+              message.role === "user" ? <UserMessage key={message.id} message={message} /> : <AssistantMessage key={message.id} message={message} onLink={onLink} />,
+            )
+          ) : (
+            <DictationList
+              entries={filteredDictations}
+              selected={Math.min(dictSel, filteredDictations.length - 1)}
+              copiedId={copiedId}
+              now={now}
+              onSelect={hoverDictation}
+              onCopy={copyDictation}
+              onToChat={dictationToChat}
+              onReinsert={reinsertDictation}
+              onDelete={deleteDictation}
+            />
+          )}
         </div>
-        <div className="q-seg" role="tablist" aria-label="Ansicht">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === "chat"}
-            className={`q-seg-btn${view === "chat" ? " is-active" : ""}`}
-            title="Chat (⌘1)"
-            aria-keyshortcuts="Meta+1"
-            onClick={() => switchView("chat")}
-          >
-            Chat
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === "dictations"}
-            className={`q-seg-btn${view === "dictations" ? " is-active" : ""}`}
-            title="Diktate (⌘2)"
-            aria-keyshortcuts="Meta+2"
-            onClick={() => switchView("dictations")}
-          >
-            Diktate
-          </button>
-        </div>
-        <div className="q-head-actions">
-          {view === "dictations" ? null : hasMessages || sessionId !== null ? (
-            <>
-              <button type="button" className="q-iconbtn" aria-label="Neuer Chat" title="Neuer Chat (⌘N)" aria-keyshortcuts="Meta+N" onClick={reset}>
-                <ComposeIcon size={15} />
-              </button>
-              {sessionId !== null ? (
-                <button
-                  type="button"
-                  className="q-iconbtn"
-                  aria-label="Im Hauptfenster öffnen"
-                  title="Im Hauptfenster öffnen (⌘↩)"
-                  aria-keyshortcuts="Meta+Enter"
-                  onClick={openInMain}
-                >
-                  <OpenIcon size={15} />
-                </button>
-              ) : null}
-            </>
-          ) : null}
-        </div>
-      </header>
+      </div>
 
-      <div className="q-composer" onMouseDown={onComposerMouseDown}>
+      {dictEmpty ? (
+        <p className="q-dict-empty">
+          <WaveIcon size={15} />
+          <span>
+            {dictations && dictations.length === 0
+              ? `Noch keine Diktate. ${dictationKeys ? `Mit ${dictationKeys} ` : ""}sprichst du in jedes Programm – der Text landet dort und hier.`
+              : "Kein Diktat passt zur Suche."}
+          </span>
+        </p>
+      ) : null}
+
+      <div className={`q-composer${view === "dictations" ? " is-search" : ""}`} onMouseDown={onComposerMouseDown}>
+        {view === "dictations" ? (
+          <span className="q-lead" aria-hidden="true">
+            <SearchIcon size={16} />
+          </span>
+        ) : (
+          /* Die Marke und der Verbindungsstatus in einem: „K“ mit Punkt (Tooltip erklärt). */
+          <span className="q-tile" data-tone={chip.tone} role="status" aria-label={chip.title} title={chip.title}>
+            <span className="q-tile-k" aria-hidden="true">
+              K
+            </span>
+            <span className="q-tile-dot" aria-hidden="true" />
+          </span>
+        )}
         <label htmlFor="q-input" className="sr-only">
-          Frag KIRA
+          {view === "dictations" ? "Diktate durchsuchen" : "Frag KIRA"}
         </label>
         <div className="q-field" onMouseDown={onComposerMouseDown}>
           <textarea
@@ -472,14 +543,13 @@ export function App(): ReactNode {
             rows={1}
             value={view === "chat" ? draft : dictQuery}
             placeholder={view === "dictations" ? "Diktate durchsuchen …" : partialInField ? partial || "Ich höre zu …" : "Frag KIRA …"}
-            aria-label={view === "dictations" ? "Diktate durchsuchen" : undefined}
             aria-controls={view === "dictations" ? "q-thread" : undefined}
             spellCheck={view === "chat"}
             autoFocus
             onChange={(event) => {
               if (view === "dictations") {
                 setDictQuery(event.target.value);
-                setDictSel(0);
+                selectDictation(0, true);
               } else {
                 setDraft(event.target.value);
               }
@@ -504,15 +574,23 @@ export function App(): ReactNode {
           <span className="q-dict-count" aria-live="polite">
             {dictations === null ? "…" : `${filteredDictations.length} von ${dictations.length}`}
           </span>
-        ) : (
+        ) : prefs.dictationButton ? (
           <MicButton dictation={dictation} shortcut={dictationKeys} onClick={toggleDictation} />
-        )}
+        ) : null}
         {view === "dictations" ? null : busy ? (
           <button type="button" className="q-btn q-btn-pill q-stop" aria-label="Stoppen" title="Stoppen" onClick={stop}>
             <StopIcon size={13} />
           </button>
         ) : (
-          <button type="button" className="q-btn q-send" aria-label="Senden" title="Senden (↩)" aria-keyshortcuts="Enter" disabled={!canSend} onClick={submit}>
+          <button
+            type="button"
+            className="q-btn q-send"
+            aria-label="Senden"
+            title={`Senden (${prefs.sendKey === "cmd-enter" ? "⌘↩" : "↩"})`}
+            aria-keyshortcuts={prefs.sendKey === "cmd-enter" ? "Meta+Enter" : "Enter"}
+            disabled={!canSend}
+            onClick={submit}
+          >
             <ArrowUpIcon size={18} />
           </button>
         )}
@@ -523,48 +601,18 @@ export function App(): ReactNode {
         </p>
       ) : null}
 
-      {/* Dieselben Elemente für beide Ansichten: die Höhenmessung (useReportHeight) beobachtet sie. */}
-      <div id="q-thread" ref={threadRef} className="q-thread" hidden={view === "chat" ? !hasMessages : filteredDictations.length === 0} onScroll={onThreadScroll}>
-        <div
-          ref={logRef}
-          className={view === "chat" ? "q-log" : "q-log q-dict-log"}
-          role={view === "chat" ? "log" : undefined}
-          aria-live={view === "chat" ? "polite" : undefined}
-          aria-busy={view === "chat" ? busy : undefined}
-          aria-label={view === "chat" ? "Unterhaltung" : undefined}
-        >
-          {view === "chat" ? (
-            messages.map((message) =>
-              message.role === "user" ? <UserMessage key={message.id} message={message} /> : <AssistantMessage key={message.id} message={message} onLink={onLink} />,
-            )
-          ) : (
-            <DictationList
-              entries={filteredDictations}
-              selected={Math.min(dictSel, filteredDictations.length - 1)}
-              copiedId={copiedId}
-              now={now}
-              onSelect={setDictSel}
-              onCopy={copyDictation}
-              onToChat={dictationToChat}
-              onDelete={deleteDictation}
-            />
-          )}
-        </div>
-      </div>
-
-      {view === "dictations" && dictations !== null && filteredDictations.length === 0 ? (
-        <p className="q-dict-empty">
-          <WaveIcon size={15} />
-          <span>
-            {dictations.length === 0
-              ? `Noch keine Diktate. ${dictationKeys ? `Mit ${dictationKeys} ` : ""}sprichst du in jedes Programm – der Text landet dort und hier.`
-              : "Kein Diktat passt zur Suche."}
-          </span>
-        </p>
-      ) : null}
-
       {view === "chat" && !hasMessages ? (
-        suggestions.length > 0 ? (
+        mode === "offline" ? (
+          <p className="q-offline">
+            <OfflineIcon size={15} />
+            <span>{OFFLINE_HINT}</span>
+          </p>
+        ) : mode === "local" ? (
+          <p className="q-offline is-local">
+            <ChipIcon size={15} />
+            <span>Offline · das Apple-Sprachmodell auf diesem Mac antwortet, nichts wird gespeichert.</span>
+          </p>
+        ) : suggestions.length > 0 ? (
           <div className="q-suggest" role="group" aria-label="Vorschläge">
             {suggestions.map((s) => (
               <button key={s.label} type="button" className="q-sugg" onClick={() => replaceDraft(s.fill, s.fill.length)}>
@@ -572,12 +620,7 @@ export function App(): ReactNode {
               </button>
             ))}
           </div>
-        ) : (
-          <p className="q-offline">
-            <OfflineIcon size={15} />
-            <span>{OFFLINE_HINT}</span>
-          </p>
-        )
+        ) : null
       ) : null}
 
       {update?.status === "downloaded" ? (
@@ -590,48 +633,90 @@ export function App(): ReactNode {
         </div>
       ) : null}
 
-      {view === "dictations" ? (
-        <footer className="q-foot">
-          <div className="q-keys">
-            <span>
-              <Kbd>↩</Kbd> Kopieren
+      <footer className="q-foot">
+        <div className="q-seg" role="tablist" aria-label="Ansicht">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "chat"}
+            className={`q-seg-btn${view === "chat" ? " is-active" : ""}`}
+            title="Chat (⌘1)"
+            aria-keyshortcuts="Meta+1"
+            onClick={() => switchView("chat")}
+          >
+            Chat
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "dictations"}
+            className={`q-seg-btn${view === "dictations" ? " is-active" : ""}`}
+            title="Diktate (⌘2)"
+            aria-keyshortcuts="Meta+2"
+            onClick={() => switchView("dictations")}
+          >
+            Diktate
+          </button>
+        </div>
+        <div className="q-keys" ref={keysRef}>
+          {hints.slice(0, hintFit.count).map((h) => (
+            <span key={h.keys} className="q-hint" title={hintFit.labels ? undefined : `${h.keys} ${h.label}`}>
+              <Kbd>{h.keys}</Kbd>
+              <span className={hintFit.labels ? undefined : "q-hint-hidden"}>{h.label}</span>
             </span>
-            <span>
-              <Kbd>⌘↩</Kbd> In den Chat
-            </span>
-            <span>
-              <Kbd>⌘1</Kbd> Chat
-            </span>
-            <span>
-              <Kbd>esc</Kbd> Schließen
-            </span>
-          </div>
-          <span className="q-pill q-foot-pill" title="Der Verlauf wird verschlüsselt auf diesem Mac gespeichert (höchstens 100 Diktate, 30 Tage).">
-            <LockIcon size={13} />
-            <span className="q-ellipsis">Nur auf diesem Mac</span>
-          </span>
-        </footer>
-      ) : (
-        <footer className="q-foot">
-          <div className="q-keys">
-            <span>
-              <Kbd>↩</Kbd> Senden
-            </span>
-            {sessionId !== null ? (
-              <span>
-                <Kbd>⌘↩</Kbd> Im Hauptfenster
+          ))}
+          <div className="q-keys-ruler" ref={rulerRef} aria-hidden="true">
+            {hints.map((h) => (
+              <span key={h.keys} className="q-hint">
+                <Kbd>{h.keys}</Kbd>
+                <span>{h.label}</span>
               </span>
-            ) : null}
-            <span>
-              <Kbd>esc</Kbd> Schließen
-            </span>
+            ))}
           </div>
-          <span className="q-pill q-foot-pill" data-icon={note.icon}>
-            {note.icon === "chip" ? <ChipIcon size={13} /> : note.icon === "off" ? <OfflineIcon size={13} /> : <HistoryIcon size={13} />}
-            <span className="q-ellipsis">{note.text}</span>
-          </span>
-        </footer>
-      )}
+        </div>
+        <div className="q-foot-right">
+          {view === "chat" && (hasMessages || sessionId !== null) ? (
+            <>
+              <button type="button" className="q-iconbtn" aria-label="Neuer Chat" title="Neuer Chat (⌘N)" aria-keyshortcuts="Meta+N" onClick={reset}>
+                <ComposeIcon size={14} />
+              </button>
+              {sessionId !== null ? (
+                <button
+                  type="button"
+                  className="q-iconbtn"
+                  aria-label="Im Hauptfenster öffnen"
+                  title={`Im Hauptfenster öffnen (${prefs.sendKey === "cmd-enter" ? "⌘⇧↩" : "⌘↩"})`}
+                  aria-keyshortcuts={prefs.sendKey === "cmd-enter" ? "Meta+Shift+Enter" : "Meta+Enter"}
+                  onClick={openInMain}
+                >
+                  <OpenIcon size={14} />
+                </button>
+              ) : null}
+            </>
+          ) : null}
+          {view === "dictations" ? (
+            <>
+              {dictations && dictations.length > 0 ? (
+                <button type="button" className="q-iconbtn" aria-label="Verlauf leeren" title="Verlauf leeren" onClick={clearDictations}>
+                  <TrashIcon size={14} />
+                </button>
+              ) : null}
+              <span className="q-status" data-tone="idle" title="Der Verlauf wird verschlüsselt auf diesem Mac gespeichert (höchstens 100 Diktate, 30 Tage).">
+                <LockIcon size={12} />
+                <span className="q-ellipsis">Nur auf diesem Mac</span>
+              </span>
+            </>
+          ) : (
+            <span className="q-status" data-tone={chip.tone} title={chip.title}>
+              <span className="q-dot" aria-hidden="true" />
+              <span className="q-ellipsis">{chip.text}</span>
+            </span>
+          )}
+          <button type="button" className="q-iconbtn q-gear" aria-label="Einstellungen zum Schnellfenster" title="Einstellungen zum Schnellfenster" onClick={openSettings}>
+            <GearIcon size={14} />
+          </button>
+        </div>
+      </footer>
     </main>
   );
 }

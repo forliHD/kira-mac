@@ -2,7 +2,7 @@
 
 import { type LocalState } from "../../shared/local-api";
 
-export type SectionId = "instanz" | "kuerzel" | "diktat" | "berechtigungen" | "allgemein" | "ueber";
+export type SectionId = "instanz" | "kuerzel" | "schnellfenster" | "diktat" | "berechtigungen" | "allgemein" | "ueber";
 
 /** Welches Kürzel nach „Ändern“ sofort aufnehmen soll. */
 export type HotkeyName = "quickWindow" | "dictation";
@@ -20,6 +20,8 @@ const ALIASES: Record<string, SectionId> = {
   kuerzel: "kuerzel",
   tastenkuerzel: "kuerzel",
   hotkeys: "kuerzel",
+  schnellfenster: "schnellfenster",
+  quick: "schnellfenster",
   diktat: "diktat",
   dictation: "diktat",
   berechtigungen: "berechtigungen",

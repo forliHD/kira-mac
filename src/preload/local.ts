@@ -6,6 +6,8 @@ import { contextBridge, ipcRenderer } from "electron";
 import { LOCAL_IPC } from "../shared/ipc-local";
 import {
   type DictationHistoryView,
+  type DictationTestResult,
+  type DictationTestState,
   type KiraLocalApi,
   type LocalEvent,
   type LocalState,
@@ -22,7 +24,10 @@ const api: KiraLocalApi = {
   finishOnboarding: () => ipcRenderer.invoke(LOCAL_IPC.finishOnboarding) as Promise<void>,
   setHotkeys: (hotkeys) => ipcRenderer.invoke(LOCAL_IPC.setHotkeys, hotkeys) as Promise<{ state: LocalState; conflicts: string[] }>,
   setDictation: (dictation) => ipcRenderer.invoke(LOCAL_IPC.setDictation, dictation) as Promise<LocalState>,
+  prepareDictationModel: () => ipcRenderer.invoke(LOCAL_IPC.prepareDictationModel) as Promise<LocalState>,
   setGeneral: (general) => ipcRenderer.invoke(LOCAL_IPC.setGeneral, general) as Promise<LocalState>,
+  setQuick: (quick) => ipcRenderer.invoke(LOCAL_IPC.setQuick, quick) as Promise<LocalState>,
+  resetQuickHeights: () => ipcRenderer.invoke(LOCAL_IPC.resetQuickHeights) as Promise<LocalState>,
   requestPermission: (kind) => ipcRenderer.invoke(LOCAL_IPC.requestPermission, kind) as Promise<PermissionsStatus | null>,
   checkForUpdates: () => ipcRenderer.invoke(LOCAL_IPC.checkUpdates) as Promise<UpdateState>,
   installUpdate: () => ipcRenderer.invoke(LOCAL_IPC.installUpdate) as Promise<void>,
@@ -47,6 +52,12 @@ const api: KiraLocalApi = {
   quickHide: () => ipcRenderer.invoke(LOCAL_IPC.quickHide) as Promise<void>,
   quickResize: (height) => ipcRenderer.invoke(LOCAL_IPC.quickResize, height) as Promise<void>,
   quickToggleDictation: () => ipcRenderer.invoke(LOCAL_IPC.quickToggleDictation) as Promise<void>,
+  quickSetTall: (tall) => ipcRenderer.invoke(LOCAL_IPC.quickSetTall, tall) as Promise<void>,
+  quickReinsertDictation: (id) => ipcRenderer.invoke(LOCAL_IPC.quickReinsertDictation, id) as Promise<void>,
+  dictationTestState: () => ipcRenderer.invoke(LOCAL_IPC.dictationTestState) as Promise<{ test: DictationTestState; results: DictationTestResult[] }>,
+  dictationTestStart: (kind) => ipcRenderer.invoke(LOCAL_IPC.dictationTestStart, kind) as Promise<DictationTestState>,
+  dictationTestStop: () => ipcRenderer.invoke(LOCAL_IPC.dictationTestStop) as Promise<void>,
+  dictationTestCancel: () => ipcRenderer.invoke(LOCAL_IPC.dictationTestCancel) as Promise<void>,
   on: (listener) => {
     const handler = (_event: unknown, payload: unknown): void => {
       if (payload && typeof payload === "object" && typeof (payload as LocalEvent).type === "string") listener(payload as LocalEvent);

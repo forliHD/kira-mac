@@ -9,7 +9,10 @@ export const LOCAL_IPC = {
   finishOnboarding: "local:finishOnboarding",
   setHotkeys: "local:setHotkeys",
   setDictation: "local:setDictation",
+  prepareDictationModel: "local:prepareDictationModel",
   setGeneral: "local:setGeneral",
+  setQuick: "local:setQuick",
+  resetQuickHeights: "local:resetQuickHeights",
   requestPermission: "local:requestPermission",
   checkUpdates: "local:checkUpdates",
   installUpdate: "local:installUpdate",
@@ -34,6 +37,12 @@ export const LOCAL_IPC = {
   quickHide: "local:quickHide",
   quickResize: "local:quickResize",
   quickToggleDictation: "local:quickToggleDictation",
+  quickSetTall: "local:quickSetTall",
+  quickReinsertDictation: "local:quickReinsertDictation",
+  dictationTestState: "local:dictationTestState",
+  dictationTestStart: "local:dictationTestStart",
+  dictationTestStop: "local:dictationTestStop",
+  dictationTestCancel: "local:dictationTestCancel",
   // Hauptprozess → lokale Seiten
   event: "local:event",
 } as const;

@@ -14,6 +14,7 @@
 // app=…, partial=…, message=…, live=1 · Diktat auf der 🌐 fn-Taste: fn=1
 // (bzw. fn=permission|unavailable|error), fnaction=none|inputSource|emoji|dictation|default.
 
+import { IDLE_MODEL_DOWNLOAD, type DictationModelDownload } from "../../shared/dictation-model";
 import { FN_HOTKEY, fnSystemActionFrom, isFnHotkey } from "../../shared/hotkey";
 import { type HelperInfo, type PermissionKind, type PermissionsStatus } from "../../shared/helper-types";
 import {
@@ -158,7 +159,8 @@ function initialState(page: MockPage, p: URLSearchParams): LocalState {
             label: "kira.example.de",
           },
     hotkeys: { quickWindow: "Alt+Space", dictation: p.get("fn") ? FN_HOTKEY : "Control+Alt+D" },
-    dictation: { locale: "de-DE", commands: true, dashboardStt: true },
+    dictation: { locale: "de-DE", commands: true, dashboardStt: true, correctVocabulary: true, voiceProcessing: true, inputDevice: null },
+    quick: { position: "top", chatHeightShare: 0.6, rememberHeight: true, heights: { d1: 700 }, textSize: "m", sendKey: "enter", afterSend: "stay", resetAfterMin: 30, suggestions: true, dictationButton: true },
     general: { launchAtLogin: true, notifications: true },
     connection: offline
       ? { online: false, origin: null, kind: null, serverVersion: null, serverHasBridge: false, lastError: MOCK_OFFLINE_REASON, lastOnlineAt: Date.now() - 120_000 }
@@ -180,6 +182,15 @@ function initialState(page: MockPage, p: URLSearchParams): LocalState {
       permissions: helperRunning ? permissions(p.get("perms")) : null,
       hotkeyConflicts: p.get("conflicts") === "1" ? ["Globales Diktat: „⌃⌥D“ wird bereits von einem anderen Programm oder macOS belegt."] : [],
       fnKey: fnKeyStatus(p.get("fn") ? FN_HOTKEY : "Control+Alt+D", p, helperRunning && permissions(p.get("perms")).accessibility),
+      modelDownload:
+        sttMode === "downloading"
+          ? { phase: "downloading", progress: 40, error: null, locale: "de-DE" }
+          : { ...IDLE_MODEL_DOWNLOAD },
+      vocabulary: { count: 4, fetchedAt: Date.now() - 5 * 60_000 },
+      inputDevices: [
+        { uid: "BuiltInMicrophoneDevice", name: "MacBook Pro-Mikrofon", default: true },
+        { uid: "AirPodsPro-UID", name: "AirPods Pro", default: false },
+      ],
     },
     onboarded: !onboarding,
     logPath: "/Users/kira/Library/Logs/KIRA/main.log",
@@ -197,7 +208,20 @@ function hudScript(p: URLSearchParams, emit: (hud: HudState) => void): () => voi
       : phase === "error"
         ? "Spracherkennung abgebrochen: Das Mikrofon ist nicht mehr verfügbar."
         : null);
-  const base: HudState = { phase, level: 0, partial: phase === "listening" || phase === "stopping" ? partial : "", app, message };
+  // Phase 2: Fortschritt (?progress=0.4) und Symbol (?icon=1, graue Kachel) nachstellbar.
+  const progressParam = Number(p.get("progress"));
+  const base: HudState = {
+    phase,
+    level: 0,
+    partial: phase === "listening" || phase === "stopping" ? partial : "",
+    app,
+    appIcon:
+      p.get("icon") === "1"
+        ? "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        : null,
+    message,
+    progress: Number.isFinite(progressParam) && p.has("progress") ? Math.max(0, Math.min(1, progressParam)) : null,
+  };
   const timers: Array<ReturnType<typeof setTimeout>> = [];
   if (p.get("live") === "1" && phase === "listening") {
     const words = partial.split(" ");
@@ -240,6 +264,7 @@ function createMockApi(page: MockPage, p: URLSearchParams): KiraLocalApi {
     connection: { online: true, label: "kira.example.de" },
     dictation: { available: true, active: false, level: 0, partial: "", reason: null },
     hotkeys: state.hotkeys,
+    prefs: { textSize: "m", sendKey: "enter", suggestions: true, dictationButton: true },
   };
   const log = (what: string): void => console.info(`[Attrappe] ${what}`);
 
@@ -282,6 +307,25 @@ function createMockApi(page: MockPage, p: URLSearchParams): KiraLocalApi {
     setDictation: async (dictation) => {
       await delay(150);
       return setState({ ...state, dictation });
+    },
+    prepareDictationModel: async () => {
+      const locale = state.dictation.locale;
+      const step = (download: DictationModelDownload): void => {
+        state = { ...state, dictationStatus: { ...state.dictationStatus, modelDownload: download } };
+        emit({ type: "dictation-model", download });
+      };
+      step({ phase: "downloading", progress: 15, error: null, locale });
+      await delay(400);
+      if (p.get("stt") === "unavailable") {
+        const error = "Diktat-Modell fehlt: Dieser Mac kann das Modell nicht laden (macOS zu alt oder kein Apple-Chip).";
+        step({ phase: "failed", progress: 15, error, locale });
+        throw new Error(error);
+      }
+      step({ phase: "downloading", progress: 70, error: null, locale });
+      await delay(400);
+      const installed = { available: true, engine: "analyzer" as const, assets: "installed" as const, downloadable: true, locale };
+      step({ phase: "idle", progress: null, error: null, locale });
+      return setState({ ...state, dictationStatus: { ...state.dictationStatus, stt: installed, modelDownload: { ...IDLE_MODEL_DOWNLOAD, locale } } });
     },
     setGeneral: async (general) => {
       await delay(150);
@@ -330,6 +374,14 @@ function createMockApi(page: MockPage, p: URLSearchParams): KiraLocalApi {
     quickHide: async () => undefined,
     quickResize: async () => undefined,
     quickToggleDictation: async () => undefined,
+    quickSetTall: async () => undefined,
+    quickReinsertDictation: async () => undefined,
+    setQuick: async (quick) => setState({ ...state, quick: { ...quick, heights: state.quick.heights } }),
+    resetQuickHeights: async () => setState({ ...state, quick: { ...state.quick, heights: {} } }),
+    dictationTestState: async () => ({ test: { active: false, kind: null, reference: "", text: "", partial: "", level: 0, listening: false, startedAt: null, reason: null }, results: [] }),
+    dictationTestStart: async (kind) => ({ active: true, kind, reference: "Vorschau ohne Hülle.", text: "", partial: "", level: 0, listening: false, startedAt: null, reason: null }),
+    dictationTestStop: async () => undefined,
+    dictationTestCancel: async () => undefined,
     dictationHistory: async () => ({ entries: history, persistent: true }),
     copyDictation: async (id) => log(`Diktat kopiert: ${id}`),
     deleteDictation: async (id) => {

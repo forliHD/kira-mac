@@ -1,0 +1,127 @@
+# CI und Release für „KIRA für Mac“.
+# Runner xcode-27: Apple Silicon, Xcode 27, macOS-SDK 27.
+# macos-26 hat nur das SDK 26.5. SpeechAnalyzer liegt darin, LanguageModelError
+# (macOS 27) aber nicht – der Helfer lässt sich damit nicht übersetzen.
+# macos-latest zeigt noch auf macos-15 und hat keines von beiden.
+#
+# Release: nur Push auf main (und workflow_dispatch dort), nach grünem Build.
+# Tag v<Version aus package.json>. Existiert der Release schon, passiert nichts.
+#
+# Geheimnisse (Repository → Settings → Secrets and variables → Actions):
+#   MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD
+#     Developer ID Application als .p12. Fehlen sie, bleibt das Paket unsigniert.
+#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8
+#     App Store Connect API Key, Rohinhalt der .p8. Notarisierung nur, wenn
+#     das Paket signiert wird und alle drei gesetzt sind.
+# Pull Requests aus diesem Repo signieren mit, veröffentlichen aber nicht.
+# Forks bekommen die Geheimnisse nicht. Ist das Zertifikat gesetzt und die
+# Signatur oder Notarisierung misslingt, legt auch main kein Release an.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Prüfen und bauen
+    runs-on: xcode-27
+    timeout-minutes: 90
+    outputs:
+      signed: ${{ steps.signing.outputs.signed }}
+      notarized: ${{ steps.signing.outputs.notarized }}
+    steps:
+      - name: Quelltext
+        uses: actions/checkout@v4
+
+      - name: Xcode mit macOS-SDK 27
+        run: bash scripts/ci-select-xcode.sh
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Abhängigkeiten
+        run: npm ci --no-audit --no-fund
+
+      - name: Typprüfung
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: JavaScript-Tests
+        run: npm test
+
+      - name: Signatur-Plan
+        run: bash scripts/ci-signing.sh self-test && bash scripts/ci-release.sh self-test
+
+      - name: Swift-Tests (inkl. SpeechDownloadError)
+        working-directory: helper
+        run: swift test
+
+      - name: Helfer (Release)
+        run: bash scripts/build-helper.sh
+
+      - name: Signatur vorbereiten
+        id: signing
+        env:
+          # Forks: GitHub liefert die Geheimnisse leer, und CI_ALLOW_SIGNING
+          # bleibt false. Die Werte selbst nicht in den Ausdruck ziehen –
+          # ASC_KEY_P8 enthält Zeilenumbrüche.
+          CI_ALLOW_SIGNING: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'true' || 'false' }}
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: bash scripts/ci-signing.sh prepare
+
+      - name: Produktionspaket
+        run: bash scripts/ci-dist.sh
+
+      - name: Artefakte
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-dist
+          path: dist/ci-artifacts
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Release
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Quelltext
+        uses: actions/checkout@v4
+
+      - name: Paket
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-dist
+          path: dist-artifacts
+
+      - name: GitHub-Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: bash scripts/ci-release.sh dist-artifacts

@@ -4,53 +4,22 @@
 
 import { type ReactNode, useState } from "react";
 
-import { type DictationConfig, type LocalState } from "../../shared/local-api";
-import { localeName, sortLocales } from "../lib/format";
+import { type DictationConfig } from "../../shared/local-api";
+import { formatModelDiagnostics } from "../../shared/dictation-model";
+import { modelCard } from "../lib/dictation-model";
+import { formatLastSeen, localeName, sortLocales } from "../lib/format";
 import { IconAlert, IconCheck, IconDownload, IconRefresh, IconWave } from "../lib/icons";
 import { errorText, localApi } from "../lib/useLocalState";
 import { Button, GlassCard, InfoNote, KbdCombo, SettingRow, StatusCard, Switch, type Tone } from "../lib/ui";
 import { DictationHistoryCard } from "./DictationHistoryCard";
+import { DictationTestCard } from "./DictationTestCard";
 import { type SectionProps } from "./shared";
 
-interface SttView {
-  tone: Tone;
-  icon: ReactNode;
-  title: string;
-  detail: string;
-}
-
-function sttView(state: LocalState, locale: string): SttView {
-  const helper = state.helper;
-  const stt = state.dictationStatus.stt;
-  const language = localeName(locale);
-  if (!helper.running) {
-    return { tone: "err", icon: <IconAlert size={22} />, title: "Diktat nicht verfügbar", detail: helper.lastError ?? "Der Helfer läuft nicht." };
-  }
-  if (!stt) {
-    return { tone: "idle", icon: <IconWave size={22} />, title: "Stand unbekannt", detail: "Der Helfer hat den Stand der Spracherkennung nicht gemeldet." };
-  }
-  if (stt.available && stt.assets !== "downloading") {
-    const info = helper.info;
-    const parts = [
-      info?.chip ?? null,
-      info?.macos ? `macOS ${info.macos}` : state.ui.macos ? `macOS ${state.ui.macos}` : null,
-      stt.assets === "installed" ? `Sprachpaket ${language} geladen` : `Sprache ${language}`,
-      info?.locales.length ? `${info.locales.length} Sprachen verfügbar` : null,
-    ];
-    return { tone: "ok", icon: <IconCheck size={22} strokeWidth={2.4} />, title: "Apple-Spracherkennung bereit", detail: parts.filter(Boolean).join(" · ") };
-  }
-  if (stt.assets === "downloading") {
-    return { tone: "info", icon: <IconDownload size={22} />, title: "Sprachpaket wird geladen", detail: `${language} – das dauert einen Moment, danach geht das Diktat sofort.` };
-  }
-  if (stt.assets === "missing" && stt.engine) {
-    return { tone: "warn", icon: <IconDownload size={22} />, title: "Sprachpaket fehlt", detail: stt.reason ?? `Für ${language} ist auf diesem Mac noch kein Sprachpaket installiert.` };
-  }
-  return {
-    tone: "err",
-    icon: <IconAlert size={22} />,
-    title: "Spracherkennung nicht verfügbar",
-    detail: stt.reason ?? "Die Apple-Spracherkennung ist auf diesem Mac nicht verfügbar. Einen Rückfall auf den Server gibt es für das globale Diktat nicht.",
-  };
+function toneIcon(tone: Tone): ReactNode {
+  if (tone === "ok") return <IconCheck size={22} strokeWidth={2.4} />;
+  if (tone === "info" || tone === "warn") return <IconDownload size={22} />;
+  if (tone === "idle") return <IconWave size={22} />;
+  return <IconAlert size={22} />;
 }
 
 export function DictationSection({ state, setState, refresh, go }: SectionProps): ReactNode {
@@ -59,8 +28,29 @@ export function DictationSection({ state, setState, refresh, go }: SectionProps)
   const [error, setError] = useState<string | null>(null);
   const dictation: DictationConfig = { ...state.dictation, ...pending };
   const locales = sortLocales(state.helper.info?.locales?.length ? state.helper.info.locales : ["de-DE", "en-US"], dictation.locale);
-  const view = sttView(state, dictation.locale);
+  const info = state.helper.info;
+  const card = modelCard({
+    helperRunning: state.helper.running,
+    helperError: state.helper.lastError,
+    stt: state.dictationStatus.stt,
+    download: state.dictationStatus.modelDownload,
+    language: localeName(dictation.locale),
+    chip: info?.chip ?? null,
+    macos: info?.macos ?? state.ui.macos ?? null,
+    localeCount: info?.locales.length ?? 0,
+    offline: !state.connection.online,
+  });
+  const diagnostics = formatModelDiagnostics(state.dictationStatus.stt, {
+    macos: info?.macos ?? state.ui.macos,
+    chip: info?.chip,
+    arch: state.dictationStatus.stt?.diagnostics?.arch ?? null,
+  });
   const accessibility = state.dictationStatus.permissions?.accessibility;
+  const defaultDevice = state.dictationStatus.inputDevices.find((d) => d.default) ?? null;
+  const vocabulary = state.dictationStatus.vocabulary;
+  const vocabularyNote = vocabulary
+    ? `${vocabulary.count} ${vocabulary.count === 1 ? "Begriff" : "Begriffe"} (KIRA, dein Name, eigene Begriffe), Stand ${formatLastSeen(new Date(vocabulary.fetchedAt)).replace(/^um /, "heute um ")} – bleibt verschlüsselt auf diesem Mac, auch offline.`
+    : "Noch keine Begriffe geholt – sie kommen beim ersten Diktat vom Server (Anmeldung im Hauptfenster).";
 
   async function update(patch: Partial<DictationConfig>): Promise<void> {
     setPending((p) => ({ ...p, ...patch }));
@@ -83,20 +73,38 @@ export function DictationSection({ state, setState, refresh, go }: SectionProps)
     }
   }
 
+  async function download(): Promise<void> {
+    setError(null);
+    try {
+      setState(await localApi().prepareDictationModel());
+    } catch (err) {
+      setError(errorText(err));
+      await refresh().catch(() => undefined);
+    }
+  }
+
   return (
     <>
       <StatusCard
         live
-        tone={view.tone}
-        icon={view.icon}
-        title={view.title}
-        detail={view.detail}
+        tone={card.tone}
+        icon={toneIcon(card.tone)}
+        title={card.title}
+        detail={card.detail}
         action={
-          <Button icon={<IconRefresh size={14} strokeWidth={2.3} />} busy={checking} disabled={checking} onClick={() => void recheck()}>
-            Erneut prüfen
-          </Button>
+          <>
+            {card.showDownload ? (
+              <Button variant="primary" icon={<IconDownload size={14} />} busy={card.downloading} disabled={card.downloading} onClick={() => void download()}>
+                {card.downloadLabel}
+              </Button>
+            ) : null}
+            <Button icon={<IconRefresh size={14} strokeWidth={2.3} />} busy={checking || card.downloading} disabled={checking || card.downloading} onClick={() => void recheck()}>
+              Erneut prüfen
+            </Button>
+          </>
         }
       />
+      <p className="g-selectable px-1 text-[11px] leading-snug text-(--g-text-3)">Diagnose: {diagnostics}</p>
 
       <GlassCard>
         <SettingRow title="Sprache" description="Erkennung und Diktierbefehle">
@@ -116,6 +124,35 @@ export function DictationSection({ state, setState, refresh, go }: SectionProps)
             </select>
           )}
         </SettingRow>
+        <SettingRow title="Mikrofon" description="Welches Mikrofon das Diktat öffnet. Systemstandard folgt den Systemeinstellungen → Ton.">
+          {(ids) => (
+            <select
+              className="g-select"
+              aria-labelledby={ids.titleId}
+              aria-describedby={ids.descId}
+              value={dictation.inputDevice ?? ""}
+              onChange={(e) => void update({ inputDevice: e.target.value || null })}
+            >
+              <option value="">Systemstandard{defaultDevice ? ` (${defaultDevice.name})` : ""}</option>
+              {state.dictationStatus.inputDevices.map((d) => (
+                <option key={d.uid} value={d.uid}>
+                  {d.name}
+                </option>
+              ))}
+              {dictation.inputDevice && !state.dictationStatus.inputDevices.some((d) => d.uid === dictation.inputDevice) ? (
+                <option value={dictation.inputDevice}>Nicht angeschlossen ({dictation.inputDevice.slice(0, 24)}…)</option>
+              ) : null}
+            </select>
+          )}
+        </SettingRow>
+        <SettingRow
+          title="Apple-Sprachfilter"
+          description="Echo-Unterdrückung, Rauschfilter und Pegelregelung wie bei FaceTime. Anderer Ton wird dabei leicht gedämpft. Geht es auf diesem Mac nicht, läuft das Diktat ohne."
+        >
+          {(ids) => (
+            <Switch checked={dictation.voiceProcessing} labelledBy={ids.titleId} describedBy={ids.descId} onChange={(v) => void update({ voiceProcessing: v })} />
+          )}
+        </SettingRow>
         <SettingRow
           title="Im Dashboard den Mac nutzen"
           description="Aus: der KIRA-Server erkennt wie im Browser. Scheitert der Mac, übernimmt der Server dieselbe Äußerung. Das Dashboard lädt beim Umschalten neu."
@@ -126,6 +163,14 @@ export function DictationSection({ state, setState, refresh, go }: SectionProps)
         </SettingRow>
         <SettingRow title="Diktierbefehle" description="„Punkt“, „Komma“, „neue Zeile“, „neuer Absatz“, „Anführungszeichen auf/zu“, „das löschen“">
           {(ids) => <Switch checked={dictation.commands} labelledBy={ids.titleId} describedBy={ids.descId} onChange={(v) => void update({ commands: v })} />}
+        </SettingRow>
+        <SettingRow
+          title="Eigene Begriffe nachkorrigieren"
+          description={`Ähnlich Klingendes wird zu deinen Begriffen („Tira“ → KIRA, „Lukas“ → Lucas); Wörter aus dem Wörterbuch bleiben. ${vocabularyNote}`}
+        >
+          {(ids) => (
+            <Switch checked={dictation.correctVocabulary} labelledBy={ids.titleId} describedBy={ids.descId} onChange={(v) => void update({ correctVocabulary: v })} />
+          )}
         </SettingRow>
         <SettingRow title="Globales Diktat" description="Spricht in das vorderste Programm. Eigene Begriffe kommen aus „Mein Konto“ auf dem Server.">
           <KbdCombo accelerator={state.hotkeys.dictation} />
@@ -140,6 +185,8 @@ export function DictationSection({ state, setState, refresh, go }: SectionProps)
           {error}
         </InfoNote>
       ) : null}
+
+      <DictationTestCard state={state} />
 
       <DictationHistoryCard />
 

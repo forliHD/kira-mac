@@ -2,10 +2,22 @@ import { EventEmitter } from "node:events";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { type DictationHelper, type DictationSession, GlobalDictation, buildContextualStrings, isPunctuationOnly, pieceToInsert, splitVocabulary } from "../src/main/dictation";
+import {
+  type DictationHelper,
+  type DictationSession,
+  type DictationSink,
+  GlobalDictation,
+  type StoredVocabulary,
+  type VocabularyStore,
+  buildContextualStrings,
+  isPunctuationOnly,
+  pieceToInsert,
+  splitVocabulary,
+} from "../src/main/dictation";
 import { applyDictationCommands, joinDictation } from "../src/shared/dictationText.js";
-import { type HelperEvent, type HelperInfo } from "../src/shared/helper-types";
+import { type HelperEvent, type HelperInfo, type HelperSttStatus } from "../src/shared/helper-types";
 import { type HudState } from "../src/shared/local-api";
+import { type Logger } from "../src/shared/logger";
 
 describe("Diktierbefehle (Kopie aus dem Dashboard)", () => {
   it("setzt Satzzeichen und Strukturbefehle um", () => {
@@ -64,16 +76,30 @@ class FakeHelper extends EventEmitter implements DictationHelper {
   };
   readonly calls: Array<{ cmd: string; params?: Record<string, unknown> }> = [];
   permissions = { microphone: "granted", speech: "granted", accessibility: true, screenRecording: false };
-  sttStatus: { available: boolean; engine: string | null; assets: string; reason?: string } = { available: true, engine: "analyzer", assets: "installed" };
+  sttStatus: HelperSttStatus = { available: true, engine: "analyzer", assets: "installed" };
   /** Hält `stt.start` auf, bis die Zusage erfüllt ist (Start dauert). */
   sttStartGate: Promise<void> | null = null;
+  /** Wirft `stt.prepare` mit diesem Text. */
+  prepareError: string | null = null;
+  /** Eigener `stt.prepare`-Lauf (Fortschritt), sonst gilt das Modell danach als da. */
+  prepareImpl: (() => Promise<void> | void) | null = null;
   /** Diese Äußerungen spült `stt.stop` noch als `stt.final`, bevor `stt.ended` kommt. */
   flushOnStop: string[] = [];
+  /** Antwort auf `text.knownWords` (Wörter, die das Wörterbuch kennt). */
+  knownWords: string[] = [];
+  /** Symbol des vordersten Programms (`text.frontmost`, Helfer ≥ 0.6.0). */
+  frontmostIcon: string | null = null;
+  /** Hält `text.knownWords` auf (die Wörterbuch-Frage dauert). */
+  knownWordsGate: Promise<void> | null = null;
 
   request<T = unknown>(cmd: string, params?: Record<string, unknown>): Promise<T> {
     this.calls.push({ cmd, params });
     if (cmd === "stt.start" && this.sttStartGate) {
       return this.sttStartGate.then(() => ({ started: true }) as unknown as T);
+    }
+    if (cmd === "text.knownWords") {
+      const answer = { known: this.knownWords } as unknown as T;
+      return this.knownWordsGate ? this.knownWordsGate.then(() => answer) : Promise.resolve(answer);
     }
     if (cmd === "stt.stop") {
       const pending = this.flushOnStop;
@@ -87,12 +113,24 @@ class FakeHelper extends EventEmitter implements DictationHelper {
     switch (cmd) {
       case "stt.status":
         return Promise.resolve(this.sttStatus as unknown as T);
+      case "stt.prepare":
+        if (this.prepareError) return Promise.reject(new Error(this.prepareError));
+        if (this.prepareImpl) {
+          return Promise.resolve(this.prepareImpl()).then(() => ({ assets: "installed" }) as unknown as T);
+        }
+        this.sttStatus = { available: true, engine: "analyzer", assets: "installed" };
+        return Promise.resolve({ assets: "installed" } as unknown as T);
       case "permissions.status":
         return Promise.resolve({ ...this.permissions } as unknown as T);
       case "text.frontmost":
-        return Promise.resolve({ bundleId: "com.apple.mail", name: "Mail" } as unknown as T);
+        return Promise.resolve({ bundleId: "com.apple.mail", name: "Mail", icon: this.frontmostIcon } as unknown as T);
       case "stt.start":
-        return Promise.resolve({ started: true } as unknown as T);
+        return Promise.resolve({
+          started: true,
+          engine: "analyzer",
+          microphone: { voiceProcessing: params?.voiceProcessing === true, device: null },
+          timing: { checksMs: 3, microphoneMs: 61, recognizerMs: 130, totalMs: 194, warm: true },
+        } as unknown as T);
       case "stt.stop":
         queueMicrotask(() => this.emit("event", { event: "stt.ended", stream: "dictation", data: { reason: "stopped" } }));
         return Promise.resolve({ stopped: true } as unknown as T);
@@ -116,20 +154,38 @@ class FakeHelper extends EventEmitter implements DictationHelper {
   }
 }
 
-function build(helper: FakeHelper, opts: { commands?: boolean; vocabulary?: string | null; vocabularyGate?: Promise<void> } = {}) {
+function build(
+  helper: FakeHelper,
+  opts: {
+    commands?: boolean;
+    correction?: boolean;
+    vocabulary?: string | null;
+    displayName?: string | null;
+    vocabularyGate?: Promise<void>;
+    test?: DictationSink;
+    vocabularyStore?: VocabularyStore;
+    log?: Logger;
+    input?: { device: string | null; voiceProcessing: boolean };
+  } = {},
+) {
   const hud = { show: vi.fn(), hide: vi.fn(), update: vi.fn<(s: HudState) => void>() };
   const dictation = new GlobalDictation({
     helper,
     server: {
       fetchVocabulary: async () => {
         if (opts.vocabularyGate) await opts.vocabularyGate;
-        return opts.vocabulary ?? "Musterfirma, Proxmox";
+        return opts.vocabulary === undefined ? "Musterfirma, Proxmox" : opts.vocabulary;
       },
-      fetchDisplayName: async () => "Lucas",
+      fetchDisplayName: async () => (opts.displayName === undefined ? "Lucas" : opts.displayName),
     },
     hud,
+    test: opts.test,
+    vocabularyStore: opts.vocabularyStore,
     getLocale: () => "de-DE",
     getCommandsEnabled: () => opts.commands ?? true,
+    getCorrectionEnabled: () => opts.correction ?? true,
+    getInput: opts.input ? () => opts.input! : undefined,
+    log: opts.log,
     errorLingerMs: 5,
   });
   return { dictation, hud };
@@ -281,6 +337,55 @@ describe("GlobalDictation", () => {
     expect(hud.hide).toHaveBeenCalled();
   });
 
+  it("lädt ein fehlendes Diktat-Modell und startet die Erkennung danach", async () => {
+    const helper = new FakeHelper();
+    helper.sttStatus = {
+      available: false,
+      engine: "analyzer",
+      assets: "missing",
+      downloadable: true,
+      reason: "Diktat-Modell fehlt: Für „de-DE“ ist noch keines installiert.",
+    };
+    const { dictation } = build(helper);
+    await dictation.start();
+    const cmds = helper.calls.map((c) => c.cmd);
+    expect(cmds.indexOf("stt.prepare")).toBeGreaterThanOrEqual(0);
+    expect(cmds.indexOf("stt.prepare")).toBeLessThan(cmds.indexOf("stt.start"));
+    expect(dictation.currentState).toBe("listening");
+  });
+
+  it("zeigt den Ladefortschritt und den Fehler, wenn das Modell nicht ankommt", async () => {
+    const helper = new FakeHelper();
+    helper.sttStatus = { available: false, engine: "analyzer", assets: "missing", downloadable: true, reason: "Diktat-Modell fehlt." };
+    helper.prepareImpl = () => {
+      helper.emitEvent({ event: "stt.progress", data: { locale: "de-DE", fraction: 0.42 } });
+      throw new Error("Das Diktat-Modell für „de-DE“ konnte nicht geladen werden: keine Verbindung zu Apple (NSURLErrorDomain -1009).");
+    };
+    const { dictation, hud } = build(helper);
+    await dictation.start();
+    expect(helper.calls.find((c) => c.cmd === "stt.start")).toBeUndefined();
+    expect(dictation.currentState).toBe("idle");
+    const messages = hud.update.mock.calls.map((c) => c[0].message);
+    expect(messages).toContain("Diktat-Modell wird geladen… 42 %");
+    expect(messages.at(-1)).toMatch(/keine Verbindung zu Apple/);
+  });
+
+  it("lädt auf macOS 14/15 nicht selbst, sondern nennt die Systemeinstellung", async () => {
+    const helper = new FakeHelper();
+    helper.sttStatus = {
+      available: false,
+      engine: "legacy",
+      assets: "missing",
+      downloadable: false,
+      reason: "Diktat-Modell fehlt: Bitte die Sprache unter Systemeinstellungen → Tastatur → Diktat hinzufügen.",
+    };
+    const { dictation } = build(helper);
+    await dictation.start();
+    expect(helper.calls.find((c) => c.cmd === "stt.prepare")).toBeUndefined();
+    expect(helper.calls.find((c) => c.cmd === "stt.start")).toBeUndefined();
+    expect(dictation.currentState).toBe("idle");
+  });
+
   it("ohne Apple-Spracherkennung: klarer Hinweis mit Grund, kein Start, kein Rückfall", async () => {
     const helper = new FakeHelper();
     helper.sttStatus = { available: false, engine: null, assets: "missing", reason: "Sprachmodell für de-DE fehlt." };
@@ -415,5 +520,293 @@ describe("GlobalDictation", () => {
     now = 61 * 60 * 1000;
     await dictation.contextualStrings();
     expect(fetchVocabulary).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Nachkorrektur, Diktat-Test und Wortschatz-Speicher (Phase 1, 0.4.0)", () => {
+  it("korrigiert ein verhörtes Wort gegen den Wortschatz und fragt das Wörterbuch nur nach Tippfehler-Kandidaten", async () => {
+    const helper = new FakeHelper();
+    const { dictation } = build(helper);
+    await dictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Hallo Tira, frag Lugas nach Proxmocks Punkt" } });
+    await tick();
+    await tick();
+    const inserts = helper.calls.filter((c) => c.cmd === "text.insert").map((c) => c.params?.text);
+    expect(inserts).toEqual(["Hallo KIRA, frag Lucas nach Proxmox."]);
+    const asked = helper.calls.find((c) => c.cmd === "text.knownWords");
+    expect(asked?.params).toEqual({ locale: "de-DE", words: ["Tira"] });
+  });
+
+  it("lässt ein Wort stehen, das das Wörterbuch kennt, und merkt sich die Antwort", async () => {
+    const helper = new FakeHelper();
+    helper.knownWords = ["Tira"];
+    const { dictation } = build(helper);
+    await dictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Tira kommt" } });
+    await tick();
+    await tick();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Tira geht" } });
+    await tick();
+    await tick();
+    const inserts = helper.calls.filter((c) => c.cmd === "text.insert").map((c) => c.params?.text);
+    expect(inserts).toEqual(["Tira kommt", " Tira geht"]);
+    expect(helper.calls.filter((c) => c.cmd === "text.knownWords")).toHaveLength(1);
+  });
+
+  it("lässt sich abschalten", async () => {
+    const helper = new FakeHelper();
+    const { dictation } = build(helper, { correction: false });
+    await dictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Hallo Tira" } });
+    await tick();
+    expect(helper.calls.filter((c) => c.cmd === "text.insert").map((c) => c.params?.text)).toEqual(["Hallo Tira"]);
+    expect(helper.calls.some((c) => c.cmd === "text.knownWords")).toBe(false);
+    expect(dictation.correctText("Hallo Tira")).toEqual({ text: "Hallo Tira", replacements: 0 });
+  });
+
+  it("wartet mit dem Ende auf eine laufende Wörterbuch-Frage, damit der letzte Satz nicht fehlt", async () => {
+    const helper = new FakeHelper();
+    let release = (): void => undefined;
+    helper.knownWordsGate = new Promise<void>((r) => (release = r));
+    const { dictation } = build(helper);
+    const sessions: DictationSession[] = [];
+    dictation.on("session", (s) => sessions.push(s));
+    await dictation.start();
+    helper.flushOnStop = ["Letzter Satz mit Tira"];
+    await dictation.stop();
+    await tick();
+    await tick();
+    expect(dictation.currentState).toBe("stopping");
+    expect(sessions).toHaveLength(0);
+    release();
+    await tick();
+    await tick();
+    await tick();
+    expect(dictation.currentState).toBe("idle");
+    expect(sessions[0]?.text).toBe("Letzter Satz mit KIRA");
+    expect(sessions[0]).toMatchObject({ finals: 1, replacements: 1 });
+  });
+
+  it("Ziel „test“: keine Pille, keine Bedienungshilfen nötig, Text geht in die Senke", async () => {
+    const helper = new FakeHelper();
+    helper.permissions = { ...helper.permissions, accessibility: false };
+    const updates: Array<{ active: boolean; reason: string | null }> = [];
+    const inserted: string[] = [];
+    const sink: DictationSink = {
+      update: (s) => updates.push({ active: s.active, reason: s.reason }),
+      insert: (t) => inserted.push(t),
+    };
+    const { dictation, hud } = build(helper, { test: sink });
+    const sessions: DictationSession[] = [];
+    dictation.on("session", (s) => sessions.push(s));
+    await dictation.start("test");
+    expect(dictation.currentTarget).toBe("test");
+    expect(hud.show).not.toHaveBeenCalled();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Hallo Tira Punkt" } });
+    await tick();
+    await tick();
+    expect(inserted).toEqual(["Hallo KIRA."]);
+    expect(helper.calls.some((c) => c.cmd === "text.insert")).toBe(false);
+    await dictation.stop();
+    await tick();
+    await tick();
+    expect(updates.at(-1)).toEqual({ active: false, reason: null });
+    expect(sessions[0]).toMatchObject({ target: "test", app: "Diktat-Test", text: "Hallo KIRA." });
+  });
+
+  it("ohne Test-Senke fällt „test“ auf das Einsetzen zurück", async () => {
+    const helper = new FakeHelper();
+    const { dictation, hud } = build(helper);
+    await dictation.start("test");
+    expect(dictation.currentTarget).toBe("insert");
+    expect(hud.show).toHaveBeenCalled();
+  });
+
+  it("Wortschatz-Speicher: speichert nach dem Holen, dient offline als Rückfall und meldet den Stand", async () => {
+    const saved: StoredVocabulary[] = [];
+    const store: VocabularyStore = { load: () => saved.at(-1) ?? null, save: (v) => void saved.push(v) };
+    const online = build(new FakeHelper(), { vocabularyStore: store });
+    expect(online.dictation.vocabularyInfo()).toBeNull();
+    expect(await online.dictation.contextualStrings()).toEqual(["KIRA", "Lucas", "Musterfirma", "Proxmox"]);
+    expect(saved).toHaveLength(1);
+    expect(online.dictation.vocabularyInfo()).toMatchObject({ count: 4 });
+
+    // Zweite Instanz, keine Sitzung (Server liefert null): der gespeicherte Stand gilt, auch wenn er alt ist.
+    const offline = build(new FakeHelper(), { vocabularyStore: store, vocabulary: null, displayName: null });
+    expect(await offline.dictation.contextualStrings()).toEqual(["KIRA", "Lucas", "Musterfirma", "Proxmox"]);
+    expect(saved).toHaveLength(1);
+    const helper = new FakeHelper();
+    const offlineDictation = build(helper, { vocabularyStore: store, vocabulary: null, displayName: null }).dictation;
+    await offlineDictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Gruß an Lugas" } });
+    await tick();
+    await tick();
+    expect(helper.calls.filter((c) => c.cmd === "text.insert").map((c) => c.params?.text)).toEqual(["Gruß an Lucas"]);
+
+    // Ohne Speicher und ohne Sitzung bleibt die Mindestliste.
+    const bare = build(new FakeHelper(), { vocabulary: null, displayName: null });
+    expect(await bare.dictation.contextualStrings()).toEqual(["KIRA"]);
+  });
+
+  it("protokolliert je Diktat Zähler und Zeiten, nie Text", async () => {
+    const helper = new FakeHelper();
+    const info = vi.fn<(message: string, ...meta: unknown[]) => void>();
+    const log: Logger = { debug: () => undefined, info, warn: () => undefined, error: () => undefined };
+    const { dictation } = build(helper, { log });
+    await dictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Hallo Tira Punkt" } });
+    await tick();
+    await tick();
+    await dictation.stop();
+    await tick();
+    await tick();
+    const entry = info.mock.calls.find((c) => c[0] === "dictation_session");
+    expect(entry?.[1]).toMatchObject({ target: "insert", app: "Mail", locale: "de-DE", finals: 1, replacements: 1, failed: false, chars: 11 });
+    expect(JSON.stringify(entry?.[1])).not.toContain("Hallo");
+    expect(typeof (entry?.[1] as { flushMs: unknown }).flushMs).toBe("number");
+  });
+});
+
+describe("Mikrofon und Pille (Phase 2, 0.6.0)", () => {
+  it("gibt Mikrofon und Sprachfilter an stt.start weiter – nur wenn konfiguriert", async () => {
+    const helper = new FakeHelper();
+    const { dictation } = build(helper, { input: { device: "AirPods-UID", voiceProcessing: true } });
+    await dictation.start();
+    const start = helper.calls.find((c) => c.cmd === "stt.start");
+    expect(start?.params).toMatchObject({ device: "AirPods-UID", voiceProcessing: true });
+    const plain = new FakeHelper();
+    await build(plain, { input: { device: null, voiceProcessing: false } }).dictation.start();
+    const p = plain.calls.find((c) => c.cmd === "stt.start")?.params ?? {};
+    expect(p).toMatchObject({ voiceProcessing: false });
+    expect("device" in p).toBe(false);
+  });
+
+  it("zeigt das Programm-Symbol in der Pille und bestätigt am Ende „Eingefügt · n Zeichen“", async () => {
+    const helper = new FakeHelper();
+    helper.frontmostIcon = "iVBORw0KGgo=";
+    const { dictation, hud } = build(helper);
+    await dictation.start();
+    expect(hud.update.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "listening", app: "Mail", appIcon: "iVBORw0KGgo=" });
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Hallo Welt Punkt" } });
+    await tick();
+    await tick();
+    await dictation.stop();
+    await tick();
+    await tick();
+    const last = hud.update.mock.calls.at(-1)?.[0];
+    expect(last).toMatchObject({ phase: "inserted", message: "Eingefügt · 11 Zeichen" });
+    expect(hud.hide).not.toHaveBeenCalled();
+    await new Promise((r) => setTimeout(r, 950));
+    expect(hud.hide).toHaveBeenCalled();
+  });
+
+  it("ein gescheitertes Einsetzen bleibt als Fehler in der Pille stehen", async () => {
+    const helper = new FakeHelper();
+    const original = helper.request.bind(helper);
+    helper.request = (<T,>(cmd: string, params?: Record<string, unknown>): Promise<T> => {
+      if (cmd === "text.insert") return Promise.reject(new Error("Element nimmt keinen Text an"));
+      return original<T>(cmd, params);
+    }) as typeof helper.request;
+    const { dictation, hud } = build(helper);
+    await dictation.start();
+    helper.emitEvent({ event: "stt.final", stream: "dictation", data: { text: "Hallo" } });
+    await tick();
+    await tick();
+    await dictation.stop();
+    await tick();
+    await tick();
+    expect(hud.update.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "error" });
+    expect(String(hud.update.mock.calls.at(-1)?.[0].message)).toContain("Diktat-Verlauf");
+    expect(hud.hide).not.toHaveBeenCalled();
+  });
+
+  it("ohne Text verschwindet die Pille sofort; der Modell-Download zeigt einen Fortschritt", async () => {
+    const helper = new FakeHelper();
+    const { dictation, hud } = build(helper);
+    await dictation.start();
+    await dictation.stop();
+    await tick();
+    expect(hud.hide).toHaveBeenCalled();
+
+    const loading = new FakeHelper();
+    loading.sttStatus = { available: false, engine: "analyzer", assets: "missing", downloadable: true };
+    loading.prepareImpl = () => {
+      loading.emitEvent({ event: "stt.progress", stream: "", data: { locale: "de-DE", fraction: 0.4 } });
+      loading.sttStatus = { available: true, engine: "analyzer", assets: "installed" };
+    };
+    const built = build(loading);
+    await built.dictation.start();
+    const progress = built.hud.update.mock.calls.map((c) => c[0].progress).filter((p): p is number => typeof p === "number");
+    expect(progress).toContain(0.4);
+    expect(built.hud.update.mock.calls.at(-1)?.[0]).toMatchObject({ phase: "listening", progress: null });
+  });
+});
+
+describe("Schnellstart (0.6.2): Prüfungen parallel, Startzeiten, warmes Mikrofon", () => {
+  it("fragt Modell, Freigaben, Programm und Wörterbuch gleichzeitig und protokolliert die Startphasen", async () => {
+    const helper = new FakeHelper();
+    const info = vi.fn<(message: string, ...meta: unknown[]) => void>();
+    const log: Logger = { debug: () => undefined, info, warn: () => undefined, error: () => undefined };
+    let now = 1_000;
+    const dictation = new GlobalDictation({
+      helper,
+      server: { fetchVocabulary: async () => "Musterfirma", fetchDisplayName: async () => "Lucas" },
+      hud: { show: vi.fn(), hide: vi.fn(), update: vi.fn() },
+      getLocale: () => "de-DE",
+      getCommandsEnabled: () => true,
+      getCorrectionEnabled: () => true,
+      log,
+      now: () => (now += 10),
+    });
+    await dictation.start();
+    expect(dictation.currentState).toBe("listening");
+    // Alle vier Anfragen gehen raus, bevor die erste Antwort da ist (parallel).
+    const cmds = helper.calls.map((c) => c.cmd);
+    const first = ["stt.status", "permissions.status", "text.frontmost"].map((c) => cmds.indexOf(c));
+    expect(first.every((i) => i >= 0 && i < cmds.indexOf("stt.start"))).toBe(true);
+    const entry = info.mock.calls.find((c) => c[0] === "dictation_start");
+    expect(entry?.[1]).toMatchObject({
+      target: "insert",
+      engine: "analyzer",
+      helper: { checksMs: 3, microphoneMs: 61, recognizerMs: 130, totalMs: 194, warm: true },
+    });
+    const meta = entry?.[1] as { checksMs: number; sttStartMs: number; totalMs: number };
+    expect(meta.checksMs).toBeGreaterThan(0);
+    expect(meta.sttStartMs).toBeGreaterThan(0);
+    expect(meta.totalMs).toBeGreaterThanOrEqual(meta.checksMs + meta.sttStartMs);
+    await dictation.stop();
+    await tick();
+    await tick();
+    const session = info.mock.calls.find((c) => c[0] === "dictation_session");
+    expect((session?.[1] as { startMs: unknown }).startMs).toBe(meta.totalMs);
+  });
+
+  it("warm() schickt audio.warm mit Mikrofon und Sprachfilter und bleibt bei alten Helfern still", async () => {
+    const helper = new FakeHelper();
+    const info = vi.fn<(message: string, ...meta: unknown[]) => void>();
+    const log: Logger = { debug: () => undefined, info, warn: () => undefined, error: () => undefined };
+    const { dictation } = build(helper, { input: { device: "AirPods-UID", voiceProcessing: true }, log });
+    await dictation.warm();
+    expect(helper.calls.find((c) => c.cmd === "audio.warm")?.params).toEqual({ voiceProcessing: true, device: "AirPods-UID" });
+    expect(info).toHaveBeenCalledWith("dictation_warm", expect.objectContaining({ state: null }));
+
+    // Älterer Helfer: unbekanntes Kommando – kein Fehler nach außen.
+    helper.request = (() => Promise.reject(new Error("unknown command audio.warm"))) as typeof helper.request;
+    await expect(dictation.warm()).resolves.toBeUndefined();
+  });
+
+  it("warm() tut nichts ohne Mikrofon-Einstellungen oder während eines Diktats", async () => {
+    const plain = new FakeHelper();
+    const { dictation: noInput } = build(plain);
+    await noInput.warm();
+    expect(plain.calls.find((c) => c.cmd === "audio.warm")).toBeUndefined();
+
+    const helper = new FakeHelper();
+    const { dictation } = build(helper, { input: { device: null, voiceProcessing: true } });
+    await dictation.start();
+    expect(dictation.currentState).toBe("listening");
+    await dictation.warm();
+    expect(helper.calls.find((c) => c.cmd === "audio.warm")).toBeUndefined();
+    await dictation.stop();
   });
 });

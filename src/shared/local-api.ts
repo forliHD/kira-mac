@@ -2,7 +2,9 @@
 // hud, offline) und dem Hauptprozess – `window.KiraLocal`, bereitgestellt von
 // src/preload/local.ts. Nicht Teil des Vertrags mit dem Dashboard.
 
-import { type HelperInfo, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "./helper-types";
+import { type DictationModelDownload } from "./dictation-model";
+import { type DictationTestKind, type DictationTestResult, type DictationTestState } from "./dictation-test";
+import { type AudioInputDevice, type HelperInfo, type HelperSttStatus, type PermissionKind, type PermissionsStatus } from "./helper-types";
 
 export interface InstanceConfig {
   internalUrl: string | null;
@@ -21,12 +23,52 @@ export interface DictationConfig {
   commands: boolean;
   /** Diktat im Dashboard über den Apple-Chip (Fähigkeit `stt`); aus = Server wie im Browser. */
   dashboardStt: boolean;
+  /** Nachkorrektur gegen den Wortschatz („Tira“ → KIRA), seit 0.4.0, Standard an. */
+  correctVocabulary: boolean;
+  /** Apples Sprachfilter beim Diktat (Echo, Rauschen, Pegel), seit 0.6.0, Standard an. */
+  voiceProcessing: boolean;
+  /** UID des Mikrofons aus `audio.inputs`; null = Systemstandard. */
+  inputDevice: string | null;
 }
 
 export interface GeneralConfig {
   launchAtLogin: boolean;
   notifications: boolean;
 }
+
+// ── Schnellfenster-Einstellungen (Phase 3, 0.5.0) ─────────────────────
+export type QuickPosition = "top" | "center";
+export type QuickTextSize = "s" | "m" | "l";
+/** ↩ sendet (⇧↩ Zeile) oder ⌘↩ sendet (↩ Zeile; „Im Hauptfenster“ wird dann ⌘⇧↩). */
+export type QuickSendKey = "enter" | "cmd-enter";
+export type QuickAfterSend = "stay" | "hide";
+
+export interface QuickConfig {
+  position: QuickPosition;
+  /** Anteil der Arbeitsfläche für die Gesprächshöhe (Stufe B), 0,4 … 0,9. */
+  chatHeightShare: number;
+  /** Zuletzt gezogene Höhe je Bildschirm merken. */
+  rememberHeight: boolean;
+  /** Gemerkte Gesprächshöhen je Bildschirm-Kennung (pt). */
+  heights: Record<string, number>;
+  textSize: QuickTextSize;
+  sendKey: QuickSendKey;
+  /** Nach dem Senden offen lassen oder schließen (Antwort kommt als Mitteilung). */
+  afterSend: QuickAfterSend;
+  /** Nach so vielen Minuten Ruhe beginnt das nächste Öffnen ein neues Gespräch; 0 = nie. */
+  resetAfterMin: number;
+  suggestions: boolean;
+  /** Mikrofon-Knopf im Eingabefeld zeigen. */
+  dictationButton: boolean;
+}
+
+/** Was die Einstellungen schreiben – die gemerkten Höhen verwaltet die Hülle selbst. */
+export type QuickSettings = Omit<QuickConfig, "heights">;
+
+/** Was die Schnellfenster-Seite von den Einstellungen braucht. */
+export type QuickPrefs = Pick<QuickConfig, "textSize" | "sendKey" | "suggestions" | "dictationButton">;
+
+export const QUICK_RESET_CHOICES: readonly number[] = [0, 10, 30, 60];
 
 export interface ProbeResult {
   url: string;
@@ -66,6 +108,12 @@ export interface DictationStatus {
   permissions: PermissionsStatus | null;
   hotkeyConflicts: string[];
   fnKey: FnKeyStatus;
+  /** Laufender oder gescheiterter Download des Diktat-Modells. */
+  modelDownload: DictationModelDownload;
+  /** Wortschatz für die Nachkorrektur: Anzahl und Stand (null = noch nie geholt). */
+  vocabulary: { count: number; fetchedAt: number } | null;
+  /** Mikrofone dieses Macs (leer, wenn der Helfer sie nicht kennt). */
+  inputDevices: AudioInputDevice[];
 }
 
 /** Was macOS selbst beim Drücken von 🌐 tut (`AppleFnUsageType`); `default` = nie geändert. */
@@ -101,6 +149,7 @@ export interface LocalState {
   hotkeys: HotkeyConfig;
   dictation: DictationConfig;
   general: GeneralConfig;
+  quick: QuickConfig;
   connection: ConnectionState;
   update: UpdateState;
   helper: HelperState;
@@ -109,14 +158,19 @@ export interface LocalState {
   logPath: string;
 }
 
-export type HudPhase = "starting" | "listening" | "stopping" | "unavailable" | "error";
+/** `inserted`: kurze Bestätigung am Ende („Eingefügt · 42 Zeichen“), dann weg. */
+export type HudPhase = "starting" | "listening" | "stopping" | "inserted" | "unavailable" | "error";
 
 export interface HudState {
   phase: HudPhase;
   level: number;
   partial: string;
   app: string | null;
+  /** Symbol des Zielprogramms (PNG, Base64) oder null. */
+  appIcon: string | null;
   message: string | null;
+  /** Fortschritt 0…1 (Modell-Download), sonst null. */
+  progress: number | null;
 }
 
 // ── Schnellfenster (nativer Mini-Chat) ─────────────────────────────────
@@ -169,6 +223,7 @@ export interface QuickState {
   connection: { online: boolean; label: string };
   dictation: QuickDictation;
   hotkeys: HotkeyConfig;
+  prefs: QuickPrefs;
 }
 
 export type LocalEvent =
@@ -187,8 +242,12 @@ export type LocalEvent =
   | { type: "access-login"; status: "error" | "expired"; message: string }
   /** Der Diktat-Verlauf hat sich geändert (neues Diktat, gelöscht). */
   | { type: "dictation-history" }
+  /** Fortschritt oder Fehler beim Laden des Diktat-Modells (ohne den ganzen Zustand neu zu holen). */
+  | { type: "dictation-model"; download: DictationModelDownload }
   /** Schnellfenster: Ansicht wechseln (Menüleiste „Diktat-Verlauf…“ → Diktate). */
-  | { type: "quick-view"; view: "chat" | "dictations" };
+  | { type: "quick-view"; view: "chat" | "dictations" }
+  /** Diktat-Test (Einstellungen → Diktat): Lauf und bisherige Ergebnisse. */
+  | { type: "dictation-test"; test: DictationTestState; results: DictationTestResult[] };
 
 /** Ein Eintrag im Diktat-Verlauf (nur auf diesem Mac, src/main/dictation-history.ts). */
 export interface DictationEntry {
@@ -209,6 +268,8 @@ export interface DictationHistoryView {
   persistent: boolean;
 }
 
+export type { DictationTestKind, DictationTestResult, DictationTestState };
+
 export interface KiraLocalApi {
   getState(): Promise<LocalState>;
   probe(url: string): Promise<ProbeResult>;
@@ -216,7 +277,19 @@ export interface KiraLocalApi {
   finishOnboarding(): Promise<void>;
   setHotkeys(hotkeys: HotkeyConfig): Promise<{ state: LocalState; conflicts: string[] }>;
   setDictation(dictation: DictationConfig): Promise<LocalState>;
+  /** Fehlendes Diktat-Modell jetzt laden. Wirft mit der deutschen Ursache, wenn es scheitert. */
+  prepareDictationModel(): Promise<LocalState>;
+  // Diktat-Test (Einstellungen → Diktat, src/main/dictation-test.ts)
+  dictationTestState(): Promise<{ test: DictationTestState; results: DictationTestResult[] }>;
+  /** Vorlage bauen und die Erkennung starten; Fortschritt kommt als Ereignis `dictation-test`. */
+  dictationTestStart(kind: DictationTestKind): Promise<DictationTestState>;
+  /** Erkennung beenden; das Ergebnis kommt als Ereignis `dictation-test`, sobald der Helfer gespült hat. */
+  dictationTestStop(): Promise<void>;
+  dictationTestCancel(): Promise<void>;
   setGeneral(general: GeneralConfig): Promise<LocalState>;
+  setQuick(quick: QuickSettings): Promise<LocalState>;
+  /** Gemerkte Gesprächshöhen vergessen (zurück zum eingestellten Anteil). */
+  resetQuickHeights(): Promise<LocalState>;
   requestPermission(kind: PermissionKind): Promise<PermissionsStatus | null>;
   checkForUpdates(): Promise<UpdateState>;
   /** Geladenes Update jetzt installieren (App startet neu). */
@@ -251,6 +324,10 @@ export interface KiraLocalApi {
   /** Gewünschte Höhe des Inhalts in CSS-Pixeln; der Hauptprozess begrenzt sie auf den Bildschirm. */
   quickResize(height: number): Promise<void>;
   quickToggleDictation(): Promise<void>;
+  /** Stufe B (Gespräch, Diktate): das Fenster nimmt die Gesprächshöhe an und lässt sich unten ziehen; false = Leiste folgt dem Inhalt. */
+  quickSetTall(tall: boolean): Promise<void>;
+  /** Diktat aus dem Verlauf in das Programm einsetzen, das vor dem Schnellfenster vorn war (blendet das Fenster aus). */
+  quickReinsertDictation(id: string): Promise<void>;
   on(listener: (event: LocalEvent) => void): () => void;
 }
 

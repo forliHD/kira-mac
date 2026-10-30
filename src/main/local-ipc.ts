@@ -4,6 +4,7 @@
 
 import { type IpcMainInvokeEvent, app, ipcMain, shell } from "electron";
 
+import { type DictationTestKind, type DictationTestResult, type DictationTestState, isDictationTestKind } from "../shared/dictation-test";
 import { type PermissionKind, type PermissionsStatus } from "../shared/helper-types";
 import { LOCAL_IPC } from "../shared/ipc-local";
 import {
@@ -13,9 +14,11 @@ import {
   type HotkeyConfig,
   type LocalState,
   type ProbeResult,
+  type QuickSettings,
   type QuickState,
   type UpdateState,
 } from "../shared/local-api";
+import { parseQuickSettings } from "../shared/quick-settings";
 import { scoped } from "./log";
 
 const log = scoped("local-ipc");
@@ -27,7 +30,10 @@ export interface LocalIpcContext {
   finishOnboarding: () => Promise<void>;
   setHotkeys: (hotkeys: HotkeyConfig) => Promise<string[]>;
   setDictation: (dictation: DictationConfig) => Promise<void>;
+  prepareDictationModel: () => Promise<LocalState>;
   setGeneral: (general: GeneralConfig) => Promise<void>;
+  setQuick: (quick: QuickSettings) => Promise<void>;
+  resetQuickHeights: () => Promise<void>;
   requestPermission: (kind: PermissionKind) => Promise<PermissionsStatus | null>;
   checkForUpdates: () => Promise<UpdateState>;
   installUpdate: () => void;
@@ -47,6 +53,12 @@ export interface LocalIpcContext {
     remove: (id: string) => DictationHistoryView;
     clear: () => DictationHistoryView;
   };
+  dictationTest: {
+    state: () => { test: DictationTestState; results: DictationTestResult[] };
+    start: (kind: DictationTestKind) => Promise<DictationTestState>;
+    stop: () => Promise<void>;
+    cancel: () => Promise<void>;
+  };
   quick: {
     getState: () => QuickState;
     send: (text: string) => Promise<void>;
@@ -56,6 +68,8 @@ export interface LocalIpcContext {
     hide: () => void;
     resize: (height: number) => void;
     toggleDictation: () => Promise<void>;
+    setTall: (tall: boolean) => void;
+    reinsertDictation: (id: string) => Promise<void>;
   };
 }
 
@@ -104,15 +118,38 @@ export function registerLocalIpc(ctx: LocalIpcContext): void {
     LOCAL_IPC.setDictation,
     guard(async (value: unknown) => {
       const v = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
-      await ctx.setDictation({ locale: str(v.locale) || "de-DE", commands: bool(v.commands, true), dashboardStt: bool(v.dashboardStt, true) });
+      await ctx.setDictation({
+        locale: str(v.locale) || "de-DE",
+        commands: bool(v.commands, true),
+        dashboardStt: bool(v.dashboardStt, true),
+        correctVocabulary: bool(v.correctVocabulary, true),
+        voiceProcessing: bool(v.voiceProcessing, true),
+        inputDevice: strOrNull(v.inputDevice),
+      });
       return ctx.getState();
     }),
   );
+  ipcMain.handle(LOCAL_IPC.prepareDictationModel, guard(() => ctx.prepareDictationModel()));
   ipcMain.handle(
     LOCAL_IPC.setGeneral,
     guard(async (value: unknown) => {
       const v = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
       await ctx.setGeneral({ launchAtLogin: bool(v.launchAtLogin, false), notifications: bool(v.notifications, true) });
+      return ctx.getState();
+    }),
+  );
+  ipcMain.handle(
+    LOCAL_IPC.setQuick,
+    guard(async (value: unknown) => {
+      const current = (await ctx.getState()).quick;
+      await ctx.setQuick(parseQuickSettings(value, current));
+      return ctx.getState();
+    }),
+  );
+  ipcMain.handle(
+    LOCAL_IPC.resetQuickHeights,
+    guard(async () => {
+      await ctx.resetQuickHeights();
       return ctx.getState();
     }),
   );
@@ -185,5 +222,23 @@ export function registerLocalIpc(ctx: LocalIpcContext): void {
     }),
   );
   ipcMain.handle(LOCAL_IPC.quickToggleDictation, guard(() => ctx.quick.toggleDictation()));
+  ipcMain.handle(
+    LOCAL_IPC.quickSetTall,
+    guard((tall: unknown) => ctx.quick.setTall(tall === true)),
+  );
+  ipcMain.handle(
+    LOCAL_IPC.quickReinsertDictation,
+    guard((id: unknown) => ctx.quick.reinsertDictation(str(id))),
+  );
+  ipcMain.handle(LOCAL_IPC.dictationTestState, guard(() => ctx.dictationTest.state()));
+  ipcMain.handle(
+    LOCAL_IPC.dictationTestStart,
+    guard((kind: unknown) => {
+      if (!isDictationTestKind(kind)) throw new Error("Unbekannte Testart.");
+      return ctx.dictationTest.start(kind);
+    }),
+  );
+  ipcMain.handle(LOCAL_IPC.dictationTestStop, guard(() => ctx.dictationTest.stop()));
+  ipcMain.handle(LOCAL_IPC.dictationTestCancel, guard(() => ctx.dictationTest.cancel()));
   log.info("local_ipc_registered");
 }

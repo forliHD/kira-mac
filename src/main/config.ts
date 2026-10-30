@@ -8,8 +8,10 @@ import { dirname, join } from "node:path";
 
 import { app } from "electron";
 
+import { type DictationTestResult, TEST_RESULTS_MAX, isDictationTestResult } from "../shared/dictation-test";
 import { FN_HOTKEY, isFnHotkey } from "../shared/hotkey";
-import { type DictationConfig, type GeneralConfig, type HotkeyConfig, type InstanceConfig } from "../shared/local-api";
+import { parseQuickSettings } from "../shared/quick-settings";
+import { type DictationConfig, type GeneralConfig, type HotkeyConfig, type InstanceConfig, type QuickConfig } from "../shared/local-api";
 import { scoped } from "./log";
 
 const log = scoped("config");
@@ -29,10 +31,14 @@ export interface AppConfig {
   hotkeys: HotkeyConfig;
   dictation: DictationConfig;
   general: GeneralConfig;
+  /** Schnellfenster (Phase 3, 0.5.0). */
+  quick: QuickConfig;
   onboarded: boolean;
   mainWindow: WindowBounds | null;
   /** Zuletzt gesehene Server-Version – entscheidet beim Start über die eingelassene Titelleiste. */
   lastServerVersion: string | null;
+  /** Ergebnisse des Diktat-Tests (nur Zahlen und Einstellungen, neueste zuerst, höchstens TEST_RESULTS_MAX). */
+  dictationTests: DictationTestResult[];
 }
 
 export const DEFAULT_HOTKEYS: HotkeyConfig = {
@@ -44,17 +50,32 @@ export const DEFAULT_HOTKEYS: HotkeyConfig = {
   dictation: "Control+Alt+D",
 };
 
+export const DEFAULT_QUICK: QuickConfig = {
+  position: "top",
+  chatHeightShare: 0.6,
+  rememberHeight: true,
+  heights: {},
+  textSize: "m",
+  sendKey: "enter",
+  afterSend: "stay",
+  resetAfterMin: 30,
+  suggestions: true,
+  dictationButton: true,
+};
+
 export function defaultConfig(): AppConfig {
   return {
     version: 1,
     deviceId: randomUUID(),
     instance: { internalUrl: null, externalUrl: null, label: "KIRA" },
     hotkeys: { ...DEFAULT_HOTKEYS },
-    dictation: { locale: "de-DE", commands: true, dashboardStt: true },
+    dictation: { locale: "de-DE", commands: true, dashboardStt: true, correctVocabulary: true, voiceProcessing: true, inputDevice: null },
     general: { launchAtLogin: false, notifications: true },
+    quick: { ...DEFAULT_QUICK, heights: {} },
     onboarded: false,
     mainWindow: null,
     lastServerVersion: null,
+    dictationTests: [],
   };
 }
 
@@ -76,6 +97,12 @@ export function normalizeConfig(raw: unknown): AppConfig {
   const hk = (r.hotkeys && typeof r.hotkeys === "object" ? r.hotkeys : {}) as Record<string, unknown>;
   const dict = (r.dictation && typeof r.dictation === "object" ? r.dictation : {}) as Record<string, unknown>;
   const gen = (r.general && typeof r.general === "object" ? r.general : {}) as Record<string, unknown>;
+  const quick = (r.quick && typeof r.quick === "object" ? r.quick : {}) as Record<string, unknown>;
+  const heightsRaw = (quick.heights && typeof quick.heights === "object" ? quick.heights : {}) as Record<string, unknown>;
+  const heights: Record<string, number> = {};
+  for (const [key, value] of Object.entries(heightsRaw)) {
+    if (typeof value === "number" && Number.isFinite(value) && value >= 100 && value <= 10_000 && /^[\w.-]{1,40}$/.test(key)) heights[key] = Math.round(value);
+  }
   const mw = r.mainWindow && typeof r.mainWindow === "object" ? (r.mainWindow as Record<string, unknown>) : null;
   const bounds: WindowBounds | null =
     mw && typeof mw.width === "number" && typeof mw.height === "number"
@@ -102,14 +129,19 @@ export function normalizeConfig(raw: unknown): AppConfig {
       locale: str(dict.locale, base.dictation.locale) || base.dictation.locale,
       commands: bool(dict.commands, base.dictation.commands),
       dashboardStt: bool(dict.dashboardStt, base.dictation.dashboardStt),
+      correctVocabulary: bool(dict.correctVocabulary, base.dictation.correctVocabulary),
+      voiceProcessing: bool(dict.voiceProcessing, base.dictation.voiceProcessing),
+      inputDevice: strOrNull(dict.inputDevice),
     },
     general: {
       launchAtLogin: bool(gen.launchAtLogin, base.general.launchAtLogin),
       notifications: bool(gen.notifications, base.general.notifications),
     },
+    quick: { ...parseQuickSettings(quick, DEFAULT_QUICK), heights },
     onboarded: bool(r.onboarded, false),
     mainWindow: bounds,
     lastServerVersion: strOrNull(r.lastServerVersion),
+    dictationTests: Array.isArray(r.dictationTests) ? r.dictationTests.filter(isDictationTestResult).slice(0, TEST_RESULTS_MAX) : [],
   };
 }
 

@@ -137,14 +137,25 @@ final class DispatcherTests: XCTestCase {
         XCTAssertTrue(objects.allSatisfy { ($0["ok"] as? Bool) == true })
     }
 
+    /// `audio.warm` fragt nie selbst nach der Mikrofon-Freigabe: ohne erteilte
+    /// Freigabe antwortet es sofort mit `state: "permission"`.
+    func testAudioWarmAnswersWithState() async throws {
+        await dispatcher.handle(line: #"{"id":"w","cmd":"audio.warm","params":{"voiceProcessing":false}}"#)
+        let objects = try collector.objects()
+        let response = try XCTUnwrap(objects.first { $0["id"] as? String == "w" })
+        XCTAssertEqual(response["ok"] as? Bool, true)
+        let state = try XCTUnwrap((response["result"] as? [String: Any])?["state"] as? String)
+        XCTAssertTrue(["permission", "warm", "configured", "busy"].contains(state), state)
+    }
+
     func testCommandTableCoversProtocol() {
         let expected: Set<String> = [
             "ping", "info", "shutdown",
             "permissions.status", "permissions.request",
             "stt.status", "stt.prepare", "stt.file", "stt.start", "stt.stop",
             "llm.status", "llm.generate", "llm.stream", "llm.cancel",
-            "audio.system.start", "audio.system.stop",
-            "text.insert", "text.frontmost",
+            "audio.system.start", "audio.system.stop", "audio.inputs", "audio.warm",
+            "text.insert", "text.frontmost", "text.knownWords",
             "fn.watch", "fn.status",
         ]
         XCTAssertEqual(Set(dispatcher.commands), expected)

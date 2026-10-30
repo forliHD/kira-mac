@@ -30,16 +30,51 @@ export interface PermissionsStatus {
 
 export type PermissionKind = "microphone" | "speech" | "accessibility" | "screenRecording";
 
+/** Maschinenlesbar, warum `stt.status` nicht bereit ist (docs/helper-protocol.md). */
+export type SttAssetCode =
+  | "ok"
+  | "unsupported_os"
+  | "unsupported_locale"
+  | "assets_missing"
+  | "downloading"
+  | "unavailable"
+  | "unknown";
+
+/** Was der Helfer zum Stand des Diktat-Modells mitschickt – fürs Protokoll und die Einstellungen. */
+export interface SttDiagnostics {
+  macos: string;
+  /** `arm64` oder `x86_64`. */
+  arch: string;
+  chip: string;
+  locale: string;
+  /** Bevorzugte Sprachen des Macs, kommagetrennt. */
+  preferred?: string;
+  /** Rohzustand von AssetInventory, bei zwei Modulen `stream=…,file=…`. */
+  assetState: string;
+  speech: string;
+  microphone: string;
+  downloadable: boolean;
+}
+
 export interface HelperSttStatus {
   available: boolean;
   engine: "analyzer" | "legacy" | null;
   assets: "installed" | "downloading" | "missing";
   reason?: string;
+  code?: SttAssetCode;
+  /** Download aus der App möglich (SpeechAnalyzer). Ältere Helfer lassen das weg. */
+  downloadable?: boolean;
+  locale?: string;
+  /** 0…1, nur während eines Downloads, sonst null. */
+  progress?: number | null;
+  diagnostics?: SttDiagnostics;
 }
 
 export interface SttFileResult {
   text: string;
   durationMs: number;
+  /** Länge der Aufnahme (Helfer ≥ 0.3.x); fehlt bei älteren Helfern. */
+  audioMs?: number;
   engine: string;
 }
 
@@ -51,6 +86,26 @@ export interface SttEnded {
 export interface FrontmostApp {
   bundleId: string;
   name: string;
+  /** PNG 64 × 64 px als Base64 (Helfer ≥ 0.6.0), sonst fehlt es. */
+  icon?: string | null;
+}
+
+/** Ein Mikrofon dieses Macs (`audio.inputs`, Helfer ≥ 0.6.0). */
+export interface AudioInputDevice {
+  uid: string;
+  name: string;
+  /** Systemstandard-Eingabe. */
+  default: boolean;
+}
+
+/** Antwort auf `stt.start`. */
+export interface SttStartResult {
+  started: boolean;
+  engine?: string;
+  /** Helfer ≥ 0.6.0: was die Aufnahme tatsächlich nutzt. */
+  microphone?: { voiceProcessing: boolean; device: string | null };
+  /** Helfer ≥ 0.6.2: Dauer der Startphasen in ms; `warm` = Audio-Engine war schon eingerichtet. */
+  timing?: { checksMs: number; microphoneMs: number; recognizerMs: number; totalMs: number; warm: boolean };
 }
 
 export interface HelperErrorShape {
