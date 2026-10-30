@@ -300,3 +300,11 @@ docs/                helper-protocol.md
   `tests/bridge.test.ts` prüft den Preload Feld für Feld dagegen.
 - **Electron ↔ Swift-Helfer:** `docs/helper-protocol.md` (Version 1).
   `tests/helper.test.ts` prüft den Rahmen mit einem gefälschten Prozess.
+
+## Lizenz
+
+**© 2026 Lucas Reiser (forliHD) — alle Rechte vorbehalten.** Er ist
+zur Ansicht veröffentlicht (Source-Available), darf aber ohne schriftliche
+Genehmigung nicht kopiert, verändert, weiterverbreitet oder als eigenes Werk
+ausgegeben werden. Einzelheiten in [LICENSE](LICENSE). Schwachstellen bitte
+privat melden, siehe [SECURITY.md](SECURITY.md).
