@@ -1,0 +1,31 @@
+# Wöchentliche Versionsupdates, ein Eintrag pro vorhandenem Ökosystem:
+# npm (package.json im Wurzelverzeichnis) und Swift Package Manager
+# (helper/Package.swift). GitHub Actions und Docker haben hier keine
+# Manifeste und sind deshalb nicht eingetragen.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "swift"
+    directory: "/helper"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
