@@ -6,6 +6,61 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-11-03
+
+### Sicherheit
+- **Electron 44.10.0 → 44.10.1**
+  ([#19](https://github.com/forliHD/kira-mac/pull/19)). 18 zurückportierte
+  Fixes aus Chromium (M156), Dawn, Skia und V8
+  ([electron#55492](https://github.com/electron/electron/pull/55492)),
+  darunter ein Use-after-free in MediaStream-Spuren, weitere gesperrte Pfade
+  in der Sperrliste der File System Access API, die Ursprungsprüfung von
+  `relatedTarget` bei Zeigerereignissen, ein Dawn-Sicherheitsfix und eine
+  Obergrenze für JS-Stack-Frames in V8. Node.js bleibt 24.22.1. Sonst nur
+  DevTools-„Speichern“ und schnellere `net.fetch`-Aufrufe; keine
+  funktionalen Änderungen in der App.
+- **electron-updater 6.8.9 → 6.8.11**
+  ([#20](https://github.com/forliHD/kira-mac/pull/20)). Laufzeit-Abhängigkeit,
+  steckt in der gepackten App. 6.8.11 verwirft eine zwischengespeicherte
+  `update-info.json` samt Update-Cache, wenn der Dateiname fehlt oder kein
+  reiner Dateiname ist (etwa `../…`) – ein zwischengespeichertes Update lässt
+  sich nicht mehr außerhalb des Update-Ordners auflösen
+  ([electron-builder#10300](https://github.com/electron-userland/electron-builder/pull/10300)).
+  6.8.10 repariert Differenz-Downloads (Blockmap): Mehrbereichs-Antworten mit
+  LF-Zeilenenden, ein über zwei Datenblöcke geteiltes Kopfzeilen-Ende, ein
+  hängengebliebener 10-s-Wächter und eine veraltete `current.blockmap` im
+  Cache ließen sie auf den vollen Download zurückfallen.
+- **Build-Werkzeuge** (nur devDependencies, nicht in der gepackten App):
+  - **undici 6.29.0 → 6.29.1**
+    ([#18](https://github.com/forliHD/kira-mac/pull/18), über electron-builder
+    → @electron/rebuild → node-gyp): CVE-2026-87018, CVE-2026-109383,
+    CVE-2026-109869 (hoch), CVE-2026-109924, CVE-2026-109932 (mittel).
+  - **fast-uri 3.1.8 → 3.1.9**
+    ([#17](https://github.com/forliHD/kira-mac/pull/17), über electron-builder
+    → ajv): GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr (mittel),
+    GHSA-xhq7-xmqj-769h, GHSA-333x-w4r6-6crp (niedrig).
+  - Hinweis: `npm audit` meldet weiter minimatch < 11.0.1
+    (GHSA-g3hv-75wg-m249, mittel, seit 30.10.2026) über eslint und
+    electron-builder. Für die Zweige 3.x, 5.x, 9.x und 10.x gibt es keine
+    behobene Version; das wartet auf die Werkzeuge selbst.
+
+### Geändert
+- **Abhängigkeiten** (Dependabot-Gruppe `minor-and-patch`,
+  [#20](https://github.com/forliHD/kira-mac/pull/20)): electron-builder
+  26.15.3 → 26.18.0, eslint 10.11.0 → 10.14.0, typescript-eslint 8.71.0 →
+  8.72.1, vitest 5.0.3 → 5.0.5, react/react-dom 19.3.0 → 19.3.1 (gebündelt in
+  den lokalen Seiten; 19.3.1 ändert nur das Protokoll der Server Components,
+  die die App nicht nutzt).
+- **Lizenz** ([#2](https://github.com/forliHD/kira-mac/pull/2)): eigene
+  Source-Available-Lizenz in `LICENSE` (`"license": "SEE LICENSE IN
+  LICENSE"`), Abschnitt „Lizenz“ im README; `SECURITY.md` beschreibt die
+  private Meldung von Schwachstellen.
+- **Dependabot** ([#1](https://github.com/forliHD/kira-mac/pull/1)):
+  wöchentlich für npm (`/`) und Swift (`/helper`); Minor und Patch als
+  Gruppe `minor-and-patch`, Major-Sprünge einzeln.
+
+Der Helfer bleibt bei 0.6.2.
+
 ## [0.6.7] - 2026-10-27
 
 ### Sicherheit

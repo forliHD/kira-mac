@@ -1,3 +1,14 @@
+## KIRA für Mac 0.6.8
+
+**Sicherheit**
+
+- Electron auf 44.10.1 gehoben. Das schließt weitere Sicherheitslücken in
+  Chromium, V8, Skia und Dawn.
+- Die Update-Funktion öffnet ein zwischengespeichertes Update nur noch aus
+  ihrem eigenen Ordner. Teil-Downloads von Updates klappen zuverlässiger.
+
+In der App ändert sich sonst nichts.
+
 ## KIRA für Mac 0.6.7
 
 **Sicherheit**
