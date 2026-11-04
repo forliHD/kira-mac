@@ -1,3 +1,12 @@
+## KIRA für Mac 0.6.9
+
+**Sicherheit**
+
+- Electron auf 44.10.2 gehoben. Das bringt Node.js 24.22.2 und schließt
+  weitere Sicherheitslücken in Chromium, V8, Skia, PDFium und WebRTC.
+
+In der App ändert sich sonst nichts.
+
 ## KIRA für Mac 0.6.8
 
 **Sicherheit**

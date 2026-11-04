@@ -6,6 +6,20 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.6.9] - 2026-11-04
+
+### Sicherheit
+- **Electron 44.10.1 → 44.10.2**
+  ([#29](https://github.com/forliHD/kira-mac/pull/29)). Bringt Node.js
+  24.22.2 ([electron#55473](https://github.com/electron/electron/pull/55473))
+  und zurückportierte Fixes aus ANGLE, Chromium, libaom, libvpx, PDFium, Skia,
+  V8 und WebRTC ([electron#55515](https://github.com/electron/electron/pull/55515)).
+  Sonst nur ein Absturz-Fix unter Wayland, der die Mac-App nicht betrifft.
+  Ersetzt Dependabot-[#22](https://github.com/forliHD/kira-mac/pull/22)
+  (Electron 45.2.1 mit Node.js 24.22.1).
+
+Der Helfer bleibt bei 0.6.2.
+
 ## [0.6.8] - 2026-11-03
 
 ### Sicherheit
