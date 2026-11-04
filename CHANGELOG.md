@@ -6,6 +6,23 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.6.10] - 2026-11-04
+
+### Sicherheit
+- **minimatch → 11.0.4** für alle Vorkommen (npm-`overrides`), behebt
+  GHSA-g3hv-75wg-m249 / CVE-2026-118764 (mittel, Denial of Service über
+  „globparts amplification“, betroffen < 11.0.1). minimatch kam nur über
+  Build-Werkzeuge (electron-builder → app-builder-lib, @electron/asar,
+  @electron/universal, ejs/jake; eslint, typescript-eslint) und steckt nicht
+  in der gepackten App. Für die bisherigen Zweige 3.x, 5.x, 9.x und 10.x gibt
+  es keine behobene Version. Hinweis: @electron/asar 3.x, glob 7, dir-compare
+  und filelist erwarten die alte Aufruf-API von minimatch 3/5; die
+  betroffenen Pfade (asar-Erzeugung mit `unpack`-Mustern, Universal- und
+  Windows-Builds, jake-CLI) nutzt der arm64-Build von „KIRA für Mac“ nicht.
+  `npm audit` meldet jetzt 0 Schwachstellen.
+
+In der App ändert sich nichts. Der Helfer bleibt bei 0.6.2.
+
 ## [0.6.9] - 2026-11-04
 
 ### Sicherheit
