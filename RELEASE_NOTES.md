@@ -1,3 +1,11 @@
+## KIRA für Mac 0.6.10
+
+**Sicherheit**
+
+- Eine Sicherheitslücke in den Build-Werkzeugen (minimatch) geschlossen.
+
+In der App ändert sich sonst nichts.
+
 ## KIRA für Mac 0.6.9
 
 **Sicherheit**
