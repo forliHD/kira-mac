@@ -6,6 +6,16 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+## [0.6.11] - 2026-11-11
+
+### Sicherheit
+- **Electron 44.10.2 → 44.11.1**. Bringt zurückportierte Fixes aus Chromium,
+  Dawn und V8 ([electron#55709](https://github.com/electron/electron/pull/55709)),
+  darunter den Use-after-free im libxslt-Musterabgleich, der als
+  CVE-2026-125350 aktiv ausgenutzt wird (CISA KEV seit 10.11.2026), sowie die
+  Backports aus 44.11.0 ([electron#55585](https://github.com/electron/electron/pull/55585)).
+  Node.js bleibt 24.22.2.
+
 ## [0.6.10] - 2026-11-04
 
 ### Sicherheit
