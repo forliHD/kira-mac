@@ -1,3 +1,13 @@
+## KIRA für Mac 0.6.11
+
+**Sicherheit**
+
+- Electron auf 44.11.1 gehoben. Das schließt eine aktiv ausgenutzte
+  Sicherheitslücke in Chromium (CVE-2026-125350) und weitere Lücken in
+  Chromium, Dawn und V8.
+
+In der App ändert sich sonst nichts.
+
 ## KIRA für Mac 0.6.10
 
 **Sicherheit**
