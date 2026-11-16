@@ -6,6 +6,15 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 
 ## [Unreleased]
 
+### Sicherheit
+- **Electron 44.11.1 → 44.11.3**. 44.11.3 bringt zurückportierte Fixes aus
+  ANGLE, Chromium, Dawn, ICU, Skia und V8
+  ([electron#55748](https://github.com/electron/electron/pull/55748)) und
+  behebt einen Absturz des Browser-Prozesses bei DevTools-Fetch-Interception;
+  44.11.2 entzieht den widerrufenen RSA-Zwischenzertifikaten von eMudhra das
+  Vertrauen ([electron#55743](https://github.com/electron/electron/pull/55743)).
+  Node.js bleibt 24.22.2.
+
 ## [0.6.11] - 2026-11-11
 
 ### Sicherheit
