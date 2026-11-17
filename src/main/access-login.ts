@@ -76,6 +76,27 @@ export function isAccessLoginUrl(url: string): boolean {
   }
 }
 
+/** Das Nötige aus Electrons `onBeforeRedirect`-Details (testbar ohne Electron). */
+export interface RedirectInfo {
+  webContentsId?: number;
+  resourceType: string;
+  url: string;
+  redirectURL: string;
+}
+
+/**
+ * Ein Hintergrund-Abruf des Dashboards (fetch/XHR, kein Dokument) wird auf die
+ * Access-Anmeldung umgeleitet: Die Access-Sitzung ist abgelaufen. Das Fenster
+ * merkt davon sonst nichts – fetch scheitert an CORS, und das Dashboard zeigt
+ * „Keine Verbindung zu KIRA“, obwohl der Server läuft (Live-Bug 2026-11-17).
+ * Dokument-Umleitungen fängt `will-redirect` ab, die zählen hier nicht.
+ */
+export function isBackgroundAccessRedirect(info: RedirectInfo, webContentsId: number, isInstance: (url: string) => boolean): boolean {
+  if (info.webContentsId !== webContentsId) return false;
+  if (info.resourceType === "mainFrame" || info.resourceType === "subFrame") return false;
+  return isInstance(info.url) && isAccessLoginUrl(info.redirectURL);
+}
+
 export function buildAccessUrl(origin: string, publicRaw: Buffer, state: string): string {
   const url = new URL("/api/auth/app/access", origin);
   url.searchParams.set("state", state);

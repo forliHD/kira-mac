@@ -11,6 +11,7 @@ import {
   buildAccessUrl,
   generateAccessKey,
   isAccessLoginUrl,
+  isBackgroundAccessRedirect,
   openHandover,
   tokenExpiry,
 } from "../src/main/access-login";
@@ -251,5 +252,27 @@ describe("AccessLogin", () => {
 
   it("das Cookie heißt wie bei Cloudflare", () => {
     expect(ACCESS_COOKIE).toBe("CF_Authorization");
+  });
+});
+
+describe("isBackgroundAccessRedirect", () => {
+  const LOGIN = "https://team.cloudflareaccess.com/cdn-cgi/access/login/kira.example.de?redirect_url=%2Fapi%2Flogs";
+  const isInstance = (url: string): boolean => url.startsWith(ORIGIN);
+  const base = { webContentsId: 7, resourceType: "xhr", url: `${ORIGIN}/api/logs?limit=5`, redirectURL: LOGIN };
+
+  it("erkennt den abgelaufenen Access bei einem API-Abruf des Hauptfensters", () => {
+    expect(isBackgroundAccessRedirect(base, 7, isInstance)).toBe(true);
+  });
+
+  it("ignoriert Dokument-Umleitungen (die fängt will-redirect)", () => {
+    expect(isBackgroundAccessRedirect({ ...base, resourceType: "mainFrame" }, 7, isInstance)).toBe(false);
+    expect(isBackgroundAccessRedirect({ ...base, resourceType: "subFrame" }, 7, isInstance)).toBe(false);
+  });
+
+  it("ignoriert andere Fenster, fremde Adressen und andere Ziele", () => {
+    expect(isBackgroundAccessRedirect(base, 8, isInstance)).toBe(false);
+    expect(isBackgroundAccessRedirect({ ...base, webContentsId: undefined }, 7, isInstance)).toBe(false);
+    expect(isBackgroundAccessRedirect({ ...base, url: "https://other.example/api" }, 7, isInstance)).toBe(false);
+    expect(isBackgroundAccessRedirect({ ...base, redirectURL: `${ORIGIN}/login` }, 7, isInstance)).toBe(false);
   });
 });

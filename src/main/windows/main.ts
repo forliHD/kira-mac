@@ -10,7 +10,7 @@ import { type NativeEvent } from "../../shared/bridge";
 import { IPC } from "../../shared/ipc";
 import { LOCAL_IPC } from "../../shared/ipc-local";
 import { type LocalEvent } from "../../shared/local-api";
-import { isAccessLoginUrl } from "../access-login";
+import { isAccessLoginUrl, isBackgroundAccessRedirect } from "../access-login";
 import { type WindowBounds } from "../config";
 import { isInstanceUrl } from "../instance";
 import { applyLinkPolicy } from "../links";
@@ -19,6 +19,8 @@ import { localPageUrl } from "../paths";
 import { instanceWebPreferences } from "./common";
 
 const log = scoped("main-window");
+/** Viele parallele Abrufe scheitern zugleich – nur einmal reagieren. */
+const BACKGROUND_ACCESS_THROTTLE_MS = 30_000;
 
 export interface MainWindowDeps {
   origins: () => string[];
@@ -105,6 +107,23 @@ export class MainWindowController {
     };
     win.webContents.on("will-redirect", interceptAccess);
     win.webContents.on("will-navigate", interceptAccess);
+
+    // Läuft die Access-Sitzung ab, während das Dashboard offen ist, leitet
+    // Access nur noch die API-Abrufe um – das Dokument bleibt stehen und zeigt
+    // „Keine Verbindung zu KIRA“. Dann wie beim Dokument zur Anmeldung.
+    // Ein Listener je Sitzung: ein neues Fenster ersetzt den alten.
+    let backgroundAccessAt = 0;
+    win.webContents.session.webRequest.onBeforeRedirect((details) => {
+      if (win.isDestroyed() || !this.dashboardLoaded) return;
+      if (!isBackgroundAccessRedirect(details, win.webContents.id, (url) => isInstanceUrl(url, this.deps.origins()))) return;
+      const now = Date.now();
+      if (now - backgroundAccessAt < BACKGROUND_ACCESS_THROTTLE_MS) return;
+      backgroundAccessAt = now;
+      log.info("access_expired_background", { type: details.resourceType });
+      this.dashboardLoaded = false;
+      // false = Anmeldung im App-Fenster gewählt: neu laden, dann greift will-redirect.
+      if (!this.deps.onAccessRedirect(details.redirectURL)) win.webContents.reload();
+    });
 
     win.webContents.on("did-finish-load", () => {
       const url = win.webContents.getURL();
