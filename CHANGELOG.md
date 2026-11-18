@@ -7,6 +7,9 @@ Alle nennenswerten Änderungen an „KIRA für Mac“. Format nach
 ## [Unreleased]
 
 ### Sicherheit
+- **Electron 44.11.3 → 45.3.4** (Major). Electron 45 bringt Chromium 156
+  und Node.js 24.22.3 mit; 44.x bekommt nur noch begrenzt Backports.
+  Typecheck, Lint, 328 Tests und der Build laufen unter 45.3.4 durch.
 - **Electron 44.11.1 → 44.11.3**. 44.11.3 bringt zurückportierte Fixes aus
   ANGLE, Chromium, Dawn, ICU, Skia und V8
   ([electron#55748](https://github.com/electron/electron/pull/55748)) und
